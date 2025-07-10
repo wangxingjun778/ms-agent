@@ -10,13 +10,75 @@ from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types import DoclingDocument
-from docling_core.types.doc import DocItem, ImageRef
+from docling_core.types.doc import DocItem, DocItemLabel, ImageRef
 from ms_agent.tools.docling.doc_postprocess import PostProcess
 from ms_agent.utils.logger import get_logger
 from ms_agent.utils.patcher import patch
-from ms_agent.utils.utils import load_image_from_url_to_pil
+from ms_agent.utils.utils import (load_image_from_uri_to_pil,
+                                  load_image_from_url_to_pil, validate_url)
 
 logger = get_logger()
+
+
+def html_handle_figure(self, element: Tag, doc: DoclingDocument) -> None:
+    """
+    Patch the `docling.backend.html_backend.HTMLDocumentBackend.handle_figure` method.
+    """
+    logger.debug(
+        f'Patching HTMLDocumentBackend.handle_figure for {doc.origin.filename}'
+    )
+
+    img_element: Tag = element.find('img')
+    if isinstance(img_element, Tag):
+        img_url = img_element.attrs.get('src', None)
+    else:
+        img_url = None
+
+    if img_url:
+        if img_url.startswith('data:'):
+            img_pil, ext = load_image_from_uri_to_pil(img_url)
+        else:
+            if not img_url.startswith('http'):
+                img_url = validate_url(img_url=img_url, backend=self)
+            img_pil = load_image_from_url_to_pil(
+                img_url) if img_url.startswith('http') else None
+    else:
+        img_pil = None
+
+    dpi: int = int(img_pil.info.get('dpi', (96, 96))[0]) if img_pil else 96
+    img_ref: ImageRef = None
+    if img_pil:
+        img_ref = ImageRef.from_pil(
+            image=img_pil,
+            dpi=dpi,
+        )
+
+    contains_captions = element.find(['figcaption'])
+    if isinstance(contains_captions, Tag):
+        texts = []
+        for item in contains_captions:
+            texts.append(item.text)
+
+        fig_caption = doc.add_text(
+            label=DocItemLabel.CAPTION,
+            text=(''.join(texts)).strip(),
+            content_layer=self.content_layer,
+        )
+        doc.add_picture(
+            annotations=[],
+            image=img_ref,
+            parent=self.parents[self.level],
+            caption=fig_caption,
+            content_layer=self.content_layer,
+        )
+    else:
+        doc.add_picture(
+            annotations=[],
+            image=img_ref,
+            parent=self.parents[self.level],
+            caption=None,
+            content_layer=self.content_layer,
+        )
 
 
 def html_handle_image(self, element: Tag, doc: DoclingDocument) -> None:
@@ -28,7 +90,17 @@ def html_handle_image(self, element: Tag, doc: DoclingDocument) -> None:
 
     # Get the image from element
     img_url: str = element.attrs.get('src', None)
-    img_pil = load_image_from_url_to_pil(img_url)
+
+    if img_url:
+        if img_url.startswith('data:'):
+            img_pil, ext = load_image_from_uri_to_pil(img_url)
+        else:
+            if not img_url.startswith('http'):
+                img_url = validate_url(img_url=img_url, backend=self)
+            img_pil = load_image_from_url_to_pil(img_url)
+    else:
+        img_pil = None
+
     dpi: int = int(img_pil.info.get('dpi', (96, 96))[0]) if img_pil else 96
 
     img_ref: ImageRef = None
@@ -146,6 +218,73 @@ class DocLoader:
         return ref_item_d
 
     @staticmethod
+    def _preprocess(url_or_files: List[str]) -> List[str]:
+        """
+        Pre-process the URLs or files before conversion.
+
+        Args:
+            urls_or_files (List[str]): The list of URLs or files to preprocess.
+
+        Returns:
+            List[str]: The pre-processed list of URLs or files.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def check_url_valid(url: tuple[int, str]) -> tuple[int, str] | None:
+            """
+            Check if the URL is valid and accessible.
+            """
+            import requests
+            from urllib.parse import urlparse
+
+            idx, _url = url
+            try:
+                # Parse URL to check if it's valid
+                parsed_url = urlparse(_url)
+                if not parsed_url.netloc:
+                    logger.warning(f'Invalid URL format: {_url}')
+                    return None
+
+                # Try to send a HEAD request to check if the URL is accessible
+                response = requests.head(_url, timeout=10)
+                if response.status_code >= 400:
+                    response = requests.get(_url, stream=True, timeout=10)
+                    if response.status_code >= 400:
+                        logger.warning(
+                            f'URL returned error status {response.status_code}: {_url}'
+                        )
+                    return None
+                return url
+            except requests.RequestException as e2:
+                logger.warning(f'Failed to access URL {_url}: {e2}')
+                return None
+
+        # Step1: Remove urls or files that cannot be processed
+        http_urls = [(i, url) for i, url in enumerate(url_or_files)
+                     if url and url.startswith('http')]
+        file_paths = [(i, file) for i, file in enumerate(url_or_files)
+                      if file and not file.startswith('http')]
+        preprocessed = []
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(check_url_valid, url) for url in http_urls
+            ]
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    preprocessed.append(result)
+
+        # Step2: Add file paths that are valid
+        preprocessed.extend(file_paths)
+
+        # Restore the original order of URLs or files
+        preprocessed = sorted(preprocessed, key=lambda x: x[0])
+        logger.info(
+            f'Preprocessed {len(preprocessed)} URLs or files for conversion.')
+
+        return [item[1] for item in preprocessed]
+
+    @staticmethod
     def _postprocess(doc: DoclingDocument) -> Union[DoclingDocument, None]:
         """
         Post-process the document after conversion.
@@ -159,7 +298,10 @@ class DocLoader:
         return doc
 
     @patch(HTMLDocumentBackend, 'handle_image', html_handle_image)
+    @patch(HTMLDocumentBackend, 'handle_figure', html_handle_figure)
     def load(self, urls_or_files: list[str]) -> List[DoclingDocument]:
+
+        urls_or_files: List[str] = self._preprocess(urls_or_files)
 
         # TODO: Support progress bar for document loading (with pather)
         results: Iterator[ConversionResult] = self._converter.convert_all(
