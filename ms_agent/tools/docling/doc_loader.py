@@ -1,7 +1,7 @@
 # flake8: noqa
 import os
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Union
 
 from bs4 import Tag
 from docling.backend.html_backend import HTMLDocumentBackend
@@ -10,8 +10,10 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.models.utils.hf_model_download import \
-    HuggingFaceModelDownloadMixin
+from docling.models.document_picture_classifier import \
+    DocumentPictureClassifier
+from docling.models.layout_model import LayoutModel
+from docling.models.table_structure_model import TableStructureModel
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import DocItem, DocItemLabel, ImageRef
 from ms_agent.tools.docling.doc_postprocess import PostProcess
@@ -123,31 +125,26 @@ def html_handle_image(self, element: Tag, doc: DoclingDocument) -> None:
     )
 
 
-def ms_download_model(
-    repo_id: str,
-    local_dir: Optional[Path] = None,
+def download_models_ms(
+    local_dir=None,
     force: bool = False,
     progress: bool = False,
 ) -> Path:
-    """
-    Download model from ModelScope repository.
-    Args:
-        repo_id: The repository ID of the model to download from ModelScope hub. (e.g. owner_name/model_name)
-        local_dir: Local directory to save the downloaded model. If not specified, a temporary directory will be created.
-        force: Force download the model even if it already exists in the local directory. Ignored.
-        progress: Whether to show the download progress bar. Ignored.
+    from modelscope import snapshot_download
 
-    Returns:
-        Path: The path to the downloaded model directory.
-    """
+    download_path: str = snapshot_download(model_id='ds4sd/docling-models', )
+    return Path(download_path)
 
-    from modelscope import snapshot_download as ms_snapshot_download
 
-    download_path = ms_snapshot_download(
-        repo_id=repo_id,
-        local_dir=local_dir,
-    )
+def download_models_pic_classifier_ms(
+    local_dir=None,
+    force: bool = False,
+    progress: bool = False,
+) -> Path:
+    from modelscope import snapshot_download
 
+    download_path: str = snapshot_download(
+        model_id='ds4sd/DocumentFigureClassifier', )
     return Path(download_path)
 
 
@@ -158,11 +155,6 @@ class DocLoader:
 
     # Number of threads for document conversion
     DOC_CONVERT_NUM_THREADS = os.environ.get('DOC_CONVERT_NUM_THREADS', 16)
-
-    from huggingface_hub import snapshot_download as hf_snapshot_download
-    from modelscope import snapshot_download as ms_snapshot_download
-
-    hf_snapshot_download = ms_snapshot_download
 
     def __init__(self):
 
@@ -333,7 +325,10 @@ class DocLoader:
 
         return doc
 
-    # @patch(HuggingFaceModelDownloadMixin, 'download_models', ms_download_model)
+    @patch(LayoutModel, 'download_models', download_models_ms)
+    @patch(TableStructureModel, 'download_models', download_models_ms)
+    @patch(DocumentPictureClassifier, 'download_models',
+           download_models_pic_classifier_ms)
     @patch(HTMLDocumentBackend, 'handle_image', html_handle_image)
     @patch(HTMLDocumentBackend, 'handle_figure', html_handle_figure)
     def load(self, urls_or_files: list[str]) -> List[DoclingDocument]:
@@ -367,7 +362,6 @@ class DocLoader:
 
 
 if __name__ == '__main__':
-    import time
 
     urls = [
         'https://arxiv.org/pdf/2408.09869',
@@ -381,9 +375,5 @@ if __name__ == '__main__':
     ]
 
     doc_loader = DocLoader()
-
-    # doc_results = doc_loader.load(urls_or_files=urls)
-    # print(doc_results)
-
-    doc_results = doc_loader._converter.convert_all(source=urls)
-    print(next(iter(doc_results)))
+    doc_results = doc_loader.load(urls_or_files=urls)
+    print(doc_results)
