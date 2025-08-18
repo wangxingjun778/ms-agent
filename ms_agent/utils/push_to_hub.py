@@ -8,7 +8,7 @@ from typing import List, Optional
 import json
 import requests
 from ms_agent.utils.logger import get_logger
-from ms_agent.utils.utils import get_files_from_dir
+from ms_agent.utils.utils import get_files_from_dir, is_package_installed
 
 logger = get_logger()
 
@@ -323,4 +323,58 @@ class PushToGitHub(PushToHub):
         logger.info(
             f'Successfully pushed files to '
             f"https://github.com/{self.user_name}/{self.repo_name}/tree/{branch}/{path_in_repo or ''}"
+        )
+
+
+class PushToModelScope(PushToHub):
+
+    """
+    Push files to ModelScope repository.
+    """
+
+    def __init__(self,
+                 repo_id: str,
+                 token: str,):
+        """
+        Initialize the ModelScope pusher with authentication.
+
+        Args:
+            repo_id (str): The ModelScope repository ID in the format 'namespace/repo_name'.
+                For example, 'my_namespace/my_model'.
+            token (str): ModelScope access token with permissions to push to the repository.
+                You can get the token from your ModelScope account settings.
+                Refer to `https://modelscope.cn/my/myaccesstoken`
+        """
+
+        if not is_package_installed('modelscope'):
+            raise ImportError(
+                "ModelScope package is not installed. Please install it with `pip install modelscope`."
+            )
+
+        from modelscope.hub.api import HubApi
+        self.api = HubApi()
+        self.token = token
+        self.repo_id = repo_id
+
+        super().__init__()
+
+    def push(self,
+             folder_path: str,
+             path_in_repo: Optional[str] = None,
+             branch: Optional[str] = "master",
+             repo_type: Optional[str] = 'model',
+             commit_message: Optional[str] = None,
+             exclude: Optional[List[str]] = None,
+             ):
+
+        # TODO: Add export result for the report dir.
+
+        self.api.upload_folder(
+            repo_id=self.repo_id,
+            folder_path=folder_path,
+            path_in_repo=path_in_repo,
+            commit_message=commit_message or f"Upload files to {self.repo_id}",
+            token=self.token,
+            ignore_patterns=exclude,
+            revision=branch,
         )
