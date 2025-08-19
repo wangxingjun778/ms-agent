@@ -443,7 +443,17 @@ class PushToModelScope(PushToHub):
         commit_message: Optional[str] = None,
         exclude: Optional[List[str]] = None,
     ):
+        """
+        Push files from a local directory to the ModelScope repository.
 
+        Args:
+            folder_path (str): The local directory containing files to upload.
+            path_in_repo (Optional[str]): The relative path in the repository where files should be stored.
+                Defaults to the root of the repository.
+            repo_type (Optional[str]): Type of the repository, either 'model' or 'dataset'. Defaults to 'model'.
+            commit_message (Optional[str]): The commit message for the upload. Defaults to a generic message.
+            exclude (Optional[List[str]]): List of regex patterns to exclude files from upload. Defaults to None.
+        """
         path_in_repo_replace = f'{path_in_repo.rstrip("/")}/' if path_in_repo else ''
         path_in_repo_url: str = f'{self.endpoint}/{repo_type}s/{self.repo_id}/resolve/master/{path_in_repo_replace}'
         origin_report, backup_report = self._preprocess(
