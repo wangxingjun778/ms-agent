@@ -568,16 +568,12 @@ def get_files_from_dir(folder_path: str,
 def is_package_imported(package_name: str) -> bool:
     """
     Checks if a package has been imported.
-
     Args:
-    package_name (str): The name of the package as a string.
-
+        package_name (str): The name of the package as a string.
     Returns:
-    True if the package is imported, False otherwise.
+        True if the package is imported, False otherwise.
     """
-    spec = importlib.util.find_spec(package_name)
-
-    return spec is not None and package_name in globals()
+    return package_name in __import__('sys').modules
 
 
 def is_package_installed(package_name: str) -> bool:
@@ -590,8 +586,4 @@ def is_package_installed(package_name: str) -> bool:
     Returns:
     True if the package is installed and can be imported, False otherwise.
     """
-    try:
-        __import__(package_name)
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec(package_name) is not None

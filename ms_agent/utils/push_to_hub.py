@@ -6,7 +6,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import json
 import requests
@@ -42,7 +42,7 @@ class PushToGitHub(PushToHub):
                  visibility: Optional[str] = 'public',
                  description: Optional[str] = None):
         """
-        Initialize the GitHub pusher with authentication.
+        Initialize the `PushToGitHub` class with authentication.
 
         Args:
             user_name (str): GitHub username.
@@ -60,14 +60,14 @@ class PushToGitHub(PushToHub):
             RuntimeError: If there is an issue with the GitHub API.
 
         Examples:
-            >>> pusher = PushToGitHub(
+            >>> push_to_github = PushToGitHub(
             ...     user_name="your_username",
             ...     repo_name="your_repo_name",
             ...     token="your_personal_access_token",
             ...     visibility="public",
             ...     description="My awesome repository"
             ... )
-            >>> pusher.push(folder_path="/path/to/your_dir", branch="main", commit_message="Initial commit")
+            >>> push_to_github.push(folder_path="/path/to/your_dir", branch="main", commit_message="Initial commit")
         """
         super().__init__()
 
@@ -341,7 +341,7 @@ class PushToModelScope(PushToHub):
         token: str,
     ):
         """
-        Initialize the ModelScope pusher with authentication.
+        Initialize the `PushToModelScope` with authentication.
 
         Args:
             repo_id (str): The ModelScope repository ID in the format 'namespace/repo_name'.
@@ -369,7 +369,7 @@ class PushToModelScope(PushToHub):
     @staticmethod
     def _preprocess(folder_path: str,
                     path_in_repo_url: str,
-                    add_powered_by: bool = True) -> (str, str):
+                    add_powered_by: bool = True) -> 'Tuple[str, str]':
 
         report_filename = 'report.md'
         file_path = os.path.join(folder_path, report_filename)
@@ -394,7 +394,8 @@ class PushToModelScope(PushToHub):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                if add_powered_by and not content.startswith('<span style='):
+                if add_powered_by and not content.lstrip().startswith(
+                        '<span style='):
                     content = """<span style="color: darkgreen; font-weight: bold; font-family: monospace;
                     ">Powered by [MS-Agent](https://github.com/modelscope/ms-agent) |
                     [DocResearch](https://github.com/modelscope/ms-agent/blob/main/projects/doc_research/README.md)
@@ -416,10 +417,12 @@ class PushToModelScope(PushToHub):
 
         except IOError as e:
             logger.error(f'Error reading or writing the report file: {e}')
+            return '', ''
         except Exception as e:
             logger.error(
                 f'Unexpected error during preprocessing of PushToModelScope: {e}'
             )
+            return '', ''
 
         return file_path, new_file_path
 
@@ -459,18 +462,22 @@ class PushToModelScope(PushToHub):
         origin_report, backup_report = self._preprocess(
             folder_path, path_in_repo_url)
 
-        self.api.upload_folder(
-            repo_id=self.repo_id,
-            folder_path=folder_path,
-            path_in_repo=path_in_repo,
-            commit_message=commit_message or f'Upload files to {self.repo_id}',
-            token=self.token,
-            ignore_patterns=exclude,
-            revision='master',
-        )
-
-        if origin_report and backup_report:
-            self._postprocess(
-                report_file_path=origin_report,
-                report_file_path_in_cache=backup_report,
+        try:
+            self.api.upload_folder(
+                repo_id=self.repo_id,
+                folder_path=folder_path,
+                path_in_repo=path_in_repo,
+                commit_message=commit_message
+                or f'Upload files to {self.repo_id}',
+                token=self.token,
+                ignore_patterns=exclude,
+                revision='master',
             )
+        except Exception as e:
+            logger.error(f'Failed to push files to ModelScope: {e}')
+        finally:
+            if origin_report and backup_report:
+                self._postprocess(
+                    report_file_path=origin_report,
+                    report_file_path_in_cache=backup_report,
+                )
