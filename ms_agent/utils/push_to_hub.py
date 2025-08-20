@@ -284,24 +284,24 @@ class PushToGitHub(PushToHub):
 
     def push(self,
              folder_path: str,
-             exclude: Optional[List[str]] = None,
              path_in_repo: Optional[str] = None,
              branch: Optional[str] = 'main',
              commit_message: Optional[str] = None,
+             exclude: Optional[List[str]] = None,
              **kwargs) -> None:
         """
         Push files from a local directory to the GitHub repository.
 
         Args:
             folder_path (str): The local directory containing files to upload.
-            exclude (Optional[List[str]]):
-                List of regex patterns to exclude files from upload. Defaults to hidden files, logs, and __pycache__.
             path_in_repo (Optional[str]):
                 The relative path in the repository where files should be stored.
                 Defaults to the root of the repository.
             branch (Optional[str]): The branch to push changes to. Defaults to "main".
             commit_message (Optional[str]):
                 The commit message for the upload. Defaults to a generic message.
+            exclude (Optional[List[str]]):
+                List of regex patterns to exclude files from upload. Defaults to hidden files, logs, and __pycache__.
 
         Raises:
             RuntimeError: If there is an issue with the GitHub API or if the branch does not exist.
@@ -337,15 +337,12 @@ class PushToModelScope(PushToHub):
 
     def __init__(
         self,
-        repo_id: str,
         token: str,
     ):
         """
         Initialize the `PushToModelScope` with authentication.
 
         Args:
-            repo_id (str): The ModelScope repository ID in the format 'namespace/repo_name'.
-                For example, 'my_namespace/my_model'.
             token (str): ModelScope access token with permissions to push to the repository.
                 You can get the token from your ModelScope account settings.
                 Refer to `https://modelscope.cn/my/myaccesstoken`
@@ -361,7 +358,6 @@ class PushToModelScope(PushToHub):
 
         self.api = HubApi()
         self.token = token
-        self.repo_id = repo_id
         self.endpoint = get_endpoint()
 
         super().__init__()
@@ -440,6 +436,8 @@ class PushToModelScope(PushToHub):
 
     def push(
         self,
+        *,
+        repo_id: str,
         folder_path: str,
         path_in_repo: Optional[str] = None,
         repo_type: Optional[str] = 'model',
@@ -450,6 +448,8 @@ class PushToModelScope(PushToHub):
         Push files from a local directory to the ModelScope repository.
 
         Args:
+            repo_id (str): The ModelScope repository ID in the format 'namespace/repo_name'.
+                For example, 'my_namespace/my_model'.
             folder_path (str): The local directory containing files to upload.
             path_in_repo (Optional[str]): The relative path in the repository where files should be stored.
                 Defaults to the root of the repository.
@@ -458,17 +458,17 @@ class PushToModelScope(PushToHub):
             exclude (Optional[List[str]]): List of regex patterns to exclude files from upload. Defaults to None.
         """
         path_in_repo_replace = f'{path_in_repo.rstrip("/")}/' if path_in_repo else ''
-        path_in_repo_url: str = f'{self.endpoint}/{repo_type}s/{self.repo_id}/resolve/master/{path_in_repo_replace}'
+        path_in_repo_url: str = f'{self.endpoint}/{repo_type}s/{repo_id}/resolve/master/{path_in_repo_replace}'
         origin_report, backup_report = self._preprocess(
             folder_path, path_in_repo_url)
 
         try:
             self.api.upload_folder(
-                repo_id=self.repo_id,
+                repo_id=repo_id,
                 folder_path=folder_path,
                 path_in_repo=path_in_repo,
                 commit_message=commit_message
-                or f'Upload files to {self.repo_id}',
+                or f'Upload files to {repo_id}',
                 token=self.token,
                 ignore_patterns=exclude,
                 revision='master',
@@ -481,3 +481,78 @@ class PushToModelScope(PushToHub):
                     report_file_path=origin_report,
                     report_file_path_in_cache=backup_report,
                 )
+
+
+class PushToHuggingFace(PushToHub):
+
+    def __init__(self, token: str):
+        """
+        Initialize the `PushToHuggingFace` with authentication.
+
+        Args:
+            token (str): HuggingFace access token with permissions to push to the repository.
+                Refer to: https://huggingface.co/docs/huggingface_hub/quick-start#authentication
+        """
+
+        if not is_package_installed('huggingface_hub'):
+            raise ImportError(
+                'The `huggingface-hub` package is not installed. Please install it with `pip install huggingface-hub`.'
+            )
+
+        from huggingface_hub import HfApi
+
+        self.api = HfApi()
+        self.token = token
+
+        super().__init__()
+
+    def push(self,
+             *,
+             repo_id: str,
+             folder_path: str,
+             path_in_repo: Optional[str] = None,
+             repo_type: Optional[str] = 'model',
+             commit_message: Optional[str] = None,
+             exclude: Optional[List[str]] = None,
+             revision: Optional[str] = 'main',
+             ):
+        """
+        Push files from a local directory to the HuggingFace repository.
+
+        Args:
+            repo_id (str): The HuggingFace repository ID in the format 'namespace/repo_name'.
+                For example, 'my_namespace/my_model'.
+            folder_path (str): The local directory containing files to upload.
+            path_in_repo (Optional[str]): The relative path in the repository where files should be stored.
+                Defaults to the root of the repository.
+            repo_type (Optional[str]): Type of the repository, either 'model' or 'dataset'. Defaults to 'model'.
+            commit_message (Optional[str]): The commit message for the upload. Defaults to a generic message.
+            exclude (Optional[List[str]]): List of regex patterns to exclude files from upload. Defaults to None.
+            revision (Optional[str]): The revision to push changes to. Defaults to "main".
+        """
+        if not repo_id:
+            raise ValueError('Repository ID cannot be empty.')
+
+        if not repo_type in ['model', 'dataset']:
+            raise ValueError(
+                "Repository type must be either 'model' or 'dataset'.")
+
+        try:
+            self.api.upload_folder(
+                repo_id=repo_id,
+                folder_path=folder_path,
+                path_in_repo=path_in_repo,
+                commit_message=commit_message,
+                token=self.token,
+                repo_type=repo_type,
+                ignore_patterns=exclude,
+            )
+
+            repo_type_in_url: str = '' if repo_type == 'model' else 'datasets/'
+            logger.info(
+                f'Successfully pushed files to '
+                f'https://huggingface.co/{repo_type_in_url}{repo_id}/tree/main/{path_in_repo or ""}'
+            )
+        except Exception as e:
+            logger.error(f'Failed to push files to {repo_id} on HuggingFace: {e}')
+            raise e
