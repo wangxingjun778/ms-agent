@@ -467,8 +467,7 @@ class PushToModelScope(PushToHub):
                 repo_id=repo_id,
                 folder_path=folder_path,
                 path_in_repo=path_in_repo,
-                commit_message=commit_message
-                or f'Upload files to {repo_id}',
+                commit_message=commit_message or f'Upload files to {repo_id}',
                 token=self.token,
                 ignore_patterns=exclude,
                 revision='master',
@@ -506,16 +505,17 @@ class PushToHuggingFace(PushToHub):
 
         super().__init__()
 
-    def push(self,
-             *,
-             repo_id: str,
-             folder_path: str,
-             path_in_repo: Optional[str] = None,
-             repo_type: Optional[str] = 'model',
-             commit_message: Optional[str] = None,
-             exclude: Optional[List[str]] = None,
-             revision: Optional[str] = 'main',
-             ):
+    def push(
+        self,
+        *,
+        repo_id: str,
+        folder_path: str,
+        path_in_repo: Optional[str] = None,
+        repo_type: Optional[str] = 'model',
+        commit_message: Optional[str] = None,
+        exclude: Optional[List[str]] = None,
+        revision: Optional[str] = 'main',
+    ):
         """
         Push files from a local directory to the HuggingFace repository.
 
@@ -533,7 +533,7 @@ class PushToHuggingFace(PushToHub):
         if not repo_id:
             raise ValueError('Repository ID cannot be empty.')
 
-        if not repo_type in ['model', 'dataset']:
+        if repo_type not in ['model', 'dataset']:
             raise ValueError(
                 "Repository type must be either 'model' or 'dataset'.")
 
@@ -546,6 +546,7 @@ class PushToHuggingFace(PushToHub):
                 token=self.token,
                 repo_type=repo_type,
                 ignore_patterns=exclude,
+                revision=revision,
             )
 
             repo_type_in_url: str = '' if repo_type == 'model' else 'datasets/'
@@ -554,5 +555,6 @@ class PushToHuggingFace(PushToHub):
                 f'https://huggingface.co/{repo_type_in_url}{repo_id}/tree/main/{path_in_repo or ""}'
             )
         except Exception as e:
-            logger.error(f'Failed to push files to {repo_id} on HuggingFace: {e}')
+            logger.error(
+                f'Failed to push files to {repo_id} on HuggingFace: {e}')
             raise e
