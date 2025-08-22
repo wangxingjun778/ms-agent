@@ -567,17 +567,6 @@ def get_files_from_dir(folder_path: str,
     return file_list
 
 
-def is_package_imported(package_name: str) -> bool:
-    """
-    Checks if a package has been imported.
-    Args:
-        package_name (str): The name of the package as a string.
-    Returns:
-        True if the package is imported, False otherwise.
-    """
-    return package_name in __import__('sys').modules
-
-
 def is_package_installed(package_name: str) -> bool:
     """
     Checks if a package is installed by attempting to import it.
@@ -591,16 +580,24 @@ def is_package_installed(package_name: str) -> bool:
     return importlib.util.find_spec(package_name) is not None
 
 
-def install_package(package_name: str):
+def install_package(package_name: str, import_name: Optional[str] = None):
     """
-    Installs a package using pip.
+    Check and install a package using pip.
+
+    Note: The `package_name` may not be the same as the `import_name`.
 
     Args:
-        package_name (str): The name of the package to install.
+        package_name (str): The name of the package to install (for pip install).
+        import_name (str, optional): The name used to import the package.
+                                    If None, uses package_name. Defaults to None.
     """
-    if not is_package_installed(package_name):
+    # Use package_name as import_name if not provided
+    if import_name is None:
+        import_name = package_name
+
+    if not is_package_installed(import_name):
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', package_name])
         logger.info(f'Package {package_name} installed successfully.')
     else:
-        logger.info(f'Package {package_name} is already installed.')
+        logger.info(f'Package {import_name} is already installed.')

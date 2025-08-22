@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import markdown
-from bs4 import BeautifulSoup
 from ms_agent.utils.logger import get_logger
 from ms_agent.utils.utils import install_package, is_package_installed
 
@@ -451,6 +450,9 @@ class MarkdownConverter:
         Returns:
             Absolute path to generated HTML folder or file
         """
+        install_package(package_name='beautifulsoup4', import_name='bs4')
+        from bs4 import BeautifulSoup
+
         markdown_input = Path(markdown_path)
 
         # Determine if input is a file or folder
@@ -750,9 +752,11 @@ class MarkdownConverter:
         Returns:
             Absolute path to generated DOCX folder or file
         """
-        # Check and install the `python-docx` automatically
-        install_package(package_name='docx')
+        # Check and install the `python-docx` and `beautifulsoup4` automatically
+        install_package(package_name='python-docx', import_name='docx')
+        install_package(package_name='beautifulsoup4', import_name='bs4')
 
+        from bs4 import BeautifulSoup
         from docx import Document
 
         markdown_input = Path(markdown_path)
@@ -976,7 +980,7 @@ class MarkdownConverter:
             Absolute path to generated PPT folder or file
         """
         # Check and install the `python-pptx` automatically
-        install_package(package_name='pptx')
+        install_package(package_name='python-pptx', import_name='pptx')
 
         from pptx import Presentation
         from pptx.util import Inches as PptxInches
