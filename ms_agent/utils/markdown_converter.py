@@ -159,11 +159,11 @@ class MarkdownConverter:
 
                     image_mapping[img_path] = str(
                         new_path.relative_to(output_dir))
-                except Exception as e:
-                    logger.info(f'Error processing image {img_path}: {e}')
+                except (IOError, OSError) as e:
+                    logger.warning(f'Error processing image {img_path}: {e}')
                     image_mapping[img_path] = img_path
             else:
-                logger.info(f'Image file not found: {source_path}')
+                logger.warning(f'Image file not found: {source_path}')
                 image_mapping[img_path] = img_path
 
         return image_mapping
@@ -239,13 +239,14 @@ class MarkdownConverter:
                 run.font.name = 'Courier New'
 
     @staticmethod
-    def markdown_to_html(markdown_path: str, html_path: str) -> str:
+    def markdown_to_html(markdown_path: str, html_path: str, lang: str = 'zh-CN') -> str:
         """
         Convert Markdown files to HTML
 
         Args:
             markdown_path: Path to folder containing Markdown files and resources, or path to a single .md file
             html_path: Path to output HTML folder or file
+            lang: Language code for the HTML document (default: 'zh-CN'), e.g. 'zh-CN', 'en-US'
 
         Returns:
             Absolute path to generated HTML folder or file
@@ -316,7 +317,7 @@ class MarkdownConverter:
                 # Create complete HTML document
                 full_html = f"""
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -451,6 +452,7 @@ class MarkdownConverter:
             logger.info(f'  - {md_file.name}')
 
         # Process each Markdown file
+        # TODO: can be multi-threaded for faster processing
         converted_files = []
         for markdown_file in markdown_files:
             try:
