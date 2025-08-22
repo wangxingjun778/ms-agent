@@ -7,6 +7,8 @@ import importlib
 import importlib.util
 import os.path
 import re
+import subprocess
+import sys
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional
@@ -587,3 +589,18 @@ def is_package_installed(package_name: str) -> bool:
     True if the package is installed and can be imported, False otherwise.
     """
     return importlib.util.find_spec(package_name) is not None
+
+
+def install_package(package_name: str):
+    """
+    Installs a package using pip.
+
+    Args:
+        package_name (str): The name of the package to install.
+    """
+    if not is_package_installed(package_name):
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', package_name])
+        logger.info(f'Package {package_name} installed successfully.')
+    else:
+        logger.info(f'Package {package_name} is already installed.')
