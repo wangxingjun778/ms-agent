@@ -482,7 +482,7 @@ class MarkdownConverter:
                 raise FileNotFoundError(
                     f'No .md files found in {markdown_folder}')
 
-        logger.info(f'Found {len(markdown_files)} Markdown files to convert:')
+        logger.info(f'Found {len(markdown_files)} Markdown files to convert to html:')
         for md_file in markdown_files:
             logger.info(f'  - {md_file.name}')
 
@@ -616,6 +616,8 @@ class MarkdownConverter:
                 '   playwright install chromium')
             return ''
 
+        import tempfile
+
         markdown_input = Path(markdown_path)
 
         # Determine if input is a file or folder
@@ -647,7 +649,7 @@ class MarkdownConverter:
                 raise FileNotFoundError(
                     f'No .md files found in {markdown_folder}')
 
-        logger.info(f'Found {len(markdown_files)} Markdown files to convert:')
+        logger.info(f'Found {len(markdown_files)} Markdown files to convert to pdf:')
         for md_file in markdown_files:
             logger.info(f'  - {md_file.name}')
 
@@ -657,74 +659,73 @@ class MarkdownConverter:
         for markdown_file in markdown_files:
             try:
                 # First convert to HTML
-                temp_dir = Path('temp_output')
-                temp_dir.mkdir(exist_ok=True)
+                with tempfile.TemporaryDirectory() as temp_dir_str:
+                    temp_dir = Path(temp_dir_str)
 
-                # Convert this specific markdown file to HTML first
-                MarkdownConverter.markdown_to_html(
-                    str(markdown_folder), str(temp_dir))
-                temp_html = temp_dir / f'{markdown_file.stem}.html'
+                    # Convert this specific markdown file to HTML first
+                    MarkdownConverter.markdown_to_html(str(markdown_file), str(temp_dir))
+                    temp_html = temp_dir / f'{markdown_file.stem}.html'
 
-                # Generate output PDF file path
-                if single_file_output:
-                    output_pdf_file = single_file_output
-                else:
-                    output_pdf_file = pdf_folder / f'{markdown_file.stem}.pdf'
+                    # Generate output PDF file path
+                    if single_file_output:
+                        output_pdf_file = single_file_output
+                    else:
+                        output_pdf_file = pdf_folder / f'{markdown_file.stem}.pdf'
 
-                try:
-                    logger.info(
-                        f'Converting {markdown_file.name} to PDF using Playwright...'
-                    )
+                    try:
+                        logger.info(
+                            f'Converting {markdown_file.name} to PDF using Playwright...'
+                        )
 
-                    with sync_playwright() as p:
-                        # Launch browser (prefer Chromium for best PDF support)
-                        browser = p.chromium.launch(headless=True)
-                        page = browser.new_page()
+                        with sync_playwright() as p:
+                            # Launch browser (prefer Chromium for best PDF support)
+                            browser = p.chromium.launch(headless=True)
+                            page = browser.new_page()
 
-                        # Enhanced PDF options for high quality output
-                        pdf_options = {
-                            'path': str(output_pdf_file),
-                            'format': 'A4',
-                            'margin': {
-                                'top': '2cm',
-                                'right': '2cm',
-                                'bottom': '2cm',
-                                'left': '2cm'
-                            },
-                            'print_background':
-                                True,
-                            'prefer_css_page_size':
-                                True,
-                            'display_header_footer':
-                                True,
-                            'header_template':
-                                '<div style="font-size:10px; text-align:center; width:100%;"></div>',
-                            'footer_template':
-                                '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'
-                        }
+                            # Enhanced PDF options for high quality output
+                            pdf_options = {
+                                'path': str(output_pdf_file),
+                                'format': 'A4',
+                                'margin': {
+                                    'top': '2cm',
+                                    'right': '2cm',
+                                    'bottom': '2cm',
+                                    'left': '2cm'
+                                },
+                                'print_background':
+                                    True,
+                                'prefer_css_page_size':
+                                    True,
+                                'display_header_footer':
+                                    True,
+                                'header_template':
+                                    '<div style="font-size:10px; text-align:center; width:100%;"></div>',
+                                'footer_template':
+                                    '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'
+                            }
 
-                        # Navigate to HTML file and wait for full load
-                        page.goto(
-                            f'file://{temp_html.absolute()}',
-                            wait_until='networkidle')
+                            # Navigate to HTML file and wait for full load
+                            page.goto(
+                                f'file://{temp_html.absolute()}',
+                                wait_until='networkidle')
 
-                        # Wait a bit more for any dynamic content
-                        page.wait_for_timeout(1000)
+                            # Wait a bit more for any dynamic content
+                            page.wait_for_timeout(1000)
 
-                        # Generate PDF
-                        page.pdf(**pdf_options)
+                            # Generate PDF
+                            page.pdf(**pdf_options)
 
-                        browser.close()
+                            browser.close()
 
-                    logger.info(
-                        f'PDF file generated using Playwright: {output_pdf_file}'
-                    )
-                    converted_files.append(output_pdf_file)
+                        logger.info(
+                            f'PDF file generated using Playwright: {output_pdf_file}'
+                        )
+                        converted_files.append(output_pdf_file)
 
-                except Exception as e:
-                    logger.error(
-                        f'Playwright conversion failed for {markdown_file.name}: {e}'
-                    )
+                    except Exception as e:
+                        logger.error(
+                            f'Playwright conversion failed for {markdown_file.name}: {e}'
+                        )
 
             except Exception as e:
                 logger.error(f'✗ Failed to convert {markdown_file.name}: {e}')
@@ -785,7 +786,7 @@ class MarkdownConverter:
                 raise FileNotFoundError(
                     f'No .md files found in {markdown_folder}')
 
-        logger.info(f'Found {len(markdown_files)} Markdown files to convert:')
+        logger.info(f'Found {len(markdown_files)} Markdown files to convert to docx:')
         for md_file in markdown_files:
             logger.info(f'  - {md_file.name}')
 
@@ -963,7 +964,7 @@ class MarkdownConverter:
             return str(docx_folder.absolute())
 
     @staticmethod
-    def markdown_to_ppt(markdown_path: str, ppt_path: str) -> str:
+    def markdown_to_pptx(markdown_path: str, ppt_path: str) -> str:
         """
         Convert Markdown files to PPT
 
@@ -1012,7 +1013,7 @@ class MarkdownConverter:
                 raise FileNotFoundError(
                     f'No .md files found in {markdown_folder}')
 
-        logger.info(f'Found {len(markdown_files)} Markdown files to convert:')
+        logger.info(f'Found {len(markdown_files)} Markdown files to convert to ppt:')
         for md_file in markdown_files:
             logger.info(f'  - {md_file.name}')
 
