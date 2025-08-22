@@ -97,8 +97,7 @@ class MarkdownConverter:
     """
 
     @staticmethod
-    def _extract_images_from_markdown(
-            markdown_content: str) -> List[Tuple[str, str]]:
+    def _extract_images_from_markdown(markdown_content: str) -> List[Tuple[str, str]]:
         """
         Extract image references from Markdown content
 
@@ -111,9 +110,9 @@ class MarkdownConverter:
         return [(match[1], match[0]) for match in matches]
 
     @staticmethod
-    def _copy_and_process_images(images: List[Tuple[str,
-                                                    str]], output_dir: Path,
-                                 folder_path: Path) -> Dict[str, str]:
+    def _copy_and_process_images(
+            images: List[Tuple[str, str]],
+            output_dir: Path, folder_path: Path) -> Dict[str, str]:
         """
         Copy and process image files
 
@@ -145,9 +144,7 @@ class MarkdownConverter:
 
                 try:
                     # Copy and possibly compress image
-                    if source_path.suffix.lower() in [
-                            '.jpg', '.jpeg', '.png', '.gif', '.bmp'
-                    ]:
+                    if source_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
                         with Image.open(source_path) as img:
                             # Compress if image is too large
                             if img.width > 1200 or img.height > 1200:
@@ -237,6 +234,209 @@ class MarkdownConverter:
                 run.italic = True
             elif part_type == 'code':
                 run.font.name = 'Courier New'
+
+    @staticmethod
+    def _process_html_inline_elements(paragraph, element):
+        """
+        Process HTML inline elements and add formatted runs to paragraph
+        """
+        # Handle mixed content (text and inline elements)
+        for content in element.contents:
+            if hasattr(content, 'name'):  # It's a tag
+                if content.name == 'strong' or content.name == 'b':
+                    run = paragraph.add_run(content.get_text())
+                    run.bold = True
+                elif content.name == 'em' or content.name == 'i':
+                    run = paragraph.add_run(content.get_text())
+                    run.italic = True
+                elif content.name == 'code':
+                    run = paragraph.add_run(content.get_text())
+                    run.font.name = 'Courier New'
+                elif content.name == 'a':
+                    # For links, just add the text (DOCX hyperlinks are complex)
+                    run = paragraph.add_run(content.get_text())
+                else:
+                    # For other tags, just add the text content
+                    run = paragraph.add_run(content.get_text())
+            else:  # It's text content
+                text_content = str(content).strip()
+                if text_content:
+                    paragraph.add_run(text_content)
+
+    @staticmethod
+    def _process_html_table(doc, table_element):
+        """
+        Process HTML table element and create DOCX table
+        """
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        try:
+            # Extract table data from HTML
+            rows = []
+            for tr in table_element.find_all('tr'):
+                row_data = []
+                for cell in tr.find_all(['td', 'th']):
+                    cell_text = cell.get_text().strip()
+                    row_data.append(cell_text)
+                if row_data:  # Only add non-empty rows
+                    rows.append(row_data)
+
+            if not rows:
+                return
+
+            # Determine table dimensions
+            max_cols = max(len(row) for row in rows)
+            num_rows = len(rows)
+
+            if max_cols > 0 and num_rows > 0:
+                # Create DOCX table
+                table = doc.add_table(rows=num_rows, cols=max_cols)
+                table.style = 'Table Grid'
+                table.autofit = False
+
+                # Fill table data
+                for row_idx, row_data in enumerate(rows):
+                    table_row = table.rows[row_idx]
+
+                    for col_idx in range(max_cols):
+                        cell = table_row.cells[col_idx]
+
+                        # Get cell data or empty string if not enough columns
+                        cell_data = row_data[col_idx] if col_idx < len(row_data) else ''
+
+                        # Clear existing content and add new
+                        cell.text = ''
+                        paragraph = cell.paragraphs[0]
+                        paragraph.add_run(cell_data)
+
+                        # Make header row bold and centered (first row or if original was th)
+                        original_tr = table_element.find_all('tr')[row_idx]
+                        if row_idx == 0 or original_tr.find('th'):
+                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            for run in paragraph.runs:
+                                run.bold = True
+
+                # Add spacing after table
+                doc.add_paragraph()
+
+        except Exception as e:
+            logger.warning(f'Error processing HTML table: {e}')
+            # Fallback: add table as text
+            table_text = table_element.get_text().strip()
+            if table_text:
+                doc.add_paragraph(table_text)
+
+    @staticmethod
+    def _process_markdown_table_fallback(doc, table_lines):
+        """
+        Fallback method to process markdown table syntax directly
+        """
+        try:
+            # Parse table structure from markdown lines
+            table_data = []
+
+            for line in table_lines:
+                # Clean up the line and split by |
+                cells = [cell.strip() for cell in line.split('|')]
+
+                # Remove empty cells at start/end (from leading/trailing |)
+                while cells and not cells[0]:
+                    cells.pop(0)
+                while cells and not cells[-1]:
+                    cells.pop()
+
+                # Skip empty rows and separator lines
+                if not cells:
+                    continue
+
+                # Check if this is a separator line (contains only -, :, |, and spaces)
+                is_separator = all(
+                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell)
+                    for cell in cells if cell.strip()
+                )
+
+                if is_separator:
+                    continue
+
+                # This is a data row
+                if cells:
+                    table_data.append(cells)
+
+            if table_data:
+                # Create DOCX table
+                max_cols = max(len(row) for row in table_data)
+                num_rows = len(table_data)
+
+                if max_cols > 0 and num_rows > 0:
+                    table = doc.add_table(rows=num_rows, cols=max_cols)
+                    table.style = 'Table Grid'
+
+                    # Fill table data
+                    for row_idx, row_data in enumerate(table_data):
+                        table_row = table.rows[row_idx]
+
+                        for col_idx in range(max_cols):
+                            cell = table_row.cells[col_idx]
+                            cell_data = row_data[col_idx] if col_idx < len(row_data) else ''
+                            cell.text = cell_data
+
+                            # Make first row bold (header)
+                            if row_idx == 0:
+                                for paragraph in cell.paragraphs:
+                                    for run in paragraph.runs:
+                                        run.bold = True
+
+                    # Add spacing after table
+                    doc.add_paragraph()
+
+        except Exception as e:
+            logger.warning(f'Error processing markdown table fallback: {e}')
+            # Add table as text if processing fails
+            table_text = '\n'.join(table_lines)
+            doc.add_paragraph(table_text)
+
+    @staticmethod
+    def _process_docx_image(doc, img_src, img_alt, resources_dir, markdown_folder):
+        """
+        Process image and add to DOCX document
+        """
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Inches as DocxInches
+
+        try:
+            # Handle image path
+            if not os.path.isabs(img_src):
+                actual_img_path = resources_dir / img_src
+                if not actual_img_path.exists():
+                    actual_img_path = markdown_folder / img_src
+            else:
+                actual_img_path = Path(img_src)
+
+            if actual_img_path.exists():
+                try:
+                    # Add image caption before the image if it exists
+                    if img_alt:
+                        caption_paragraph = doc.add_paragraph()
+                        caption_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        caption_run = caption_paragraph.add_run(img_alt)
+                        caption_run.italic = True
+                        caption_run.font.size = DocxInches(0.12)
+
+                    # Add the image
+                    paragraph = doc.add_paragraph()
+                    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+                    run.add_picture(str(actual_img_path), width=DocxInches(6))
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+                except Exception as e:
+                    doc.add_paragraph(f'[Image loading failed: {img_src}]')
+                    logger.warning(f'Failed to add image: {e}')
+            else:
+                logger.warning(f'Image file not found: {actual_img_path}')
+                doc.add_paragraph(f'[Image not found: {img_src}]')
+
+        except Exception as e:
+            logger.warning(f'Error processing image {img_src}: {e}')
+            doc.add_paragraph(f'[Image processing failed: {img_src}]')
 
     @staticmethod
     def markdown_to_html(markdown_path: str, html_path: str, lang: str = 'zh-CN') -> str:
@@ -483,10 +683,8 @@ class MarkdownConverter:
 
                         # Enhanced PDF options for high quality output
                         pdf_options = {
-                            'path':
-                            str(output_pdf_file),
-                            'format':
-                            'A4',
+                            'path': str(output_pdf_file),
+                            'format': 'A4',
                             'margin': {
                                 'top': '2cm',
                                 'right': '2cm',
@@ -494,15 +692,15 @@ class MarkdownConverter:
                                 'left': '2cm'
                             },
                             'print_background':
-                            True,
+                                True,
                             'prefer_css_page_size':
-                            True,
+                                True,
                             'display_header_footer':
-                            True,
+                                True,
                             'header_template':
-                            '<div style="font-size:10px; text-align:center; width:100%;"></div>',
+                                '<div style="font-size:10px; text-align:center; width:100%;"></div>',
                             'footer_template':
-                            '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'  # noqa
+                                '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'
                         }
 
                         # Navigate to HTML file and wait for full load
@@ -552,11 +750,9 @@ class MarkdownConverter:
             Absolute path to generated DOCX folder or file
         """
         # Check and install the `python-docx` automatically
-        install_package(package_name='python-docx')
+        install_package(package_name='docx')
 
         from docx import Document
-        from docx.shared import Inches
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
 
         markdown_input = Path(markdown_path)
 
@@ -606,205 +802,143 @@ class MarkdownConverter:
                 # Create Word document (images will be embedded directly)
                 doc = Document()
 
-                # Process Markdown content line by line
-                lines = markdown_content.split('\n')
-                i = 0
+                # Use proper Markdown parsing with enhanced extensions
+                md = markdown.Markdown(extensions=[
+                    'extra',  # Includes tables, fenced_code, footnotes, attr_list, def_list, abbr
+                    'codehilite',  # Code highlighting
+                    'toc',  # Table of contents
+                    'tables',  # Explicit table support
+                    'fenced_code',  # Fenced code blocks
+                    'attr_list'  # Attribute lists
+                ])
+                html_content = md.convert(markdown_content)
 
-                while i < len(lines):
-                    line = lines[i].strip()
+                # Parse the HTML using BeautifulSoup for structured processing
+                soup = BeautifulSoup(html_content, 'html.parser')
 
-                    if not line:
-                        # Empty line
-                        doc.add_paragraph()
-                    elif line.startswith('# '):
-                        # Level 1 heading
-                        doc.add_heading(line[2:], level=1)
-                    elif line.startswith('## '):
-                        # Level 2 heading
-                        doc.add_heading(line[3:], level=2)
-                    elif line.startswith('### '):
-                        # Level 3 heading
-                        doc.add_heading(line[4:], level=3)
-                    elif line.startswith('!['):
-                        # Image
-                        img_match = re.match(r'!\[([^\]]*)\]\(([^)]+)\)', line)
-                        if img_match:
-                            alt_text, img_path = img_match.groups()
-                            # Handle image path
-                            if not os.path.isabs(img_path):
-                                actual_img_path = resources_dir / img_path
-                                if not actual_img_path.exists():
-                                    actual_img_path = markdown_folder / img_path
-                            else:
-                                actual_img_path = Path(img_path)
+                # First, handle images that might not be converted to <img> tags by markdown
+                # Process raw markdown image syntax that might have been missed
+                remaining_content = str(soup)
+                img_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+                img_matches = re.findall(img_pattern, remaining_content)
 
-                            if actual_img_path.exists():
-                                try:
-                                    # Add image caption before the image if it exists
-                                    if alt_text:
-                                        caption_paragraph = doc.add_paragraph()
-                                        caption_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                        caption_run = caption_paragraph.add_run(
-                                            alt_text)
-                                        caption_run.italic = True
-                                        caption_run.font.size = Inches(
-                                            0.12
-                                        )  # Smaller font size for caption
-
-                                    # Add the image
-                                    paragraph = doc.add_paragraph()
-                                    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
-                                    run.add_picture(
-                                        str(actual_img_path), width=Inches(6))
-                                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-                                except Exception as e:
-                                    doc.add_paragraph(
-                                        f'[Image loading failed: {img_path}]')
-                                    logger.info(f'Failed to add image: {e}')
-                    elif '|' in line:
-                        # Table detection - look for lines with pipe characters
-                        table_lines = []
-
-                        # Collect all consecutive table lines
-                        while i < len(lines):
-                            current_line = lines[i].strip()
-                            if '|' in current_line:
-                                table_lines.append(current_line)
-                                i += 1
-                            else:
-                                break
-
-                        # Process the table if we found lines
-                        if table_lines:
-                            # Parse table structure
-                            table_data = []
-                            header_row = None
-
-                            for line_idx, table_line in enumerate(table_lines):
-                                # Clean up the line and split by |
-                                # Handle both |col1|col2|col3| and col1|col2|col3 formats
-                                cells = [
-                                    cell.strip()
-                                    for cell in table_line.split('|')
-                                ]
-
-                                # Remove empty cells at start/end (from leading/trailing |)
-                                while cells and not cells[0]:
-                                    cells.pop(0)
-                                while cells and not cells[-1]:
-                                    cells.pop()
-
-                                # Skip empty rows
-                                if not cells:
-                                    continue
-
-                                # Check if this is a separator line (contains only -, :, |, and spaces)
-                                is_separator = all(
-                                    re.match(r'^[-:\s|]*$', cell) and (
-                                        '-' in cell or ':' in cell)
-                                    for cell in cells if cell.strip())
-
-                                if is_separator:
-                                    # This is a separator line, skip it
-                                    continue
-
-                                # This is a data row
-                                if cells:
-                                    table_data.append(cells)
-                                    if header_row is None:
-                                        header_row = len(
-                                            table_data
-                                        ) - 1  # First data row is header
-
-                            # Create Word table if we have data
-                            if table_data:
-                                try:
-                                    # Determine table dimensions
-                                    max_cols = max(
-                                        len(row) for row in
-                                        table_data) if table_data else 0
-                                    num_rows = len(table_data)
-
-                                    if max_cols > 0 and num_rows > 0:
-                                        # Create table with proper dimensions
-                                        table = doc.add_table(
-                                            rows=num_rows, cols=max_cols)
-                                        table.style = 'Table Grid'
-
-                                        # Set table properties for better appearance
-                                        table.autofit = False
-
-                                        # Fill table data
-                                        for row_idx, row_data in enumerate(
-                                                table_data):
-                                            table_row = table.rows[row_idx]
-
-                                            for col_idx in range(max_cols):
-                                                cell = table_row.cells[col_idx]
-
-                                                # Get cell data or empty string if not enough columns
-                                                cell_data = row_data[
-                                                    col_idx] if col_idx < len(
-                                                        row_data) else ''
-
-                                                # Clear existing content and add new
-                                                cell.text = ''
-                                                paragraph = cell.paragraphs[0]
-
-                                                # Add formatted text to cell
-                                                MarkdownConverter._add_formatted_text(
-                                                    paragraph, cell_data)
-
-                                                # Make header row bold and centered
-                                                if row_idx == 0:  # First row is header
-                                                    for paragraph in cell.paragraphs:
-                                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                                        for run in paragraph.runs:
-                                                            run.bold = True
-
-                                        # Add some spacing after table
-                                        doc.add_paragraph()
-
-                                except Exception as e:
-                                    logger.info(f'Failed to create table: {e}')
-                                    # Fallback: add as regular paragraphs
-                                    for row in table_data:
-                                        doc.add_paragraph(' | '.join(row))
-
-                        # Continue from where we left off (i is already incremented)
-                        continue
-
-                    elif line.startswith('```'):
-                        # Code block
-                        code_lines = []
-                        i += 1
-                        while i < len(lines) and not lines[i].strip(
-                        ).startswith('```'):
-                            code_lines.append(lines[i])
-                            i += 1
-
-                        code_content = '\n'.join(code_lines)
-                        paragraph = doc.add_paragraph(code_content)
-                        paragraph.style = 'Code'
-                    elif line.startswith('- ') or line.startswith('* '):
-                        # Unordered list
-                        doc.add_paragraph(line[2:], style='List Bullet')
-                    elif re.match(r'^\d+\. ', line):
-                        # Ordered list
-                        content = re.sub(r'^\d+\. ', '', line)
-                        doc.add_paragraph(content, style='List Number')
-                    elif line.startswith('> '):
-                        # Blockquote
-                        doc.add_paragraph(line[2:], style='Quote')
+                # Add missed images to the soup
+                for alt_text, img_src in img_matches:
+                    # Create img element and add to soup
+                    img_tag = soup.new_tag('img', src=img_src, alt=alt_text)
+                    # Find a good place to insert it (after last processed element or at end)
+                    if soup.body:
+                        soup.body.append(img_tag)
                     else:
-                        # Regular paragraph - handle basic formatting
-                        if line:
-                            paragraph = doc.add_paragraph()
-                            MarkdownConverter._add_formatted_text(
-                                paragraph, line)
+                        soup.append(img_tag)
 
-                    i += 1
+                # Process each HTML element and convert to DOCX
+                for element in soup.find_all(
+                        ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'blockquote', 'pre', 'table', 'img']):
+                    try:
+                        if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                            # Headings
+                            level = int(element.name[1])
+                            if level <= 3:  # DOCX supports up to 9 levels, but we'll use 1-3 for clarity
+                                doc.add_heading(element.get_text().strip(), level=level)
+                            else:
+                                # For h4-h6, use bold paragraph instead
+                                paragraph = doc.add_paragraph()
+                                run = paragraph.add_run(element.get_text().strip())
+                                run.bold = True
+
+                        elif element.name == 'p':
+                            # Paragraphs - handle inline formatting
+                            if element.get_text().strip():  # Skip empty paragraphs
+                                paragraph = doc.add_paragraph()
+                                MarkdownConverter._process_html_inline_elements(paragraph, element)
+
+                        elif element.name == 'ul':
+                            # Unordered lists
+                            for li in element.find_all('li', recursive=False):
+                                paragraph = doc.add_paragraph(style='List Bullet')
+                                MarkdownConverter._process_html_inline_elements(paragraph, li)
+
+                        elif element.name == 'ol':
+                            # Ordered lists
+                            for li in element.find_all('li', recursive=False):
+                                paragraph = doc.add_paragraph(style='List Number')
+                                MarkdownConverter._process_html_inline_elements(paragraph, li)
+
+                        elif element.name == 'blockquote':
+                            # Blockquotes
+                            for p in element.find_all('p'):
+                                paragraph = doc.add_paragraph(style='Quote')
+                                MarkdownConverter._process_html_inline_elements(paragraph, p)
+
+                        elif element.name == 'pre':
+                            # Code blocks
+                            code_element = element.find('code')
+                            if code_element:
+                                code_text = code_element.get_text()
+                            else:
+                                code_text = element.get_text()
+                            paragraph = doc.add_paragraph(code_text)
+                            # Apply code formatting
+                            for run in paragraph.runs:
+                                run.font.name = 'Courier New'
+
+                        elif element.name == 'table':
+                            # Tables - enhanced processing
+                            MarkdownConverter._process_html_table(doc, element)
+
+                        elif element.name == 'img':
+                            # Images
+                            img_src = element.get('src', '')
+                            img_alt = element.get('alt', '')
+                            if img_src:  # Only process if src exists
+                                MarkdownConverter._process_docx_image(doc, img_src, img_alt, resources_dir,
+                                                                      markdown_folder)
+
+
+                    except Exception as e:
+                        logger.warning(f'Error processing element {element.name}: {e}')
+                        # Fallback: add as plain text
+                        if element.get_text().strip():
+                            doc.add_paragraph(element.get_text().strip())
+
+                # Additional fallback processing for missed elements
+                # Handle any remaining markdown table syntax that wasn't converted
+                if '|' in markdown_content:
+                    lines = markdown_content.split('\n')
+                    table_lines = []
+                    in_table = False
+
+                    for line in lines:
+                        line = line.strip()
+                        if '|' in line and line:
+                            if not in_table:
+                                in_table = True
+                                table_lines = []
+                            table_lines.append(line)
+                        else:
+                            if in_table and table_lines:
+                                # Process collected table
+                                MarkdownConverter._process_markdown_table_fallback(doc, table_lines)
+                                table_lines = []
+                                in_table = False
+
+                    # Process last table if exists
+                    if in_table and table_lines:
+                        MarkdownConverter._process_markdown_table_fallback(doc, table_lines)
+
+                # Handle any remaining markdown image syntax that wasn't converted
+                remaining_img_matches = re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', markdown_content)
+                for alt_text, img_src in remaining_img_matches:
+                    # Check if this image was already processed
+                    already_processed = False
+                    for element in soup.find_all('img'):
+                        if element.get('src') == img_src:
+                            already_processed = True
+                            break
+
+                    if not already_processed:
+                        MarkdownConverter._process_docx_image(doc, img_src, alt_text, resources_dir, markdown_folder)
 
                 # Generate output DOCX file path
                 if single_file_output:
@@ -841,7 +975,7 @@ class MarkdownConverter:
             Absolute path to generated PPT folder or file
         """
         # Check and install the `python-pptx` automatically
-        install_package(package_name='python-pptx')
+        install_package(package_name='pptx')
 
         from pptx import Presentation
         from pptx.util import Inches as PptxInches
@@ -910,8 +1044,7 @@ class MarkdownConverter:
                         # New slide title - only add previous slide if it has meaningful content
                         if current_slide['title'] and current_slide['content']:
                             slides_content.append(current_slide)
-                        elif current_slide[
-                                'title'] and not current_slide['content']:
+                        elif current_slide['title'] and not current_slide['content']:
                             # Previous slide has title but no content, skip it
                             logger.info(
                                 f"Skipping empty slide: {current_slide['title']}"
@@ -965,9 +1098,7 @@ class MarkdownConverter:
 
                                 # Check if this is a separator line (contains only -, :, |, and spaces)
                                 is_separator = all(
-                                    re.match(r'^[-:\s|]*$', cell) and (
-                                        '-' in cell or ':' in cell)
-                                    for cell in cells if cell.strip())
+                                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell) for cell in cells if cell.strip())
 
                                 if is_separator:
                                     # This is a separator line, skip it
@@ -1060,7 +1191,7 @@ class MarkdownConverter:
                             chars_per_line = int(
                                 slide_width /
                                 (base_font_size * 0.4))  # Even more generous
-                            estimated_lines = max(1, len(text_content) // chars_per_line + 1)   # noqa
+                            estimated_lines = max(1, len(text_content) // chars_per_line + 1)  # noqa
 
                             # Calculate content weight based on text length and type
                             content_weight = len(text_content) // 20 + 1  # noqa
@@ -1165,9 +1296,9 @@ class MarkdownConverter:
 
                         # Determine if page is too sparse
                         is_sparse = (
-                            len(current_page) < min_content_per_page
-                            or page_content_weight < min_content_weight
-                            or page_text_length < 100
+                                len(current_page) < min_content_per_page
+                                or page_content_weight < min_content_weight
+                                or page_text_length < 100
                         )  # Less than 100 characters total
 
                         # Try to merge sparse pages with adjacent pages
@@ -1193,9 +1324,7 @@ class MarkdownConverter:
                             next_page_weight = 0
                             next_page_text_length = 0
                             for content_type, *content_data in next_page:
-                                if content_type in [
-                                        'text', 'bullet', 'heading'
-                                ]:
+                                if content_type in ['text', 'bullet', 'heading']:
                                     text_content = content_data[0]
                                     next_page_text_length += len(text_content)
                                     next_page_weight += len(
@@ -1284,9 +1413,7 @@ class MarkdownConverter:
                                 for i, (content_type, *content_data
                                         ) in enumerate(text_content):
                                     if content_type == 'text':
-                                        p = text_frame.paragraphs[
-                                            0] if i == 0 else text_frame.add_paragraph(
-                                            )
+                                        p = text_frame.paragraphs[0] if i == 0 else text_frame.add_paragraph()
                                         p.text = content_data[0]
                                         p.font.size = int(base_font_size)
                                         p.alignment = PP_ALIGN.LEFT
@@ -1297,9 +1424,7 @@ class MarkdownConverter:
                                         p.font.size = int(bullet_font_size)
                                         p.alignment = PP_ALIGN.LEFT
                                     elif content_type == 'heading':
-                                        p = text_frame.paragraphs[
-                                            0] if i == 0 else text_frame.add_paragraph(
-                                            )
+                                        p = text_frame.paragraphs[0] if i == 0 else text_frame.add_paragraph()
                                         p.text = content_data[0]
                                         p.font.bold = True
                                         p.font.size = int(heading_font_size)
@@ -1360,9 +1485,9 @@ class MarkdownConverter:
                                                 'title'] else slide_height * 0.1
 
                                             table_width = slide_width - (
-                                                margin_left * 2)
+                                                    margin_left * 2)
                                             table_height = slide_height - margin_top - (
-                                                slide_height * 0.1)
+                                                    slide_height * 0.1)
 
                                             # Ensure minimum table size
                                             table_width = max(
@@ -1380,16 +1505,8 @@ class MarkdownConverter:
 
                                                 # Calculate adaptive font size based on table size and content
                                                 # Base font size on table dimensions and number of cells
-                                                cell_area = (
-                                                    table_width
-                                                    * table_height) / (
-                                                        num_rows * max_cols)
-                                                base_font_size = max(
-                                                    PptxInches(0.12),
-                                                    min(
-                                                        PptxInches(0.25),
-                                                        cell_area
-                                                        / PptxInches(2)))
+                                                cell_area = (table_width * table_height) / (num_rows * max_cols)
+                                                base_font_size = max(PptxInches(0.12), min(PptxInches(0.25), cell_area / PptxInches(2)))
 
                                                 # Fill table data with adaptive formatting
                                                 for row_idx, row_data in enumerate(
@@ -1397,28 +1514,19 @@ class MarkdownConverter:
                                                     for col_idx in range(
                                                             max_cols):
                                                         try:
-                                                            cell = table.cell(
-                                                                row_idx,
-                                                                col_idx)
+                                                            cell = table.cell(row_idx, col_idx)
 
                                                             # Get cell data or empty string if not enough columns
-                                                            cell_data = str(
-                                                                row_data[
-                                                                    col_idx]
-                                                                if col_idx <
-                                                                len(row_data)
-                                                                else '')
+                                                            cell_data = str(row_data[col_idx] if col_idx < len(row_data) else '')
 
                                                             # Clear existing content first
                                                             cell.text = ''
 
                                                             # Add text to cell
                                                             if cell.text_frame.paragraphs:
-                                                                paragraph = cell.text_frame.paragraphs[
-                                                                    0]
+                                                                paragraph = cell.text_frame.paragraphs[0]
                                                             else:
-                                                                paragraph = cell.text_frame.add_paragraph(
-                                                                )
+                                                                paragraph = cell.text_frame.add_paragraph()
 
                                                             paragraph.text = cell_data
                                                             paragraph.alignment = PP_ALIGN.CENTER
@@ -1426,9 +1534,7 @@ class MarkdownConverter:
                                                             # Set font properties safely
                                                             if paragraph.font:
                                                                 try:
-                                                                    paragraph.font.size = int(
-                                                                        base_font_size
-                                                                    )
+                                                                    paragraph.font.size = int(base_font_size)
                                                                     # Make header row bold and slightly larger
                                                                     if row_idx == 0:  # First row is header
                                                                         paragraph.font.bold = True
@@ -1440,10 +1546,10 @@ class MarkdownConverter:
 
                                                             # Set cell margins safely
                                                             try:
-                                                                cell.margin_left = PptxInches(0.05)     # noqa
-                                                                cell.margin_right = PptxInches(0.05)    # noqa
-                                                                cell.margin_top = PptxInches(0.05)      # noqa
-                                                                cell.margin_bottom = PptxInches(0.05)   # noqa
+                                                                cell.margin_left = PptxInches(0.05)  # noqa
+                                                                cell.margin_right = PptxInches(0.05)  # noqa
+                                                                cell.margin_top = PptxInches(0.05)  # noqa
+                                                                cell.margin_bottom = PptxInches(0.05)  # noqa
                                                             except Exception as e:
                                                                 logger.warning(
                                                                     f'Error setting cell margins: {e}'
@@ -1465,17 +1571,11 @@ class MarkdownConverter:
                                                     margin_left, margin_top,
                                                     table_width, table_height)
                                                 fallback_frame = fallback_shape.text_frame
-                                                fallback_para = fallback_frame.paragraphs[
-                                                    0]
-                                                fallback_text = '\n'.join([
-                                                    ' | '.join(row)
-                                                    for row in table_data
-                                                ])
+                                                fallback_para = fallback_frame.paragraphs[0]
+                                                fallback_text = '\n'.join([' | '.join(row) for row in table_data])
                                                 fallback_para.text = f'Table Content:\n{fallback_text}'
                                 elif content_type == 'image':
-                                    img_path, alt_text = content_data[
-                                        0], content_data[1] if len(
-                                            content_data) > 1 else ''
+                                    img_path, alt_text = content_data[0], content_data[1] if len(content_data) > 1 else ''
 
                                     # Handle image path
                                     if not os.path.isabs(img_path):
@@ -1488,19 +1588,15 @@ class MarkdownConverter:
                                     if actual_img_path.exists():
                                         try:
                                             # Add image in new slide
-                                            img_slide_layout = prs.slide_layouts[
-                                                6]  # Blank layout
-                                            img_slide = prs.slides.add_slide(
-                                                img_slide_layout)
+                                            img_slide_layout = prs.slide_layouts[6]  # Blank layout
+                                            img_slide = prs.slides.add_slide(img_slide_layout)
 
                                             # Get slide dimensions
                                             slide_width = prs.slide_width
                                             slide_height = prs.slide_height
 
                                             # Calculate available space for image (leaving margins)
-                                            margin_top = PptxInches(
-                                                1.5
-                                            ) if alt_text else PptxInches(0.5)
+                                            margin_top = PptxInches(1.5) if alt_text else PptxInches(0.5)
                                             margin_bottom = PptxInches(0.5)
                                             margin_left = PptxInches(0.5)
                                             margin_right = PptxInches(0.5)
@@ -1515,8 +1611,7 @@ class MarkdownConverter:
                                             else:
                                                 # If no alt_text, try to extract from image filename or use default
                                                 img_name = Path(img_path).stem
-                                                if img_name and not img_name.lower(
-                                                ).startswith('image'):
+                                                if img_name and not img_name.lower().startswith('image'):
                                                     title_text = f'Image: {img_name}'
                                                 else:
                                                     title_text = 'Image'
@@ -1530,17 +1625,13 @@ class MarkdownConverter:
                                                         available_width,
                                                         PptxInches(1))
                                                     title_frame = title_shape.text_frame
-                                                    title_frame.margin_top = PptxInches(
-                                                        0.1)
-                                                    title_frame.margin_bottom = PptxInches(
-                                                        0.1)
-                                                    title_para = title_frame.paragraphs[
-                                                        0]
+                                                    title_frame.margin_top = PptxInches(0.1)
+                                                    title_frame.margin_bottom = PptxInches(0.1)
+                                                    title_para = title_frame.paragraphs[0]
                                                     title_para.text = title_text
                                                     title_para.alignment = PP_ALIGN.CENTER
                                                     try:
-                                                        title_para.font.size = int(
-                                                            PptxInches(0.25))
+                                                        title_para.font.size = int(PptxInches(0.25))
                                                         title_para.font.bold = True
                                                     except Exception as e:
                                                         logger.warning(
@@ -1548,8 +1639,7 @@ class MarkdownConverter:
                                                         )
                                                         pass  # Skip font formatting if it fails
                                                     # Adjust margin for title
-                                                    margin_top = PptxInches(
-                                                        1.5)
+                                                    margin_top = PptxInches(1.5)
                                                 except Exception as title_error:
                                                     logger.warning(
                                                         f'Error adding image title: {title_error}'
@@ -1558,9 +1648,7 @@ class MarkdownConverter:
                                             # Get original image dimensions to calculate aspect ratio
                                             try:
                                                 from PIL import Image as PILImage
-                                                with PILImage.open(
-                                                        actual_img_path
-                                                ) as pil_img:
+                                                with PILImage.open(actual_img_path) as pil_img:
                                                     orig_width, orig_height = pil_img.size
                                                     aspect_ratio = orig_width / orig_height if orig_height > 0 else 4 / 3  # noqa
                                             except Exception as e:
@@ -1584,12 +1672,8 @@ class MarkdownConverter:
                                                 img_height = img_width / aspect_ratio
 
                                             # Center the image in available space
-                                            img_left = margin_left + (
-                                                available_width
-                                                - img_width) / 2
-                                            img_top = margin_top + (
-                                                available_height
-                                                - img_height) / 2
+                                            img_left = margin_left + (available_width - img_width) / 2
+                                            img_top = margin_top + (available_height - img_height) / 2
 
                                             # Add image with calculated dimensions
                                             try:
@@ -1608,8 +1692,7 @@ class MarkdownConverter:
                                                     img_left, img_top,
                                                     img_width, img_height)
                                                 error_frame = error_shape.text_frame
-                                                error_para = error_frame.paragraphs[
-                                                    0]
+                                                error_para = error_frame.paragraphs[0]
                                                 error_para.text = f'Image loading failed: {img_path}'
                                                 error_para.alignment = PP_ALIGN.CENTER
 
@@ -1619,19 +1702,14 @@ class MarkdownConverter:
                                             )
                                             # Create simple error slide
                                             try:
-                                                error_slide_layout = prs.slide_layouts[
-                                                    1]  # Title and content layout
-                                                error_slide = prs.slides.add_slide(
-                                                    error_slide_layout)
+                                                error_slide_layout = prs.slide_layouts[1]  # Title and content layout
+                                                error_slide = prs.slides.add_slide(error_slide_layout)
                                                 if error_slide.shapes.title:
                                                     error_slide.shapes.title.text = 'Image Loading Failed'
-                                                if len(error_slide.shapes.
-                                                       placeholders) > 1:
-                                                    content_shape = error_slide.shapes.placeholders[
-                                                        1]
+                                                if len(error_slide.shapes.placeholders) > 1:
+                                                    content_shape = error_slide.shapes.placeholders[1]
                                                     if content_shape.text_frame:
-                                                        p = content_shape.text_frame.paragraphs[
-                                                            0]
+                                                        p = content_shape.text_frame.paragraphs[0]
                                                         p.text = f'Unable to load image: {img_path}'
                                             except Exception as e:
                                                 # Skip error slide creation if it also fails
