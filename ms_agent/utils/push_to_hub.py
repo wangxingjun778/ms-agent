@@ -395,7 +395,7 @@ class PushToModelScope(PushToHub):
                     content = """<span style="color: darkgreen; font-weight: bold; font-family: monospace;
                     ">Powered by [MS-Agent](https://github.com/modelscope/ms-agent) |
                     [DocResearch](https://github.com/modelscope/ms-agent/blob/main/projects/doc_research/README.md)
-                    </span> <br>""" + content
+                    </span>""" + '\n\n' + content
 
             pattern = r'!\[(.*?)\]\((resources/.*?)\)'
             replacement = rf'![\1]({path_in_repo_url}\2)'
