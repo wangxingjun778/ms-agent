@@ -472,6 +472,9 @@ class PushToModelScope(PushToHub):
                 ignore_patterns=exclude,
                 revision='master',
             )
+            target_url: str = f'{self.endpoint}/{repo_type}s/{repo_id}/files'
+            logger.info(
+                f'Successfully pushed files to ModelScope: {target_url}')
         except Exception as e:
             logger.error(f'Failed to push files to ModelScope: {e}')
         finally:
