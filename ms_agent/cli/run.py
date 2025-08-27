@@ -115,7 +115,7 @@ class RunCMD(CLICommand):
                 task=self.args.query)
 
         query = self.args.query
-        input_msg: str = "Please input instruction about newspaper, e.g. 'Please collect today's newspaper.'"
+        input_msg: str = "Please input instruction or 'Ctrl+C' to exit:"
         if not query:
             print(input_msg, flush=True)
             while True:
