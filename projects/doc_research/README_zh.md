@@ -112,7 +112,7 @@ DocResearch支持将markdown格式报告导出为多种格式，方便用户进�
 - HTML
 - DOCX
 
-使用Python脚本导出示例：
+**使用Python脚本导出示例：**
 ```python
 from ms_agent.utils.markdown_converter import MarkdownConverter
 
@@ -124,14 +124,13 @@ MarkdownConverter.markdown_to_html(report_path, output_path + "/html")
 MarkdownConverter.markdown_to_docx(report_path, output_path + "/docx")
 MarkdownConverter.markdown_to_pptx(report_path, output_path + "/pptx")
 MarkdownConverter.markdown_to_pdf(report_path, output_path + "/pdf")
-
 ```
 
 ### 5. 报告上传分享
 DocResearch支持将生成的markdown格式研究报告上传至多个平台，方便用户进行分享和协作：
-- ModelScope
-- HuggingFace
-- GitHub
+- **ModelScope**
+- **HuggingFace**
+- **GitHub**
 
 **上传到ModelScope：**
 ```python
@@ -180,7 +179,6 @@ push_to_git.push(
     path_in_repo='report',
     commit_message='Upload research report to GitHub',
 )
-
 ```
 
 
