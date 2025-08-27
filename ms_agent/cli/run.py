@@ -32,9 +32,9 @@ class RunCMD(CLICommand):
         parser.add_argument(
             '--query',
             required=False,
-            nargs='+',
+            type=str,
             help=
-            'The query or prompt to send to the LLM. Multiple words can be provided as a single query string.'
+            'The query or prompt to send to the LLM. If not set, will enter an interactive mode.'
         )
         parser.add_argument(
             '--config',
