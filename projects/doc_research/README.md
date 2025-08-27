@@ -27,6 +27,7 @@
   - 🚀 **High Efficiency** - Leverage powerful LLMs for fast and accurate research, leveraging key information extraction techniques to further optimize token usage
   - ⚙️ **Flexible Deployment** - Support local run and [ModelScope Studio](https://modelscope.cn/studios) on both CPU and GPU environments.
   - 💰 **Free Model Inference** - Free LLM API inference calls for ModelScope users, refer to [ModelScope API-Inference](https://modelscope.cn/docs/model-service/API-Inference/intro)
+  - 📚 **Export & Upload** - Support exporting research reports to PDF, PPTX, DOCX, HTML formats; support uploading reports to ModelScope, HuggingFace, GitHub
 
 
 <br>
