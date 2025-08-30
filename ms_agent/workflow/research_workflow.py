@@ -20,6 +20,9 @@ logger = get_logger()
 
 
 class ResearchWorkflow:
+    """
+    A workflow for conducting deep research tasks using LLMs and various tools.
+    """
     RESOURCES = 'resources'
 
     def __init__(
@@ -333,6 +336,7 @@ class ResearchWorkflow:
             urls_or_files: Optional[List[str]] = None,
             **kwargs) -> None:
 
+        special_resources: List = []
         if urls_or_files:
             # If urls_or_files is provided, then disable search and use the provided resources directly
             special_resources: List[str] = [file for file in urls_or_files if file.endswith('.txt')]
@@ -378,7 +382,7 @@ class ResearchWorkflow:
         extractor = HierarchicalKeyInformationExtraction(urls_or_files=prepared_resources, verbose=self._verbose)
         key_info_list: List[KeyInformation] = extractor.extract()
 
-        if special_resources and all(file.endswith('.txt') for file in special_resources):
+        if len(special_resources) > 0 and all(file.endswith('.txt') for file in special_resources):
             logger.warning(
                 'Some resources are text files, using the text content as key information instead.'
             )
