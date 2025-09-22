@@ -248,7 +248,7 @@ with Multimodal LLMs](https://arxiv.org/pdf/2504.17432)
 </div>
 
 
-For more details, refer to [Doc Research](projects/doc_research/README.md),
+For more details, refer to [Doc Research](projects/doc_research/README.md)
 
 <br>
 
