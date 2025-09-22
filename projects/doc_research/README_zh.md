@@ -213,11 +213,11 @@ temp_workspace/user_xxx_1753706367955/
 **1. 单文档研究报告**
 
 * User Prompt: `深入分析和总结下列文档`  (默认) <br>
-* URLs Input:  `https://modelscope.cn/models/ms-agent/ms_agent_resources/resolve/master/numina_dataset.pdf` <br>
+* URLs Input:  `https://arxiv.org/pdf/2504.17432` <br>
 
 * 研究报告：
 
-<https://github.com/user-attachments/assets/d6af658c-d67d-499d-9241-bfeb43496e4a>
+<https://github.com/user-attachments/assets/706a5855-1188-4bdf-af39-5279b628571a>
 
 <br>
 
