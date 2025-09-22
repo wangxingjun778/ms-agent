@@ -41,9 +41,11 @@
 
 ### 本地运行Gradio应用
 
+- 生成以下论文的研究报告： [UniME: Breaking the Modality Barrier: Universal Embedding Learning
+with Multimodal LLMs](https://arxiv.org/pdf/2504.17432)
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/4c1cea67-bef1-4dc1-86f1-8ad299d3b656" alt="本地运行" width="750">
-  <p><em>本地运行的Gradio界面展示</em></p>
+  <img src="https://github.com/user-attachments/assets/3f85ba08-6366-49b7-b551-cbe50edf6218" alt="LocalGradioApplication" width="750">
+  <p><em>本地运行DocResearch Gradio界面展示</em></p>
 </div>
 
 
