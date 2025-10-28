@@ -12,7 +12,6 @@ from ms_agent.llm.openai_llm import OpenAI as OpenAILLM
 from ms_agent.utils.logger import logger
 from ms_agent.utils.utils import extract_by_tag, install_package, str_to_md5
 from omegaconf import DictConfig, OmegaConf
-from torch.cuda import default_stream
 
 from .loader import load_skills
 from .prompts import (PROMPT_SKILL_PLAN, PROMPT_SKILL_TASKS,
@@ -165,10 +164,7 @@ class AgentSkill:
 
         return _content
 
-    def run(
-        self,
-        query: str,
-    ) -> str:
+    def run(self, query: str) -> str:
         """
         Run the agent skill with the given query.
 
@@ -274,6 +270,11 @@ class AgentSkill:
             stream=self.stream,
         )
         skill_context.spec.implementation = response_tasks_implementation
+
+        # Dump the spec files
+        spec_output_path = skill_context.spec.dump(
+            output_dir=str(self.working_dir))
+        logger.info(f'Spec files dumped to: {spec_output_path}')
 
         # Extract IMPLEMENTATION content and determine execution scenario
         _, implementation_content = self._extract_implementation(

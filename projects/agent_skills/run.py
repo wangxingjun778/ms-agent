@@ -32,8 +32,8 @@ def main():
     )
 
     queries = [
-        f'Extract the form field info from pdf: {example_data_dir}/OLYMPIC_MEDAL_TABLE_zh.pdf, note that you need to check it first. Finally, output to the working directory: {working_dir} as proper file name with json extension.',
-        # "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
+        # f'Extract the form field info from pdf: {example_data_dir}/OLYMPIC_MEDAL_TABLE_zh.pdf , output to the working directory: {working_dir} as proper file name with json extension.',
+        'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
     ]
 
     for query in queries:
