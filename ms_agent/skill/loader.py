@@ -63,7 +63,7 @@ class SkillLoader:
                 )
 
             if isinstance(skill, SkillSchema):
-                skill_key = f'{skill.skill_id}@{skill.version}'
+                skill_key = self._get_skill_key(skill=skill)
                 all_skills[skill_key] = skill
                 logger.info(
                     f'Loaded skill from SkillSchema object: {skill_key}')
@@ -157,7 +157,7 @@ class SkillLoader:
             if item.is_dir() and self._is_skill_directory(item):
                 skill = self._load_single_skill(item)
                 if skill:
-                    skill_key = f'{skill.skill_id}@{skill.version}'
+                    skill_key = self._get_skill_key(skill=skill)
                     skills[skill_key] = skill
                     logger.info(
                         f'Successfully loaded skill: {skill_key} (from {item})'
@@ -165,17 +165,30 @@ class SkillLoader:
 
         return skills
 
-    def get_skill(self, name: str) -> Optional[SkillSchema]:
+    @staticmethod
+    def _get_skill_key(skill: SkillSchema):
+        """
+        Generate a unique key for a skill based on its ID and version.
+
+        Args:
+            skill: SkillSchema object
+
+        Returns:
+            Unique skill key in the format 'skill_id@version'
+        """
+        return f'{skill.skill_id}@{skill.version}'
+
+    def get_skill(self, skill_key: str) -> Optional[SkillSchema]:
         """
         Get a loaded skill by name.
 
         Args:
-            name: Skill name
+            skill_key: Skill name
 
         Returns:
             SkillSchema object if found, None otherwise
         """
-        return self.loaded_skills.get(name)
+        return self.loaded_skills.get(skill_key)
 
     def list_skills(self) -> List[str]:
         """
@@ -213,26 +226,11 @@ class SkillLoader:
 
         skill = self._load_single_skill(path_obj)
         if skill:
-            self.loaded_skills[skill.name] = skill
+            skill_key: str = self._get_skill_key(skill=skill)
+            self.loaded_skills[skill_key] = skill
             logger.info(f'Successfully reloaded skill: {skill.name}')
 
         return skill
-
-    def unload_skill(self, name: str) -> bool:
-        """
-        Unload a skill by name.
-
-        Args:
-            name: Skill name to unload
-
-        Returns:
-            True if skill was unloaded, False if not found
-        """
-        if name in self.loaded_skills:
-            del self.loaded_skills[name]
-            logger.info(f'Unloaded skill: {name}')
-            return True
-        return False
 
 
 def load_skills(
