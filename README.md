@@ -450,3 +450,11 @@ This project is licensed under the [Apache License (Version 2.0)](https://github
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=modelscope/modelscope-agent&type=Date)](https://star-history.com/#modelscope/modelscope-agent&Date)
+
+
+---
+
+<p align="center">
+  <em> ❤️ Thanks for visiting ✨ MS-Agent !</em><br><br>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=modelscope.MS-Agent&style=for-the-badge&color=00d4ff" alt="Views">
+</p>
