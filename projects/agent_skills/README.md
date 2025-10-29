@@ -66,6 +66,8 @@ export OPENAI_BASE_URL="your-base-url"
 
 ### Usage
 
+> The following example demonstrates how to create and run agent skill to generate `flow fields particle` using p5.js
+
 ```python
 import os
 

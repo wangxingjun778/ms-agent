@@ -248,7 +248,7 @@ asyncio.run(main())
 **MS-Agent Skills** is an **Implementation** of the [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) protocol, enabling agents to autonomously explore and execute complex tasks by leveraging predefined or custom "skills".
 
 
-## Key Features
+#### Key Features
 
 - 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
 - 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts` on demand
@@ -259,7 +259,7 @@ asyncio.run(main())
 - 🧩 **Extensible Design**: The skill data structure is modularized, with implementations such as `SkillSchema` and `SkillContext` provided for easy extension and customization
 
 
-#### 2) Quick Start
+#### Quick Start
 
 > 💡 Note:
 > 1. Before running the following examples, ensure that you have set the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables to access the required model APIs.
@@ -310,11 +310,10 @@ if __name__ == '__main__':
 </div>
 
 
-
-#### 3) 参考文档
-- **README**：请参考 [MS-Agent Skills](projects/agent_skills/README.md)
-- **Anthropic Agent Skills官方文档**：请参考 [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
-- **Anthropic预定义Skills GitHub仓库**：请参考 [Skills](https://github.com/anthropics/skills)
+#### References
+- **README**: [MS-Agent Skills](projects/agent_skills/README.md)
+- **Anthropic Agent Skills Official Docs**: [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
+- **Anthropic Skills GitHub Repo**: [Skills](https://github.com/anthropics/skills)
 
 
 
