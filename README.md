@@ -456,5 +456,5 @@ This project is licensed under the [Apache License (Version 2.0)](https://github
 
 <p align="center">
   <em> ❤️ Thanks for visiting ✨ MS-Agent !</em><br><br>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=modelscope.MS-Agent&style=for-the-badge&color=00d4ff" alt="Views">
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=modelscope.ms-agent&style=for-the-badge&color=00d4ff" alt="Views">
 </p>
