@@ -29,25 +29,19 @@ This approach minimizes resource consumption while providing comprehensive skill
 
 ## Key Features
 
-### Progressive Context Loading
-- **Compatibility**: Full compatible with [Anthropic Skills](https://github.com/anthropics/skills) Protocol
-- **Efficient Resource Usage**: Only loads necessary files when needed
-- **Scalable Design**: Supports hundreds of skills without performance degradation
-- **Dynamic Discovery**: Automatically discovers new skills in directories
+- 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
+- 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts`—on demand
+- 🤖 **Autonomous Execution**: Agents autonomously analyze, plan, and decide which scripts and resources to execute based on skill definitions
+- 🔍 **Skill Management**: Supports batch loading of skills and can automatically retrieve and discover relevant skills based on user input
+- 🛡️ **Code Execution Environment**: Optional local direct code execution or secure sandboxed execution via [**ms-enclave**](https://github.com/modelscope/ms-enclave), with automatic dependency installation and environment isolation
+- 📁 **Multi-file Type Support**: Supports documentation, scripts, and resource files
+- 🧩 **Extensible Design**: The skill data structure is modularized, with implementations such as `SkillSchema` and `SkillContext` provided for easy extension and customization
 
-### Secure Script Execution
-- **Sandbox Environment**: Optional isolated execution environment
-- **Package Management**: Automatic dependency installation
-
-### Flexible Skill Structure
-- **Standard Format**: Consistent skill definition structure
-- **Multiple File Types**: Support for documentation, scripts, and resources
-- **Extensible Design**: Easy to add new skill types
 
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.10+
 - pip package manager
 
 ### Install from PyPI
@@ -86,7 +80,7 @@ def main():
         2. Configure the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables for API access.
     """
     working_dir: str = '/path/to/your_working_dir'
-    skill_root_path: str = '/path/to/skills'
+    skill_root_path: str = '/path/to/skills'    # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
     model_name: str = 'qwen-plus-latest'
 
     agent = create_agent_skill(

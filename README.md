@@ -16,15 +16,15 @@
 <a href='https://ms-agent-en.readthedocs.io/en/latest/'>
     <img src='https://readthedocs.org/projects/ms-agent/badge/?version=latest' alt='Documentation Status' />
 </a>
-<a href="https://github.com/modelscope/ms-agent/actions?query=branch%3Amaster+workflow%3Acitest++"><img src="https://img.shields.io/github/actions/workflow/status/modelscope/modelscope-agent/citest.yaml?branch=master&logo=github&label=CI"></a>
-<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/modelscope-agent"></a>
+<a href="https://github.com/modelscope/ms-agent/actions?query=branch%3Amaster+workflow%3Acitest++"><img src="https://img.shields.io/github/actions/workflow/status/modelscope/ms-agent/citest.yaml?branch=master&logo=github&label=CI"></a>
+<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/ms-agent"></a>
 <a href="https://github.com/modelscope/ms-agent/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
-<a href="https://pypi.org/project/ms-agent/"><img src="https://badge.fury.io/py/modelscope-agent.svg"></a>
+<a href="https://pypi.org/project/ms-agent/"><img src="https://badge.fury.io/py/ms-agent.svg"></a>
 <a href="https://pepy.tech/project/ms-agent"><img src="https://static.pepy.tech/badge/ms-agent"></a>
 </p>
 
 <p align="center">
-<a href="https://trendshift.io/repositories/323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/323" alt="modelscope%2Fmodelscope-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/323" alt="modelscope%2Fms-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 ## Introduction
@@ -47,26 +47,29 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 
 
 ## 🎉 News
-* 🚀Sep 22, 2025: Release MS-Agent v1.3.0, which includes the following updates:
+
+* 🚀 Oct 30, 2025: Release MS-Agent v1.4.0, which includes the following updates:
+  - 🔥 We present [**MS-Agent Skills**](projects/agent_skills/README.md), an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+* 🚀 Sep 22, 2025: Release MS-Agent v1.3.0, which includes the following updates:
   - 🔥 Support [Code Scratch](projects/code_scratch/README.md)
   - Support `Memory` for building agents with long-term and short-term memory
   - Enhance the DeepResearch workflow
   - Support RAY for accelerating document information extraction
   - Support Anthropic API format for LLMs
 
-* 🚀Aug 28, 2025: Release MS-Agent v1.2.0, which includes the following updates:
+* 🚀 Aug 28, 2025: Release MS-Agent v1.2.0, which includes the following updates:
   - DocResearch now supports pushing to `ModelScope`、`HuggingFace`、`GitHub` for easy sharing of research reports. Refer to [Doc Research](projects/doc_research/README.md) for more details.
   - DocResearch now supports exporting the Markdown report to `HTML`、`PDF`、`PPTX` and `DOCX` formats, refer to [Doc Research](projects/doc_research/README.md) for more details.
   - DocResearch now supports `TXT` file processing and file preprocessing, refer to [Doc Research](projects/doc_research/README.md) for more details.
 
-* 🚀July 31, 2025: Release MS-Agent v1.1.0, which includes the following updates:
+* 🚀 July 31, 2025: Release MS-Agent v1.1.0, which includes the following updates:
   - 🔥 Support [Doc Research](projects/doc_research/README.md), demo: [DocResearchStudio](https://modelscope.cn/studios/ms-agent/DocResearch)
   - Add `General Web Search Engine` for Agentic Insight (DeepResearch)
   - Add `Max Continuous Runs` for Agent chat with MCP.
 
-* 🚀July 18, 2025: Release MS-Agent v1.0.0, improve the experience of Agent chat with MCP, and update the readme for [Agentic Insight](projects/deep_research/README.md).
+* 🚀 July 18, 2025: Release MS-Agent v1.0.0, improve the experience of Agent chat with MCP, and update the readme for [Agentic Insight](projects/deep_research/README.md).
 
-* 🚀July 16, 2025: Release MS-Agent v1.0.0rc0, which includes the following updates:
+* 🚀 July 16, 2025: Release MS-Agent v1.0.0rc0, which includes the following updates:
   - Support for Agent chat with MCP (Model Context Protocol)
   - Support for Deep Research (Agentic Insight), refer to: [Report_Demo](projects/deep_research/examples/task_20250617a/report.md), [Script_Demo](projects/deep_research/run.py)
   - Support for [MCP-Playground](https://modelscope.cn/mcp/playground)
@@ -138,7 +141,7 @@ pip install -e .
 
 ## Quickstart
 
-### Agent chat
+### Agent Chat
 This project supports interaction with models via the MCP (Model Context Protocol). Below is a complete example showing
 how to configure and run an LLMAgent with MCP support.
 
@@ -351,6 +354,17 @@ For more details, refer to [Code Scratch](projects/code_scratch/README.md).
 ### Interesting works
 
 1. A news collection agent [ms-agent/newspaper](https://www.modelscope.cn/models/ms-agent/newspaper/summary)
+
+
+## Outlook
+
+We are committed to continuously improving and expanding the MS-Agent framework to push the boundaries of large models and AI agents. Our future roadmap includes:
+
+- [ ] **FinResearch** – A financial deep-research agent dedicated to in-depth analysis and research in the finance domain.
+- [ ] **Multimodal Agentic Search** – Supporting large-scale multimodal document retrieval and generation of search results combining text and images.
+- [ ] Enhanced **Agent Skills** – Providing a richer set of predefined skills and tools to expand agent capabilities and enabling multi-skill collaboration for complex task execution.
+- [ ] **Agent-Workstation** - An unified WebUI with one-click local deployment support with combining all agent capabilities of MS-Agent, such as AgentChat, MCP, AgentSkills, DeepResearch, DocResearch, CodeScratch, etc.
+
 
 ## License
 
