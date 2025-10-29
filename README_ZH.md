@@ -300,7 +300,10 @@ if __name__ == '__main__':
 
 运行结果：
 
-https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">
+  <p><em>Agent-Skills: Flow Field Particles</em></p>
+</div>
 
 
 
