@@ -1,6 +1,8 @@
 # Agent Skills
 
-Empower your AI agents with a modular skill framework that supports dynamic skill discovery, progressive context loading and secure script execution.
+The **MS-Agent Skills** Module is an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+
+To empower your AI agents with a modular skill framework that supports dynamic skill discovery, progressive context loading, planning, and task execution.
 
 ## Overview
 
@@ -9,7 +11,7 @@ The Agent Skills Framework implements a multi-level progressive context loading 
 1. **Level 1 (Metadata)**: Load all skill names and descriptions
 2. **Level 2 (Retrieval)**: Retrieve and load SKILL.md when relevant with the query
 3. **Level 3 (Resources)**: Load additional files (references, scripts, resources) only when referenced in SKILL.md
-4. **Level 4 (Analysis and Execution)**: Analyze the loaded skill context and execute scripts as needed
+4. **Level 4 (Analysis|Planning|Execution)**: Analyze the loaded skill context, plan the execution steps, and run the necessary scripts
 
 This approach minimizes resource consumption while providing comprehensive skill capabilities.
 
