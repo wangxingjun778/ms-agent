@@ -354,7 +354,11 @@ So, how are external electric fields typically simulated in theoretical calculat
 ```
 
 #### Report
-<https://github.com/user-attachments/assets/b1091dfc-9429-46ad-b7f8-7cbd1cf3209b>
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/b1091dfc-9429-46ad-b7f8-7cbd1cf3209b" alt="AgenticInsightDemo" width="750">
+  <p><em>Agentic Insight Report</em></p>
+</div>
 
 
 For more details, please refer to [Deep Research](projects/deep_research/README.md).
