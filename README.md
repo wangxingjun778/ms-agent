@@ -242,6 +242,82 @@ asyncio.run(main())
 
 </details>
 
+
+### Agent Skills
+
+**MS-Agent Skills** is an **Implementation** of the [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) protocol, enabling agents to autonomously explore and execute complex tasks by leveraging predefined or custom "skills".
+
+
+## Key Features
+
+- 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
+- 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts` on demand
+- 🤖 **Autonomous Execution**: Agents autonomously analyze, plan, and decide which scripts and resources to execute based on skill definitions
+- 🔍 **Skill Management**: Supports batch loading of skills and can automatically retrieve and discover relevant skills based on user input
+- 🛡️ **Code Execution Environment**: Optional local direct code execution or secure sandboxed execution via [**ms-enclave**](https://github.com/modelscope/ms-enclave), with automatic dependency installation and environment isolation
+- 📁 **Multi-file Type Support**: Supports documentation, scripts, and resource files
+- 🧩 **Extensible Design**: The skill data structure is modularized, with implementations such as `SkillSchema` and `SkillContext` provided for easy extension and customization
+
+
+#### 2) Quick Start
+
+> 💡 Note:
+> 1. Before running the following examples, ensure that you have set the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables to access the required model APIs.
+> 2. Agent Skills requires ms-agent >= 1.4.0
+
+
+**Installation**:
+
+```shell
+pip install ms-agent
+```
+
+**Usage**:
+
+> This example demonstrates how to configure and run an Agent Skill that generates generative art code based on p5.js flow fields.
+
+```python
+import os
+from ms_agent.skill import create_agent_skill
+
+def main():
+    working_dir: str = '/path/to/your_working_dir'
+    skill_root_path: str = '/path/to/skills'    # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
+    model_name: str = 'qwen-plus-latest'
+
+    agent = create_agent_skill(
+        skills=skill_root_path,
+        model=model_name,
+        api_key=os.getenv('OPENAI_API_KEY'),
+        base_url=os.getenv('OPENAI_BASE_URL'),
+        stream=True,
+        working_dir=working_dir,
+    )
+
+    query = "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
+    response = agent.run(query)
+    print(f'\n\nAgent skill results: {response}\n')
+
+if __name__ == '__main__':
+    main()
+```
+
+**Result**:
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">
+  <p><em>Agent-Skills: Flow Field Particles</em></p>
+</div>
+
+
+
+#### 3) 参考文档
+- **README**：请参考 [MS-Agent Skills](projects/agent_skills/README.md)
+- **Anthropic Agent Skills官方文档**：请参考 [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
+- **Anthropic预定义Skills GitHub仓库**：请参考 [Skills](https://github.com/anthropics/skills)
+
+
+
 ### Agentic Insight
 
 #### - Lightweight, Efficient, and Extensible Multi-modal Deep Research Framework

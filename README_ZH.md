@@ -264,13 +264,13 @@ asyncio.run(main())
 > 2. Agent Skills 要求 ms-agent 版本 >= 1.4.0
 
 
-安装依赖：
+**安装依赖**：
 
 ```shell
 pip install ms-agent
 ```
 
-使用示例：
+**使用示例**：
 > 该示例展示了如何配置和运行一个Agent Skill，基于p5.js的流场生成艺术代码。
 ```python
 import os
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     main()
 ```
 
-运行结果：
+**运行结果**：
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">

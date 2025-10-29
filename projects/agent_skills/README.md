@@ -30,7 +30,7 @@ This approach minimizes resource consumption while providing comprehensive skill
 ## Key Features
 
 - 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
-- 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts`—on demand
+- 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts` on demand
 - 🤖 **Autonomous Execution**: Agents autonomously analyze, plan, and decide which scripts and resources to execute based on skill definitions
 - 🔍 **Skill Management**: Supports batch loading of skills and can automatically retrieve and discover relevant skills based on user input
 - 🛡️ **Code Execution Environment**: Optional local direct code execution or secure sandboxed execution via [**ms-enclave**](https://github.com/modelscope/ms-enclave), with automatic dependency installation and environment isolation
@@ -42,7 +42,7 @@ This approach minimizes resource consumption while providing comprehensive skill
 
 ### Prerequisites
 - Python 3.10+
-- pip package manager
+- ms-agent >= 1.4.0
 
 ### Install from PyPI
 ```bash
@@ -102,6 +102,15 @@ if __name__ == '__main__':
     main()
 
 ```
+
+**Result:**
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">
+  <p><em>Agent-Skills: Flow Field Particles</em></p>
+</div>
+
+
 
 
 ## Skill Structure
