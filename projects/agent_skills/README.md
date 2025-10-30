@@ -119,7 +119,7 @@ if __name__ == '__main__':
 
 The Agent Skill Architecture:
 
-<img src="static/skill_structure.png" alt="Skill-Structure" style="width: 750px;" />
+<img src="static/skill_architecture.png" alt="Skill-Architecture" style="width: 750px; display: block; margin: 0 auto;" />
 
 For more details on skill structure and definitions, refer to:
 [Anthropic Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
