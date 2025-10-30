@@ -53,7 +53,7 @@ pip install ms-agent -U
 ```bash
 git clone git@github.com:modelscope/ms-agent.git
 cd ms-agent
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Environment Variables
@@ -83,7 +83,7 @@ def main():
     """
     working_dir: str = '/path/to/your_working_dir'
     skill_root_path: str = '/path/to/skills'    # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
-    model_name: str = 'qwen-plus-latest'
+    model_name: str = 'qwen-plus-latest'        # Replace with your model
 
     agent = create_agent_skill(
         skills=skill_root_path,
@@ -115,26 +115,27 @@ if __name__ == '__main__':
 
 
 
-## Skill Structure
+## Skill Definition
 
 For more details on skill structure and definitions, refer to:
 [Anthropic Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
 
-### Directory Layout
+### Directory Structure
 ```
 skill-name/
-├── SKILL.md              # Main skill definition
-├── reference.md          # Detailed reference material
-├── LICENSE.txt           # License information
-├── resources/            # Additional resources
+├── SKILL.md              # Main skill definition           (Required)
+├── reference.md          # Detailed reference material     (Optional)
+├── LICENSE.txt           # License information             (Optional)
+├── resources/            # Additional resources            (Optional)
 │   ├── template.xlsx     # Example files
 │   └── data.json         # Data files
-└── scripts/              # Executable scripts
+└── scripts/              # Executable scripts              (Optional)
     ├── main.py           # Main implementation
     └── helper.py         # Helper functions
 ```
 
 ### SKILL.md Format
+
 ```markdown
 ---
 name: "Skill Name"
@@ -162,3 +163,9 @@ Instructions on how to use this skill...
 ## Examples
 
 ```
+
+💡 Tips:
+ - Fields in the front matter (YAML section) are mandatory, `name` and `description` are required.
+ - The body of the SKILL.md should provide comprehensive details about the skill, including features, usage instructions, references, resources, and examples.
+
+<br>
