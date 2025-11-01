@@ -272,30 +272,33 @@ pip install ms-agent
 
 **使用示例**：
 > 该示例展示了如何配置和运行一个Agent Skill，基于p5.js的流场生成艺术代码。
+
 ```python
 import os
 from ms_agent.skill import create_agent_skill
 
+
 def main():
-    working_dir: str = '/path/to/your_working_dir'
-    skill_root_path: str = '/path/to/skills'    # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
-    model_name: str = 'qwen-plus-latest'
+  working_dir: str = '/path/to/your_working_dir'
+  skill_root_path: str = '/path/to/skills'  # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
+  model_name: str = 'qwen-plus-latest'
 
-    agent = create_agent_skill(
-        skills=skill_root_path,
-        model=model_name,
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv('OPENAI_BASE_URL'),
-        stream=True,
-        working_dir=working_dir,
-    )
+  agent = create_agent_skill(
+    skills=skill_root_path,
+    model=model_name,
+    api_key=os.getenv('OPENAI_API_KEY'),
+    base_url=os.getenv('OPENAI_BASE_URL'),
+    stream=True,
+    work_dir=working_dir,
+  )
 
-    query = "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
-    response = agent.run(query)
-    print(f'\n\nAgent skill results: {response}\n')
+  query = "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
+  response = agent.run(query)
+  print(f'\n\nAgent skill results: {response}\n')
+
 
 if __name__ == '__main__':
-    main()
+  main()
 ```
 
 **运行结果**：

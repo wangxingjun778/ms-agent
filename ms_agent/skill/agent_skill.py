@@ -41,7 +41,7 @@ class AgentSkill:
         stream: Optional[bool] = True,
         enable_thinking: Optional[bool] = False,
         max_tokens: Optional[int] = 8192,
-        working_dir: str = None,
+        work_dir: str = None,
         use_sandbox: bool = False,
     ):
         """
@@ -55,14 +55,13 @@ class AgentSkill:
             base_url: Custom API base URL
             model: LLM model name
             stream: Whether to stream responses
-            working_dir: Working directory.
+            work_dir: Working directory.
             use_sandbox: Whether to use sandbox environment for script execution.
                 If True, scripts will be executed in the `ms-enclave` sandbox environment.
                 If False, scripts will be executed directly in the local environment.
         """
-        self.working_dir: Path = Path(
-            working_dir) if working_dir else Path.cwd()
-        os.makedirs(self.working_dir, exist_ok=True)
+        self.work_dir: Path = Path(work_dir) if work_dir else Path.cwd()
+        os.makedirs(self.work_dir, exist_ok=True)
 
         self.stream: bool = stream
         self.use_sandbox: bool = use_sandbox
@@ -126,7 +125,7 @@ class AgentSkill:
 
         skill_context: SkillContext = SkillContext(
             skill=skill,
-            working_dir=self.working_dir,
+            work_dir=self.work_dir,
         )
 
         return skill_context
@@ -273,7 +272,7 @@ class AgentSkill:
 
         # Dump the spec files
         spec_output_path = skill_context.spec.dump(
-            output_dir=str(self.working_dir))
+            output_dir=str(self.work_dir))
         logger.info(f'Spec files dumped to: {spec_output_path}')
 
         # Extract IMPLEMENTATION content and determine execution scenario
@@ -313,12 +312,12 @@ class AgentSkill:
                     else:
                         file_ext = 'md'
 
-                    output_file_path = self.working_dir / f'{str_to_md5(_code)}.{file_ext}'
+                    output_file_path = self.work_dir / f'{str_to_md5(_code)}.{file_ext}'
                     with open(output_file_path, 'w', encoding='utf-8') as f:
                         f.write(_code)
                     logger.info(
                         f'Generated {_lang} file saved to: {output_file_path}')
-                return f'Generated files have been saved to the working directory: {self.working_dir}'
+                return f'Generated files have been saved to the working directory: {self.work_dir}'
             elif isinstance(temp_item, str):
                 return '\n\n'.join(implementation_content)
             else:
@@ -604,7 +603,7 @@ class AgentSkill:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=self.working_dir)
+                cwd=self.work_dir)
 
             return {
                 'success': result.returncode == 0,
@@ -635,7 +634,7 @@ def create_agent_skill(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     stream: Optional[bool] = True,
-    working_dir: str = None,
+    work_dir: str = None,
 ) -> AgentSkill:
     """
     Create an AgentSkill instance.
@@ -648,7 +647,7 @@ def create_agent_skill(
         base_url: Custom API base URL
         model: LLM model name
         stream: Whether to stream responses
-        working_dir: Working directory.
+        work_dir: Working directory.
 
     Returns:
         AgentSkill instance.
@@ -659,5 +658,5 @@ def create_agent_skill(
         base_url=base_url,
         model=model,
         stream=stream,
-        working_dir=working_dir,
+        work_dir=work_dir,
     )

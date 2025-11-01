@@ -76,7 +76,6 @@ class SkillSchema:
         tags: List of tags for categorization (optional)
         scripts: List of script files (optional)
         references: List of reference documents (optional)
-        working_dir: Absolute path to working directory (default: skills folder's parent directory)
     """
     skill_id: str
     name: str
@@ -362,8 +361,7 @@ class SkillContext:
     skill: SkillSchema
 
     # The working directory (absolute path to skills folder's parent directory as default)
-    working_dir: Path = field(
-        default_factory=lambda: Path.cwd().parent.resolve())
+    work_dir: Path = field(default_factory=lambda: Path.cwd().parent.resolve())
 
     # The target scripts to be executed
     scripts: List[Dict[str, Any]] = field(default_factory=list)
