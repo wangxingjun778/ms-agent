@@ -19,9 +19,6 @@ class EnclaveSandbox:
             **kwargs: Optional configuration parameters for the sandbox.
                 - image (str): Docker image to use for the sandbox. Default is 'python:3.11-slim'.
                 - memory_limit (str): Memory limit for the sandbox container. Default is '512m'.
-                - python_executor (dict): Configuration for the Python executor tool.
-                - file_operation (dict): Configuration for the file operation tool.
-                - shell_executor (dict): Configuration for the shell executor tool.
                 - volumes (list): List of tuples specifying host and container directory mounts in the form
                                   [(host_path, container_path, mode), ...] where mode is 'ro' or 'rw'.
         """
@@ -43,9 +40,9 @@ class EnclaveSandbox:
             image=kwargs.pop('image', None) or 'python:3.11-slim',
             memory_limit=kwargs.pop('memory_limit', None) or '512m',
             tools_config={
-                'python_executor': kwargs.pop('python_executor', None) or {},
-                'file_operation': kwargs.pop('file_operation', None) or {},
-                'shell_executor': kwargs.pop('shell_executor', None) or {}
+                'python_executor': {},
+                'file_operation': {},
+                'shell_executor': {}
             },
             volumes=self.volume_dict,
         )
@@ -73,11 +70,11 @@ class EnclaveSandbox:
         Asynchronously execute Python code and shell commands within the sandbox.
 
         Args:
-            python_code (Optional[Union[str, List[str]]]): Python code snippet(s) to execute.
+            python_code (Union[str, List[str]]): Python code snippet(s) to execute.
                 e.g. "print('Hello World')", or ["print('Hello World')", "x = 5; print(x)"]
-            shell_command (Optional[Union[str, List[str]]]): Shell command(s) to execute.
+            shell_command (Union[str, List[str]]): Shell command(s) to execute.
                 e.g. "ls -al /data", or ["ls -al /data", "echo 'Hello World'"]
-            requirements (Optional[List[str]]): List of Python packages to install before execution.
+            requirements (List[str]): List of Python packages to install before execution.
 
         Returns:
             Dict[str, Any]: A dictionary containing the results of the executions.
@@ -88,13 +85,12 @@ class EnclaveSandbox:
         results: Dict[str, Any] = {
             'python_executor': [],
             'shell_executor': [],
-            'file_operation': []
         }
 
         async with SandboxFactory.create_sandbox(
                 SandboxType.DOCKER, self.sandbox_config) as sandbox:
 
-            if requirements is not None and len(requirements) > 0:
+            if requirements:
                 requirements_file = f'/{str(uuid.uuid4())}/requirements.txt'
                 await sandbox.execute_tool(
                     'file_operation', {
@@ -150,11 +146,11 @@ class EnclaveSandbox:
         Synchronously execute Python code and shell commands within the sandbox.
 
         Args:
-            python_code (Optional[Union[str, List[str]]]): Python code snippet(s) to execute.
+            python_code (Union[str, List[str]]): Python code snippet(s) to execute.
                 e.g. "print('Hello World')", or ["print('Hello World')", "x = 5; print(x)"]
-            shell_command (Optional[Union[str, List[str]]]): Shell command(s) to execute.
+            shell_command (Union[str, List[str]]): Shell command(s) to execute.
                 e.g. "ls -al /data", or ["ls -al /data", "echo 'Hello World'"]
-            requirements (Optional[List[str]]): List of Python packages to install before execution.
+            requirements (List[str]): List of Python packages to install before execution.
 
         Returns:
             Dict[str, Any]: A dictionary containing the results of the executions.
