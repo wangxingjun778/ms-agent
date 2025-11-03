@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os.path
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,9 @@ class AgentSkill:
         self.stream: bool = stream
         self.use_sandbox: bool = use_sandbox
 
+        # Preprocess skills
+        skills = self._preprocess_skills(skills=skills)
+
         # Pre-load all skills, the key is "skill_id@version"
         self.all_skills: Dict[str, SkillSchema] = load_skills(skills=skills)
         logger.info(f'Loaded {len(self.all_skills)} skills from {skills}')
@@ -105,6 +109,42 @@ class AgentSkill:
         self.loaded_contexts: Dict[str, Dict[str, Any]] = {}
 
         logger.info('Agent Skills initialized successfully')
+
+    def _preprocess_skills(
+        self, skills: Union[str, List[str], List[SkillSchema]]
+    ) -> Union[str, List[str], List[SkillSchema]]:
+        """
+        Preprocess skills by copying them to the working directory.
+
+        Args:
+            skills: Path(s) to skill directories,
+                the root path of skill directories, list of SkillSchema, or skill IDs on the hub
+
+        Returns:
+            Processed skills in the working directory.
+        """
+        results: Union[str, List[str], List[SkillSchema]] = []
+
+        if isinstance(skills, str):
+            skills = [skills]
+
+        if skills is None or len(skills) == 0:
+            return results
+
+        if isinstance(skills[0], SkillSchema):
+            return skills
+
+        skill_paths: List[str] = self._find_skill_dir(skills)
+
+        skill_root_in_workdir: str = str(self.work_dir / '.cache/skills')
+        for skill_path in skill_paths:
+            path_in_workdir = os.path.join(skill_root_in_workdir,
+                                           Path(skill_path).name)
+            if os.path.exists(path_in_workdir):
+                shutil.rmtree(path_in_workdir, ignore_errors=True)
+            shutil.copytree(skill_path, path_in_workdir)
+
+        return results
 
     def _init_sandbox(self):
         # TODO: to be implemented
@@ -323,6 +363,33 @@ class AgentSkill:
             else:
                 logger.error('Unknown IMPLEMENTATION content format')
                 return 'I encountered an unexpected format in the implementation steps.'
+
+    @staticmethod
+    def _find_skill_dir(root: Union[str, List[str]]) -> List[str]:
+        """
+        Find all skill directories containing SKILL.md
+
+        Args:
+            root: Root directory to search
+
+        Returns:
+            list: List of skill directory paths
+        """
+        if isinstance(root, str):
+            root_paths = [Path(root).resolve()]
+        else:
+            root_paths = [Path(p).resolve() for p in root]
+
+        folders = []
+
+        for root_path in root_paths:
+            if not root_path.exists():
+                continue
+            for item in root_path.rglob('SKILL.md'):
+                if item.is_file():
+                    folders.append(str(item.parent))
+
+        return list(dict.fromkeys(folders))
 
     @staticmethod
     def _extract_implementation(content: str) -> Tuple[str, List[Any]]:
