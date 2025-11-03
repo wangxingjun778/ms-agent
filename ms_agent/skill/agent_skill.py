@@ -33,18 +33,17 @@ class AgentSkill:
         4. Level 4 (Analysis and Execution): Analyze the loaded skill context and execute scripts as needed
     """
 
-    def __init__(
-        self,
-        skills: Union[str, List[str], List[SkillSchema]],
-        model: str,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        stream: Optional[bool] = True,
-        enable_thinking: Optional[bool] = False,
-        max_tokens: Optional[int] = 8192,
-        work_dir: str = None,
-        use_sandbox: bool = False,
-    ):
+    def __init__(self,
+                 skills: Union[str, List[str], List[SkillSchema]],
+                 model: str,
+                 api_key: Optional[str] = None,
+                 base_url: Optional[str] = None,
+                 stream: Optional[bool] = True,
+                 enable_thinking: Optional[bool] = False,
+                 max_tokens: Optional[int] = 8192,
+                 work_dir: str = None,
+                 use_sandbox: bool = False,
+                 **kwargs):
         """
         Initialize Agent Skills.
 
@@ -66,6 +65,7 @@ class AgentSkill:
 
         self.stream: bool = stream
         self.use_sandbox: bool = use_sandbox
+        self.kwargs = kwargs
 
         # Preprocess skills
         skills = self._preprocess_skills(skills=skills)
@@ -99,13 +99,12 @@ class AgentSkill:
 
         # Initialize sandbox environment
         if self.use_sandbox:
-            # TODO: to be implemented
-            ...
+            self.sandbox, self.work_dir_in_sandbox = self._init_sandbox()
 
         # Conversation history
         self.conversation_history: List[Dict[str, str]] = []
 
-        # Loaded skill contexts (Level 2 & 3)
+        # Loaded skill contexts
         self.loaded_contexts: Dict[str, Dict[str, Any]] = {}
 
         logger.info('Agent Skills initialized successfully')
@@ -147,19 +146,26 @@ class AgentSkill:
         return results
 
     def _init_sandbox(self):
-        # TODO: to be implemented
+        """
+        Initialize the sandbox environment.
 
-        # Check and install the `ms-enclave` sandbox framework
-        package_name: str = 'ms-enclave'
-        import_name: str = 'ms_enclave'
-        try:
-            logger.info(f'Installing sandbox package: {package_name}...')
-            install_package(package_name=package_name, import_name=import_name)
-        except Exception as e:
-            raise RuntimeError(
-                f'Failed to install `{package_name}` package: {str(e)}')
+        Returns:
+            Tuple of (sandbox_instance, work_dir_in_sandbox)
+        """
+        from ms_agent.sandbox import EnclaveSandbox
 
-        ...
+        work_dir_in_sandbox = '/sandbox'
+        mode: str = 'rw'
+
+        sandbox = EnclaveSandbox(
+            image=self.kwargs.pop('sandbox_image', None) or 'python:3.11-slim',
+            memory_limit=self.kwargs.pop('sandbox_memory_limit', None)
+            or '512m',
+            volumes=[
+                (self.work_dir, work_dir_in_sandbox, mode),
+            ])
+
+        return sandbox, work_dir_in_sandbox
 
     def _build_skill_context(self, skill: SkillSchema) -> SkillContext:
 
