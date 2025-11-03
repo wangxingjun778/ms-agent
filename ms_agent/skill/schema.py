@@ -461,3 +461,18 @@ class SkillContext:
         # Initialize SPEC context
         if self.spec is None:
             self.spec = Spec(plan='', tasks='')
+
+
+@dataclass
+class ExecutionResult:
+    """
+    Result of executing a Skill.
+
+    Attributes:
+        success: Whether execution was successful
+        output: Output content from execution
+        messages: Messages or logs from execution
+    """
+    success: bool = True
+    output: Any = None
+    messages: Union[str, List[str]] = None

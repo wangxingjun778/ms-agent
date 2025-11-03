@@ -19,7 +19,7 @@ from .prompts import (PROMPT_SKILL_PLAN, PROMPT_SKILL_TASKS,
                       PROMPT_TASKS_IMPLEMENTATION,
                       SCRIPTS_IMPLEMENTATION_FORMAT)
 from .retrieve import create_retriever
-from .schema import SkillContext, SkillSchema
+from .schema import ExecutionResult, SkillContext, SkillSchema
 
 
 class AgentSkill:
@@ -42,7 +42,7 @@ class AgentSkill:
                  enable_thinking: Optional[bool] = False,
                  max_tokens: Optional[int] = 8192,
                  work_dir: str = None,
-                 use_sandbox: bool = False,
+                 use_sandbox: bool = True,
                  **kwargs):
         """
         Initialize Agent Skills.
@@ -66,6 +66,11 @@ class AgentSkill:
         self.stream: bool = stream
         self.use_sandbox: bool = use_sandbox
         self.kwargs = kwargs
+
+        if not self.use_sandbox:
+            logger.warning(
+                'The `use_sandbox` is False, scripts will be executed in the local environment. '
+                'Make sure to trust the skills being executed!')
 
         # Preprocess skills
         skills = self._preprocess_skills(skills=skills)
@@ -141,6 +146,7 @@ class AgentSkill:
                                            Path(skill_path).name)
             if os.path.exists(path_in_workdir):
                 shutil.rmtree(path_in_workdir, ignore_errors=True)
+            os.makedirs(path_in_workdir, exist_ok=True)
             shutil.copytree(skill_path, path_in_workdir)
 
         return results
@@ -497,11 +503,11 @@ class AgentSkill:
         Returns:
             Dictionary containing:
                 'type': 'script' or 'function'
-                'cmd': Executable command string
+                'code': Executable command string or code block
                 'packages': List of required packages
         """
         # type - script or function
-        res = {'type': '', 'cmd': '', 'packages': []}
+        res = {'type': '', 'code': '', 'packages': []}
 
         # Get the script path
         if 'script' in code_block:
@@ -552,7 +558,7 @@ class AgentSkill:
                 packages = self._extract_packages_from_code_blocks(response)
 
                 res['type'] = 'script'
-                res['cmd'] = cmd_str
+                res['code'] = cmd_str
                 res['packages'] = packages
 
             except Exception as e:
@@ -570,7 +576,7 @@ class AgentSkill:
         return res
 
     def execute(self, code_block: Dict[str, Any],
-                skill_context: SkillContext) -> Dict[str, Any]:
+                skill_context: SkillContext) -> ExecutionResult:
         """
         Execute a code block from a skill context.
 
@@ -580,90 +586,83 @@ class AgentSkill:
             skill_context: SkillContext object
 
         Returns:
-            Dictionary containing execution results
+            (ExecutionResult) Dictionary containing execution results
         """
-
+        exec_result = ExecutionResult()
         try:
             executable_code: Dict[str, str] = self._analyse_code_block(
                 code_block=code_block,
                 skill_context=skill_context,
             )
             code_type: str = executable_code.get('type')
-            cmd_str: str = executable_code.get('cmd')
+            code_str: str = executable_code.get('code')
             packages: list = executable_code.get('packages', [])
 
-            if not cmd_str:
+            if not code_str:
                 raise RuntimeError(
                     'No command to execute extracted from code block')
         except Exception as e:
             logger.error(f'Error analyzing code block: {str(e)}')
-            return {
-                'success': False,
-                'error': str(e),
-                'output': '',
-                'return_code': -1
-            }
+            exec_result.success = False
+            exec_result.messages = str(e)
+
+            return exec_result
+
+        # Prepare execution environment
+        logger.info(f'Installing required packages: {packages}')
+        for pack in packages:
+            install_package(package_name=pack)
 
         if 'script' == code_type:
-
-            try:
-                # Prepare execution environment
-                logger.info(f'Installing required packages: {packages}')
-                for pack in packages:
-                    install_package(package_name=pack)
-
-                execution_result = self._execute_python_script(cmd_str=cmd_str)
-
-                logger.info(
-                    f"Script execution completed with return code: {execution_result['return_code']}"
-                )
-                return execution_result
-
-            except Exception as e:
-                logger.error(f'Error executing script `{cmd_str}`: {str(e)}')
-                return {
-                    'success': False,
-                    'error': str(e),
-                    'output': '',
-                    'return_code': -1
-                }
+            return self._execute_cmd(cmd_str=code_str)
 
         elif 'function' == code_type:
-            # TODO: to be implemented
-            ...
+            return self._execute_code_block(code=code_str)
+
         else:
-            return {
-                'success': False,
-                'error':
-                "Code block must contain either 'script' or 'function' key.",
-                'output': '',
-                'return_code': -1
-            }
+            raise ValueError(f'Unknown code type: {code_type}')
 
-    def _execute_python_script(self, cmd_str: str) -> Dict[str, Any]:
-
-        try:
-            return self._execute_as_subprocess(cmd_str=cmd_str)
-
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Execution failed: {str(e)}',
-                'output': '',
-                'return_code': -1
-            }
-
-    def _execute_as_subprocess(self,
-                               cmd_str: str,
-                               timeout: int = 180) -> Dict[str, Any]:
+    @staticmethod
+    def _execute_code_block(code: str):
         """
-        Execute script as subprocess.
+        Execute a Python code block.
 
         Args:
-            cmd_str: Command string to execute
+            code: Python code string to execute
 
         Returns:
-            Execution result info
+            ExecutionResult containing execution results
+        """
+        code = code or ''
+
+        try:
+            exec(code)
+            return ExecutionResult(
+                success=True,
+                messages='Code executed successfully.',
+            )
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                messages=str(e),
+            )
+
+    @staticmethod
+    def _execute_cmd(
+        cmd_str: str,
+        timeout: int = 180,
+        work_dir: str = None,
+    ) -> ExecutionResult:
+        """
+        Execute a Python script command in a subprocess.
+
+        Args:
+            cmd_str: Command string to execute, e.g. "python script.py --arg1 val1"
+            timeout: Execution timeout in seconds
+            work_dir: Working directory for execution
+
+        Returns:
+            ExecutionResult containing execution results
         """
         try:
             # Build command
@@ -676,29 +675,19 @@ class AgentSkill:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=self.work_dir)
+                cwd=work_dir)
 
-            return {
-                'success': result.returncode == 0,
-                'output': result.stdout,
-                'error': result.stderr,
-                'return_code': result.returncode
-            }
+            return ExecutionResult(
+                success=result.returncode == 0,
+                output=result.stdout,
+                messages=result.stderr,
+            )
 
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'error': 'Script execution timed out (30s)',
-                'output': '',
-                'return_code': -1
-            }
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'output': '',
-                'return_code': -1
-            }
+            return ExecutionResult(
+                success=False,
+                messages=str(e),
+            )
 
 
 def create_agent_skill(

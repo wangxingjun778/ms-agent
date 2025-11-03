@@ -1,10 +1,31 @@
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 from ms_agent.utils.utils import install_package, logger
 
 
-class EnclaveSandbox:
+class Sandbox:
+    """
+    Base class for sandbox environments.
+    """
+
+    def __init__(self):
+        ...
+
+    async def async_execute(self, *args, **kwargs):
+        """
+        Asynchronously execute code or commands within the sandbox.
+        """
+        ...
+
+    def execute(self, *args, **kwargs):
+        """
+        Synchronously execute code or commands within the sandbox.
+        """
+        ...
+
+
+class EnclaveSandbox(Sandbox):
     """
     A sandbox environment for securely executing code and commands based on `ms-enclave`.
 
@@ -22,6 +43,7 @@ class EnclaveSandbox:
                 - volumes (list): List of tuples specifying host and container directory mounts in the form
                                   [(host_path, container_path, mode), ...] where mode is 'ro' or 'rw'.
         """
+        super().__init__()
         self._init()
 
         from ms_enclave.sandbox import SandboxConfig, DockerSandboxConfig

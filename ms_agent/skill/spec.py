@@ -38,7 +38,7 @@ class Spec:
         Returns:
             str: The path to the dumped spec directory.
         """
-        output_path: str = os.path.join(output_dir, '.spec')
+        output_path: str = os.path.join(output_dir, '.cache/spec')
         os.makedirs(output_path, exist_ok=True)
 
         with open(
