@@ -147,7 +147,9 @@ class AgentSkill:
             if os.path.exists(path_in_workdir):
                 shutil.rmtree(path_in_workdir, ignore_errors=True)
             os.makedirs(path_in_workdir, exist_ok=True)
-            shutil.copytree(skill_path, path_in_workdir)
+            shutil.copytree(skill_path, path_in_workdir, dirs_exist_ok=True)
+
+            results.append(path_in_workdir)
 
         return results
 
@@ -340,18 +342,12 @@ class AgentSkill:
             if isinstance(temp_item, dict):
                 execute_results: List[dict] = []
                 for _code_block in implementation_content:
-                    execute_result: Dict[str, Any] = self.execute(
+                    execute_result: ExecutionResult = self.execute(
                         code_block=_code_block,
                         skill_context=skill_context,
                     )
-                    execute_results.append(execute_result)
+                    execute_results.append(execute_result.to_dict())
 
-                    if execute_result.get('success', False):
-                        logger.info(f'Execution result: {execute_result}')
-                    else:
-                        logger.error(
-                            f'Execution failed: {execute_result} for code block: {_code_block}'
-                        )
                 return json.dumps(
                     execute_results, ensure_ascii=False, indent=2)
             elif isinstance(temp_item, tuple):
@@ -566,8 +562,8 @@ class AgentSkill:
                     f'Failed to read script {script_str}: {str(e)}')
 
         elif 'function' in code_block:
-            # TODO: to be implemented
-            ...
+            res['type'] = 'function'
+            res['code'] = code_block.get('function')
 
         else:
             raise ValueError(
@@ -608,19 +604,56 @@ class AgentSkill:
 
             return exec_result
 
-        # Prepare execution environment
-        logger.info(f'Installing required packages: {packages}')
-        for pack in packages:
-            install_package(package_name=pack)
+        try:
+            if self.use_sandbox:
+                if 'script' == code_type:
+                    results: Dict[str, Any] = self.sandbox.execute(
+                        shell_command=code_str,
+                        requirements=packages,
+                    )
+                    return ExecutionResult(
+                        success=True,
+                        output=results.get('shell_executor', []),
+                        messages='Executed in sandbox successfully for script.',
+                    )
+                elif 'function' == code_type:
+                    results: Dict[str, Any] = self.sandbox.execute(
+                        python_code=code_str,
+                        requirements=packages,
+                    )
+                    return ExecutionResult(
+                        success=True,
+                        output=results.get('python_executor', []),
+                        messages=
+                        'Executed in sandbox successfully for function.',
+                    )
+                else:
+                    raise ValueError(f'Unknown code type: {code_type}')
 
-        if 'script' == code_type:
-            return self._execute_cmd(cmd_str=code_str)
+            else:
+                # TODO: Add `confirm manually`
+                logger.warning('Executing code block in local environment!')
 
-        elif 'function' == code_type:
-            return self._execute_code_block(code=code_str)
+                # Prepare execution environment
+                logger.info(f'Installing required packages: {packages}')
+                for pack in packages:
+                    install_package(package_name=pack)
 
-        else:
-            raise ValueError(f'Unknown code type: {code_type}')
+                if 'script' == code_type:
+                    return self._execute_cmd(cmd_str=code_str)
+
+                elif 'function' == code_type:
+                    return self._execute_code_block(code=code_str)
+
+                else:
+                    raise ValueError(f'Unknown code type: {code_type}')
+
+        except Exception as e:
+            logger.error(f'Error executing code block: {str(e)}')
+            exec_result.success = False
+            exec_result.messages = str(e)
+
+            return exec_result
 
     @staticmethod
     def _execute_code_block(code: str):
@@ -690,14 +723,16 @@ class AgentSkill:
             )
 
 
-def create_agent_skill(
-    skills: Union[str, List[str], List[SkillSchema]],
-    model: str,
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    stream: Optional[bool] = True,
-    work_dir: str = None,
-) -> AgentSkill:
+def create_agent_skill(skills: Union[str, List[str], List[SkillSchema]],
+                       model: str,
+                       api_key: Optional[str] = None,
+                       base_url: Optional[str] = None,
+                       stream: Optional[bool] = True,
+                       enable_thinking: Optional[bool] = False,
+                       max_tokens: Optional[int] = 8192,
+                       work_dir: str = None,
+                       use_sandbox: bool = True,
+                       **kwargs) -> AgentSkill:
     """
     Create an AgentSkill instance.
 
@@ -709,16 +744,21 @@ def create_agent_skill(
         base_url: Custom API base URL
         model: LLM model name
         stream: Whether to stream responses
+        enable_thinking: Whether to enable thinking process in LLM generation
+        max_tokens: Maximum tokens for LLM generation, default is 8192
         work_dir: Working directory.
-
-    Returns:
-        AgentSkill instance.
+        use_sandbox: Whether to use sandbox environment for script execution.
+            If True, scripts will be executed in the `ms-enclave` sandbox environment.
+            If False, scripts will be executed directly in the local environment.
     """
     return AgentSkill(
         skills=skills,
+        model=model,
         api_key=api_key,
         base_url=base_url,
-        model=model,
         stream=stream,
+        enable_thinking=enable_thinking,
+        max_tokens=max_tokens,
         work_dir=work_dir,
-    )
+        use_sandbox=use_sandbox,
+        **kwargs)

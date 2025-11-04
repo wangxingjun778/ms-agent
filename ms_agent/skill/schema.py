@@ -233,9 +233,8 @@ class SkillSchemaParser:
             '.mypy_cache'
         }
         ignored_suffixes = {'.pyc', '.pyo'}
-        return (p.name in ignored_names or p.suffix in ignored_suffixes or any(
-            part.startswith('.') and part != '.' and part != '..'
-            for part in p.parts))
+
+        return (p.name in ignored_names) or (p.suffix in ignored_suffixes)
 
     @staticmethod
     def parse_skill_directory(directory_path: Path) -> Optional[SkillSchema]:
@@ -476,3 +475,16 @@ class ExecutionResult:
     success: bool = True
     output: Any = None
     messages: Union[str, List[str]] = None
+
+    def to_dict(self):
+        """
+        Convert ExecutionResult to dictionary representation.
+
+        Returns:
+            Dictionary containing execution result information
+        """
+        return {
+            'success': self.success,
+            'output': self.output,
+            'messages': self.messages,
+        }

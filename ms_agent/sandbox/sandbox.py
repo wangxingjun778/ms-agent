@@ -53,6 +53,8 @@ class EnclaveSandbox(Sandbox):
         self.volume_dict: Dict[str, Dict[str, str]] = {}
         if _volumes:
             for host_path, container_path, mode in _volumes:
+                host_path = str(host_path)
+                container_path = str(container_path)
                 self.volume_dict[host_path] = {
                     'bind': container_path,
                     'mode': mode
@@ -100,6 +102,25 @@ class EnclaveSandbox(Sandbox):
 
         Returns:
             Dict[str, Any]: A dictionary containing the results of the executions.
+                e.g.
+                {
+                    'python_executor': [
+                        {
+                            'output': 'Hello World\n',
+                            'error': '',
+                            'status': 0
+                        },
+                        ...
+                    ],
+                    'shell_executor': [
+                        {
+                            'output': 'total 0\n-rw-r--r--  1 user  staff  0 Jan 01 00:00 file.txt\n',
+                            'error': '',
+                            'status': 0
+                        },
+                        ...
+                    ]
+                }
         """
         from ms_enclave.sandbox import SandboxFactory
         from ms_enclave.sandbox.model import SandboxType
