@@ -10,16 +10,19 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import json
 from ms_agent.llm import Message
 from ms_agent.llm.openai_llm import OpenAI as OpenAILLM
+from ms_agent.skill.loader import load_skills
+from ms_agent.skill.prompts import (PROMPT_SKILL_PLAN, PROMPT_SKILL_TASKS,
+                                    PROMPT_TASKS_IMPLEMENTATION,
+                                    SCRIPTS_IMPLEMENTATION_FORMAT)
+from ms_agent.skill.retrieve import create_retriever
+from ms_agent.skill.schema import ExecutionResult, SkillContext, SkillSchema
+from ms_agent.skill.skill_utils import (extract_cmd_from_code_blocks,
+                                        extract_implementation,
+                                        extract_packages_from_code_blocks,
+                                        find_skill_dir)
 from ms_agent.utils.logger import logger
-from ms_agent.utils.utils import extract_by_tag, install_package, str_to_md5
+from ms_agent.utils.utils import install_package, str_to_md5
 from omegaconf import DictConfig, OmegaConf
-
-from .loader import load_skills
-from .prompts import (PROMPT_SKILL_PLAN, PROMPT_SKILL_TASKS,
-                      PROMPT_TASKS_IMPLEMENTATION,
-                      SCRIPTS_IMPLEMENTATION_FORMAT)
-from .retrieve import create_retriever
-from .schema import ExecutionResult, SkillContext, SkillSchema
 
 
 class AgentSkill:
@@ -138,7 +141,7 @@ class AgentSkill:
         if isinstance(skills[0], SkillSchema):
             return skills
 
-        skill_paths: List[str] = self._find_skill_dir(skills)
+        skill_paths: List[str] = find_skill_dir(skills)
 
         skill_root_in_workdir: str = str(self.work_dir / '.cache/skills')
         for skill_path in skill_paths:
@@ -330,7 +333,7 @@ class AgentSkill:
         logger.info(f'Spec files dumped to: {spec_output_path}')
 
         # Extract IMPLEMENTATION content and determine execution scenario
-        _, implementation_content = self._extract_implementation(
+        _, implementation_content = extract_implementation(
             content=response_tasks_implementation)
 
         if not implementation_content or len(implementation_content) == 0:
@@ -371,120 +374,6 @@ class AgentSkill:
             else:
                 logger.error('Unknown IMPLEMENTATION content format')
                 return 'I encountered an unexpected format in the implementation steps.'
-
-    @staticmethod
-    def _find_skill_dir(root: Union[str, List[str]]) -> List[str]:
-        """
-        Find all skill directories containing SKILL.md
-
-        Args:
-            root: Root directory to search
-
-        Returns:
-            list: List of skill directory paths
-        """
-        if isinstance(root, str):
-            root_paths = [Path(root).resolve()]
-        else:
-            root_paths = [Path(p).resolve() for p in root]
-
-        folders = []
-
-        for root_path in root_paths:
-            if not root_path.exists():
-                continue
-            for item in root_path.rglob('SKILL.md'):
-                if item.is_file():
-                    folders.append(str(item.parent))
-
-        return list(dict.fromkeys(folders))
-
-    @staticmethod
-    def _extract_implementation(content: str) -> Tuple[str, List[Any]]:
-        """
-        Extract IMPLEMENTATION content and determine execution scenario.
-            e.g. <IMPLEMENTATION> ... </IMPLEMENTATION>
-
-        Args:
-            content: Full text containing IMPLEMENTATION tag
-
-        Returns:
-            Tuple of (scenario_type, results)
-                scenario_type: 'script_execution', 'code_generation', or 'unable_to_execute'
-                results: List of parsed results based on scenario
-        """
-        impl_content: str = extract_by_tag(text=content, tag='IMPLEMENTATION')
-        results: List[Any] = []
-        # Scenario 1: Script Execution
-        try:
-            results: List[Dict[str, Any]] = json.loads(impl_content)
-        except Exception as e:
-            logger.debug(f'Failed to parse IMPLEMENTATION as JSON: {str(e)}')
-
-        if len(results) > 0:
-            return 'script_execution', results
-
-        # Scenario 2: No Script Execution, output JavaScript or HTML code blocks
-        results: List[str] = re.findall(r'```(html|javascript)\s*\n(.*?)\n```',
-                                        impl_content, re.DOTALL)
-        if len(results) > 0:
-            return 'code_generation', results
-
-        # Scenario 3: Unable to Execute Any Script, provide reason (string)
-        return 'unable_to_execute', [impl_content]
-
-    @staticmethod
-    def _extract_cmd_from_code_blocks(text) -> List[str]:
-        """
-        Extract ```shell ... ``` code block from text.
-
-        Args:
-            text (str): Text containing shell code blocks
-
-        Returns:
-            list: List of parsed str
-        """
-        pattern = r'```shell\s*\n(.*?)\n```'
-        matches = re.findall(pattern, text, re.DOTALL)
-
-        results = []
-        for shell_str in matches:
-            try:
-                cleaned_shell_str = shell_str.strip()
-                results.append(cleaned_shell_str)
-            except Exception as e:
-                raise RuntimeError(
-                    f'Failed to decode shell command: {e}\nProblematic shell string: {shell_str}'
-                )
-
-        return results
-
-    @staticmethod
-    def _extract_packages_from_code_blocks(text) -> List[str]:
-        """
-        Extract ```packages ... ``` content from input text.
-
-        Args:
-            text (str): Text containing packages code blocks
-
-        Returns:
-            list: List of packages, e.g. ['numpy', 'torch', ...]
-        """
-        pattern = r'```packages\s*\n(.*?)\n```'
-        matches = re.findall(pattern, text, re.DOTALL)
-
-        results = []
-        for packages_str in matches:
-            try:
-                cleaned_packages_str = packages_str.strip()
-                results.append(cleaned_packages_str)
-            except Exception as e:
-                raise RuntimeError(
-                    f'Failed to decode shell command: {e}\nProblematic shell string: {packages_str}'
-                )
-
-        results = '\n'.join(results).splitlines()
-        return results
 
     def _analyse_code_block(self, code_block: dict,
                             skill_context: SkillContext) -> Dict[str, str]:
@@ -544,14 +433,14 @@ class AgentSkill:
                     stream=self.stream,
                 )
 
-                cmd_blocks = self._extract_cmd_from_code_blocks(response)
+                cmd_blocks = extract_cmd_from_code_blocks(response)
                 if len(cmd_blocks) == 0:
                     raise RuntimeError(
                         f'No shell command found in LLM response for script {script_str}'
                     )
                 cmd_str = cmd_blocks[0]  # TODO: NOTE
 
-                packages = self._extract_packages_from_code_blocks(response)
+                packages = extract_packages_from_code_blocks(response)
 
                 res['type'] = 'script'
                 res['code'] = cmd_str
