@@ -110,12 +110,6 @@ class AgentSkill:
         if self.use_sandbox:
             self.sandbox, self.work_dir_in_sandbox = self._init_sandbox()
 
-        # Conversation history
-        self.conversation_history: List[Dict[str, str]] = []
-
-        # Loaded skill contexts
-        self.loaded_contexts: Dict[str, Dict[str, Any]] = {}
-
         logger.info('Agent Skills initialized successfully')
 
     def _preprocess_skills(
@@ -197,7 +191,7 @@ class AgentSkill:
                   system_prompt: str = None,
                   stream: bool = True) -> str:
 
-        default_system: str = 'Your are an intelligent assistant that can help users by leveraging specialized skills.'
+        default_system: str = 'You are an intelligent assistant that can help users by leveraging specialized skills.'
         system_prompt = system_prompt or default_system
 
         messages = [

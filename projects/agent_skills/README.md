@@ -1,6 +1,6 @@
 # Agent Skills
 
-The **MS-Agent Skills** Module is an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+The **MS-Agent Skills** Module is an **Beta Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
 
 To empower your AI agents with a modular skill framework that supports dynamic skill discovery, progressive context loading, planning, and task execution.
 

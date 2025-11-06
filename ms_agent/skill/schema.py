@@ -136,7 +136,10 @@ class SkillSchema:
                 return False
 
             return True
-        except Exception:
+
+        except Exception as e:
+            logger.error(
+                f'Skill validation failed with an unexpected error: {e}')
             return False
 
     def get_file_by_name(self, name: str) -> Optional[SkillFile]:
