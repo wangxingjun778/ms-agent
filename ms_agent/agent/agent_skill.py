@@ -16,7 +16,8 @@ from ms_agent.skill.prompts import (PROMPT_SKILL_PLAN, PROMPT_SKILL_TASKS,
                                     SCRIPTS_IMPLEMENTATION_FORMAT)
 from ms_agent.skill.retrieve import create_retriever
 from ms_agent.skill.schema import ExecutionResult, SkillContext, SkillSchema
-from ms_agent.skill.skill_utils import (extract_cmd_from_code_blocks,
+from ms_agent.skill.skill_utils import (copy_with_exec_if_script,
+                                        extract_cmd_from_code_blocks,
                                         extract_implementation,
                                         extract_packages_from_code_blocks,
                                         find_skill_dir)
@@ -143,14 +144,18 @@ class AgentSkill:
 
         skill_paths: List[str] = find_skill_dir(skills)
 
-        skill_root_in_workdir: str = str(self.work_dir / '.cache/skills')
         for skill_path in skill_paths:
-            path_in_workdir = os.path.join(skill_root_in_workdir,
-                                           Path(skill_path).name)
+            path_in_workdir = os.path.join(
+                str(self.work_dir),
+                Path(skill_path).name)
             if os.path.exists(path_in_workdir):
                 shutil.rmtree(path_in_workdir, ignore_errors=True)
             os.makedirs(path_in_workdir, exist_ok=True)
-            shutil.copytree(skill_path, path_in_workdir, dirs_exist_ok=True)
+            shutil.copytree(
+                skill_path,
+                path_in_workdir,
+                copy_function=copy_with_exec_if_script,
+                dirs_exist_ok=True)
 
             results.append(path_in_workdir)
 
@@ -182,7 +187,7 @@ class AgentSkill:
 
         skill_context: SkillContext = SkillContext(
             skill=skill,
-            work_dir=self.work_dir,
+            root_path=self.work_dir,
         )
 
         return skill_context
@@ -260,16 +265,31 @@ class AgentSkill:
         )
         reference_context: str = '\n\n<!-- REFERENCE_CONTEXT -->\n' + '\n'.join(
             [
-                json.dumps(ref.pop('file'), ensure_ascii=False)
-                for ref in skill_context.references
+                json.dumps(
+                    {
+                        'name': ref.get('name', ''),
+                        'path': ref.get('path', ''),
+                        'description': ref.get('description', ''),
+                    },
+                    ensure_ascii=False) for ref in skill_context.references
             ])
         script_context: str = '\n\n<!-- SCRIPT_CONTEXT -->\n' + '\n'.join([
-            json.dumps(script.pop('file'), ensure_ascii=False)
-            for script in skill_context.scripts
+            json.dumps(
+                {
+                    'name': script.get('name', ''),
+                    'path': script.get('path', ''),
+                    'description': script.get('description', ''),
+                },
+                ensure_ascii=False) for script in skill_context.scripts
         ])
         resource_context: str = '\n\n<!-- RESOURCE_CONTEXT -->\n' + '\n'.join([
-            json.dumps(res.pop('file'), ensure_ascii=False)
-            for res in skill_context.resources
+            json.dumps(
+                {
+                    'name': res.get('name', ''),
+                    'path': res.get('path', ''),
+                    'description': res.get('description', ''),
+                },
+                ensure_ascii=False) for res in skill_context.resources
         ])
 
         # PLAN: Analyse the SKILL.md, references, and scripts.
@@ -303,14 +323,17 @@ class AgentSkill:
         script_contents: str = '\n\n'.join([
             '<!-- ' + script.get('path', '') + ' -->\n'
             + script.get('content', '') for script in skill_context.scripts
+            if script.get('name', '') in response_skill_tasks
         ])
         reference_contents: str = '\n\n'.join([
             '<!-- ' + ref.get('path', '') + ' -->\n' + ref.get('content', '')
             for ref in skill_context.references
+            if ref.get('name', '') in response_skill_tasks
         ])
         resource_contents: str = '\n\n'.join([
             '<!-- ' + res.get('path', '') + ' -->\n' + res.get('content', '')
             for res in skill_context.resources
+            if res.get('name', '') in response_skill_tasks
         ])
 
         prompt_tasks_implementation: str = PROMPT_TASKS_IMPLEMENTATION.format(
@@ -341,8 +364,7 @@ class AgentSkill:
             return 'I was unable to determine the implementation steps required to complete your request.'
 
         else:
-            temp_item = implementation_content[0]
-            if isinstance(temp_item, dict):
+            if isinstance(implementation_content[0], dict):
                 execute_results: List[dict] = []
                 for _code_block in implementation_content:
                     execute_result: ExecutionResult = self.execute(
@@ -353,7 +375,7 @@ class AgentSkill:
 
                 return json.dumps(
                     execute_results, ensure_ascii=False, indent=2)
-            elif isinstance(temp_item, tuple):
+            elif isinstance(implementation_content[0], tuple):
                 # Dump the generated code content to files
                 for _lang, _code in implementation_content:
                     if _lang == 'html':
@@ -369,7 +391,7 @@ class AgentSkill:
                     logger.info(
                         f'Generated {_lang} file saved to: {output_file_path}')
                 return f'Generated files have been saved to the working directory: {self.work_dir}'
-            elif isinstance(temp_item, str):
+            elif isinstance(implementation_content[0], str):
                 return '\n\n'.join(implementation_content)
             else:
                 logger.error('Unknown IMPLEMENTATION content format')
@@ -396,13 +418,13 @@ class AgentSkill:
 
         # Get the script path
         if 'script' in code_block:
-            script_str: str = os.path.basename(code_block.get('script'))
+            script_str: str = code_block.get('script')
             parameters: Dict[str, Any] = code_block.get('parameters', {})
 
             # Get real script absolute path
-            script_path: Path = skill_context.skill.skill_path / script_str
+            script_path: Path = skill_context.root_path / script_str
             if not script_path.exists():
-                script_path: Path = skill_context.skill.skill_path / 'scripts' / script_str
+                script_path: Path = skill_context.root_path / 'scripts' / script_str
             if not script_path.exists():
                 raise FileNotFoundError(f'Script not found: {script_str}')
 
@@ -419,7 +441,7 @@ class AgentSkill:
                 prompt: str = (
                     f'According to following script content and parameters, '
                     f'find the usage for script and output the shell command in the form of: '
-                    f'```shell\npython {script_path} ...\n``` with python interpreter. '
+                    f'```shell\npython {script_str} ...\n``` with python interpreter. '
                     f'\nExtract the packages required by the script and output them in the form of: ```packages\npackage1\npackage2\n...```. '  # noqa
                     f'Note that you need to exclude the build-in standard library packages, and determine the specific PyPI package name according to the import statements in the script. '  # noqa
                     f'you must output the result very concisely and clearly without any extra explanation.'
@@ -496,6 +518,17 @@ class AgentSkill:
         try:
             if self.use_sandbox:
                 if 'script' == code_type:
+
+                    code_split = code_str.strip().split(' ')
+                    new_code_split: List[str] = []
+                    for item in code_split[1:]:
+                        # All paths should be relative to `self.work_dir`
+                        item = os.path.join(
+                            str(self.work_dir_in_sandbox),
+                            Path(item).as_posix())
+                        new_code_split.append(item)
+                    code_str = ' '.join(code_split[:1] + new_code_split)
+
                     results: Dict[str, Any] = self.sandbox.execute(
                         shell_command=code_str,
                         requirements=packages,
@@ -529,6 +562,16 @@ class AgentSkill:
                     install_package(package_name=pack)
 
                 if 'script' == code_type:
+                    code_split: List[str] = code_str.split(' ')
+                    new_code_split: List[str] = []
+                    for item in code_split[1:]:
+                        # All paths should be relative to `self.work_dir`
+                        item = os.path.join(
+                            str(self.work_dir),
+                            Path(item).as_posix())
+                        new_code_split.append(item)
+                    new_code_split = code_split[:1] + new_code_split
+                    code_str = ' '.join(new_code_split)
                     return self._execute_cmd(cmd_str=code_str)
 
                 elif 'function' == code_type:

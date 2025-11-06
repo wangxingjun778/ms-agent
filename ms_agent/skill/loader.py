@@ -69,22 +69,21 @@ class SkillLoader:
                     f'Loaded skill from SkillSchema object: {skill_key}')
                 continue
 
-            skill_path: Path = Path(skill)
+            skill_dir: Path = Path(skill)
 
-            if not skill_path.exists():
-                logger.warning(
-                    f'Path does not exist: {skill_path} - Skipping.')
+            if not skill_dir.exists():
+                logger.warning(f'Path does not exist: {skill_dir} - Skipping.')
                 continue
 
-            if self._is_skill_directory(skill_path):
-                skill_schema = self._load_single_skill(skill_dir=skill_path)
+            if self._is_skill_directory(skill_dir):
+                skill_schema = self._load_single_skill(skill_dir=skill_dir)
                 if skill_schema:
                     skill_key = f'{skill_schema.skill_id}@{skill_schema.version}'
                     all_skills[skill_key] = skill_schema
                     logger.info(f'Successfully loaded skill: {skill_key}')
             else:
                 skill_schema_dict: Dict[
-                    str, SkillSchema] = self._scan_and_load_skills(skill_path)
+                    str, SkillSchema] = self._scan_and_load_skills(skill_dir)
                 all_skills.update(skill_schema_dict)
 
         self.loaded_skills.update(all_skills)

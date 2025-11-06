@@ -1,4 +1,6 @@
+import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
@@ -7,6 +9,10 @@ from ms_agent.utils.logger import get_logger
 from ms_agent.utils.utils import extract_by_tag
 
 logger = get_logger()
+
+SUPPORTED_SCRIPT_EXT = ('.py', '.sh', '.js')
+SUPPORTED_READ_EXT = ('.md', '.txt', '.py', '.json', '.yaml', '.yml', '.sh',
+                      '.js', '.html', '.xml')
 
 
 def find_skill_dir(root: Union[str, List[str]]) -> List[str]:
@@ -121,3 +127,18 @@ def extract_cmd_from_code_blocks(text) -> List[str]:
             )
 
     return results
+
+
+def copy_with_exec_if_script(src: str, dst: str):
+    """
+    Copy file from src to dst. If it's a script file, add execute permission.
+
+    Args:
+        src (str): Source file path
+        dst (str): Destination file path
+    """
+    shutil.copy2(src, dst)
+    # Add execute permission if it's a script file
+    if Path(src).suffix in SUPPORTED_SCRIPT_EXT:
+        st = os.stat(src)
+        os.chmod(dst, st.st_mode | 0o111)

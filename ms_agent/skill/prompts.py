@@ -84,7 +84,7 @@ SCRIPTS_IMPLEMENTATION_FORMAT = """[
 PROMPT_TASKS_IMPLEMENTATION = """
 According to relevant content of `SCRIPTS`, `REFERENCES` and `RESOURCES`:\n\n{script_contents}\n\n{reference_contents}\n\n{resource_contents}\n\n
 
-Implement tasks in the `SKILL_TASKS_CONTEXT` and get final answers:\n\n{skill_tasks_context}\n\n
+You **MUST** strictly implement the todo-list in `SKILL_TASKS_CONTEXT` step by step:\n\n{skill_tasks_context}\n\n
 
 There are 3 scenarios for response, your response **MUST** strictly follow one of the above scenarios, **MUST** be as concise as possible:
 

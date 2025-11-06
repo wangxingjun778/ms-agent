@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 import yaml
 from ms_agent.utils.logger import logger
 
+from .skill_utils import SUPPORTED_READ_EXT, SUPPORTED_SCRIPT_EXT
 from .spec import Spec
 
 
@@ -23,13 +24,13 @@ class SkillFile:
 
     Attributes:
         name: File name (e.g., "SKILL.md", "script.py")
-        type: File type (markdown, python, json, etc.)
+        type: File extension/type (e.g., ".md", ".py", ".js")
         path: Relative path within Skill directory
         required: Whether this file is required
     """
     name: str
     type: str
-    path: str
+    path: Path
     required: bool = False
 
     def __post_init__(self):
@@ -54,7 +55,7 @@ class SkillFile:
         return {
             'name': self.name,
             'type': self.type,
-            'path': self.path,
+            'path': str(self.path),
             'required': self.required
         }
 
@@ -274,25 +275,22 @@ class SkillSchemaParser:
 
         for file_path in directory_path.rglob('*'):
             if file_path.is_file():
-                relative_path = file_path.relative_to(directory_path)
-
                 if SkillSchemaParser.is_ignored_path(file_path):
                     continue
 
-                file_type = file_path.suffix[
-                    1:] if file_path.suffix else 'unknown'
+                file_type = file_path.suffix if file_path.suffix else '.unknown'
 
                 skill_file = SkillFile(
                     name=file_path.name,
                     type=file_type,
-                    path=str(relative_path),
+                    path=file_path,
                     required=(file_path.name == 'SKILL.md'))
                 files.append(skill_file)
 
                 # Get scripts, references and resources
-                if skill_file.type in ['py', 'sh', 'js']:
+                if skill_file.type in SUPPORTED_SCRIPT_EXT:
                     scripts.append(skill_file)
-                elif skill_file.type in ['md'
+                elif skill_file.type in ['.md'
                                          ] and skill_file.name != 'SKILL.md':
                     references.append(skill_file)
                 else:
@@ -360,7 +358,8 @@ class SkillContext:
     skill: SkillSchema
 
     # The working directory (absolute path to skills folder's parent directory as default)
-    work_dir: Path = field(default_factory=lambda: Path.cwd().parent.resolve())
+    root_path: Path = field(
+        default_factory=lambda: Path.cwd().parent.resolve())
 
     # The target scripts to be executed
     scripts: List[Dict[str, Any]] = field(default_factory=list)
@@ -392,10 +391,7 @@ class SkillContext:
             return ''
 
         ext: str = file_path.suffix.lower()
-        if ext in [
-                '.md', '.txt', '.py', '.json', '.yaml', '.yml', '.sh', '.js',
-                '.html', '.xml'
-        ]:
+        if ext in SUPPORTED_READ_EXT:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     return f.read()
@@ -410,49 +406,38 @@ class SkillContext:
         # Initialize scripts info
         self.scripts = [
             {
-                'name':
-                script.name,
-                'file':
-                script.to_dict(),
-                'path':
-                str(self.skill.skill_path / script.path),
+                'name': script.name,
+                'file': script.to_dict(),
+                'path': str(script.path.resolve().relative_to(self.root_path)),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content':
-                self._read_file_content(self.skill.skill_path / script.path),
+                'content': self._read_file_content(script.path.resolve()),
             } for script in self.skill.scripts
         ]
 
         # Initialize references info
         self.references = [
             {
-                'name':
-                reference.name,
-                'file':
-                reference.to_dict(),
+                'name': reference.name,
+                'file': reference.to_dict(),
                 'path':
-                str(self.skill.skill_path / reference.path),
+                str(reference.path.resolve().relative_to(self.root_path)),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content':
-                self._read_file_content(self.skill.skill_path
-                                        / reference.path),
+                'content': self._read_file_content(reference.path.resolve()),
             } for reference in self.skill.references
         ]
 
         # Initialize resources info
         self.resources = [
             {
-                'name':
-                resource.name,
-                'file':
-                resource.to_dict(),
+                'name': resource.name,
+                'file': resource.to_dict(),
                 'path':
-                str(self.skill.skill_path / resource.path),
+                str(resource.path.resolve().relative_to(self.root_path)),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content':
-                self._read_file_content(self.skill.skill_path / resource.path),
+                'content': self._read_file_content(resource.path.resolve()),
             } for resource in self.skill.resources
             if resource.name not in ['SKILL.md', 'LICENSE.txt']
         ]
