@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os.path
-import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -519,7 +519,7 @@ class AgentSkill:
             if self.use_sandbox:
                 if 'script' == code_type:
 
-                    code_split = code_str.strip().split(' ')
+                    code_split = shlex.split(code_str)
                     new_code_split: List[str] = []
                     for item in code_split[1:]:
                         # All paths should be relative to `self.work_dir`
@@ -562,7 +562,7 @@ class AgentSkill:
                     install_package(package_name=pack)
 
                 if 'script' == code_type:
-                    code_split: List[str] = code_str.split(' ')
+                    code_split: List[str] = shlex.split(code_str)
                     new_code_split: List[str] = []
                     for item in code_split[1:]:
                         # All paths should be relative to `self.work_dir`
@@ -631,8 +631,8 @@ class AgentSkill:
         """
         try:
             # Build command
-            cmd: list = [sys.executable]
-            cmd.extend(cmd_str.split(' ')[1:])
+            cmd_parts = shlex.split(cmd_str)
+            cmd: list = [sys.executable] + cmd_parts[1:]
 
             # Execute subprocess
             result = subprocess.run(
