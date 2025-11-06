@@ -278,30 +278,38 @@ pip install ms-agent
 
 ```python
 import os
-from ms_agent.skill import create_agent_skill
+from ms_agent.agent import create_agent_skill
 
 
 def main():
-  working_dir: str = '/path/to/your_working_dir'
-  skill_root_path: str = '/path/to/skills'  # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
-  model_name: str = 'qwen-plus-latest'
+    """
+    Main function to create and run an agent with skills.
+    """
+    work_dir: str = 'temp_workspace'
+    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
+    model_name: str = 'qwen-max-latest'
 
-  agent = create_agent_skill(
-    skills=skill_root_path,
-    model=model_name,
-    api_key=os.getenv('OPENAI_API_KEY'),
-    base_url=os.getenv('OPENAI_BASE_URL'),
-    stream=True,
-    work_dir=working_dir,
-  )
+    agent = create_agent_skill(
+        skills=skills_dir,
+        model=model_name,
+        api_key=os.getenv('OPENAI_API_KEY'),
+        base_url=os.getenv(
+            'OPENAI_BASE_URL',
+            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
+        stream=True,
+        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
+        work_dir=work_dir,
+    )
 
-  query = "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
-  response = agent.run(query)
-  print(f'\n\nAgent skill results: {response}\n')
+    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
+
+    response = agent.run(user_query)
+    print(f'\n\n** Agent skill results: {response}\n')
 
 
 if __name__ == '__main__':
-  main()
+
+    main()
 ```
 
 **Result**:

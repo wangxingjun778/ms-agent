@@ -70,39 +70,38 @@ export OPENAI_BASE_URL="your-base-url"
 
 ```python
 import os
-
-from ms_agent.skill import create_agent_skill
+from ms_agent.agent import create_agent_skill
 
 
 def main():
     """
-    Main function to create and run an agent with specified skills.
-
-    NOTES:
-        1. Configure the working directory, skill root path, and model name as needed.
-        2. Configure the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables for API access.
+    Main function to create and run an agent with skills.
     """
-    work_dir: str = '/path/to/your_work_dir'
-    skill_root_path: str = '/path/to/skills'  # Refer to: https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills
-    model_name: str = 'qwen-plus-latest'  # Replace with your model
+    work_dir: str = 'temp_workspace'
+    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
+    model_name: str = 'qwen-max-latest'
 
     agent = create_agent_skill(
-        skills=skill_root_path,
+        skills=skills_dir,
         model=model_name,
         api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv('OPENAI_BASE_URL'),
+        base_url=os.getenv(
+            'OPENAI_BASE_URL',
+            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
         stream=True,
+        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
         work_dir=work_dir,
     )
 
-    query = "Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates."
-    response = agent.run(query)
-    print(f'\n\nAgent skill results: {response}\n')
+    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
+
+    response = agent.run(user_query)
+    print(f'\n\n** Agent skill results: {response}\n')
 
 
 if __name__ == '__main__':
-    main()
 
+    main()
 ```
 
 **Result:**

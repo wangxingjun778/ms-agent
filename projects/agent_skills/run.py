@@ -38,8 +38,8 @@ def main():
     shutil.copytree(example_data_dir, work_dir, dirs_exist_ok=True)
 
     queries = [
-        f'Extract the form field info from pdf: OLYMPIC_MEDAL_TABLE_zh.pdf, generate result file as OLYMPIC_MEDAL_TABLE_zh_fields.json',
-        # 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
+        # f'Extract the form field info from pdf: OLYMPIC_MEDAL_TABLE_zh.pdf, generate result file as OLYMPIC_MEDAL_TABLE_zh_fields.json',
+        'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
     ]
 
     for query in queries:
