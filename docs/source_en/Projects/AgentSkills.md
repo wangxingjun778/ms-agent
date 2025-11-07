@@ -1,10 +1,98 @@
 # Agent Skills
 
-The **MS-Agent Skills** Module is **Beta Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+---
 
-To empower your AI agents with a modular skill framework that supports dynamic skill discovery, progressive context loading, planning, and task execution.
+## 1. Motivation
 
-## Overview
+- **Evolutionary Needs of General-Purpose Agents**
+  - As model capabilities advance, agents can now interact with complete computational environments (e.g., code execution, file systems) to perform complex, cross-domain tasks.
+  - More powerful agents require a modular, scalable, and portable means of injecting domain-specific expertise.
+
+
+- **Skills as Knowledge Encapsulation**
+  - Package human procedural knowledge into reusable, composable "skills," eliminating the need to rebuild custom agents for every scenario.
+  - Dynamically load skills as structured folders (containing instructions, scripts, and resources), enabling agents to perform superiorly on specific tasks.
+
+
+- **Adaptability and Flexibility**
+  - Building skills is like writing an onboarding manual—lowering the barrier to specialization and enhancing agent flexibility and adaptability.
+
+<br>
+
+For more details about `Agent Skills`, see: [Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview)
+
+<br>
+
+---
+
+## 2. What are Agent Skills?
+
+
+### 1) Agent Skills Architecture
+
+- The Agent Skill Architecture
+
+<img src="../../resources/skill_architecture.png" alt="Skill-Architecture" style="width: 750px; display: block; margin: 0 auto;" />
+
+
+- Skill Directory Structure
+```
+skill-name/
+├── SKILL.md              # Main skill definition           (Required)
+├── reference.md          # Detailed reference material     (Optional)
+├── LICENSE.txt           # License information             (Optional)
+├── resources/            # Additional resources            (Optional)
+│   ├── template.xlsx     # Example files
+│   └── data.json         # Data files
+└── scripts/              # Executable scripts              (Optional)
+    ├── main.py           # Main implementation
+    └── helper.py         # Helper functions
+```
+
+### 2) SKILL.md Format
+
+The `SKILL.md` file uses YAML front matter to define metadata, followed by markdown content for detailed instructions.
+
+<img src="../../resources/skill_md_file.png" alt="Skill-MD-File" style="width: 750px; display: block; margin: 0 auto;" />
+
+💡 Tips:
+ - Fields in the front matter (YAML section) are mandatory, `name` and `description` are required.
+ - The body of the SKILL.md should provide comprehensive details about the skill, including features, usage instructions, references, resources, and examples.
+
+[Example of SKILL.md](https://github.com/anthropics/skills/blob/main/document-skills/pdf/SKILL.md)
+
+
+### 3) Bundling Additional Content
+
+
+Additional files can be included in the `SKILL.md` to expand skill capabilities, such as:
+- Reference materials (e.g. `reference.md` and `forms.md`)
+<img src="../../resources/skill_additional_content.png" alt="Skill-Additional-Content" style="width: 750px; display: block; margin: 0 auto;" />
+
+- Script materials
+<img src="../../resources/skill_additional_scripts.png" alt="Skill-Additional-Scripts" style="width: 750px; display: block; margin: 0 auto;" />
+
+
+### 3) Skills & Context
+
+- Context Loading & Limitations
+  - Skills can load additional context from files in the skill directory, token limitations are recommended.
+  - Agents should prioritize loading essential context to ensure efficient execution.
+
+<img src="../../resources/skill_files_limitation.png" alt="Skill-Files-Limitation" style="width: 750px; display: block; margin: 0 auto;" />
+
+<img src="../../resources/skill_context_window.png" alt="Skill-Context-Window" style="width: 750px; display: block; margin: 0 auto;" />
+
+
+<br>
+
+---
+
+## 3. Implementation
+
+### 1) Overview
+
+The **MS-Agent Skills** Module is **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
 
 The Agent Skills Framework implements a multi-level progressive context loading mechanism that efficiently manages skill discovery and execution:
 
@@ -16,7 +104,7 @@ The Agent Skills Framework implements a multi-level progressive context loading 
 This approach minimizes resource consumption while providing comprehensive skill capabilities.
 
 
-### Core Components
+* Core Components
 
 | Component        | Description                                 |
 |------------------|---------------------------------------------|
@@ -27,7 +115,7 @@ This approach minimizes resource consumption while providing comprehensive skill
 | `ScriptExecutor` | Safely executes skill scripts               |
 | `SkillSchema`    | Schema for skill definitions                |
 
-## Key Features
+### 2) Key Features
 
 - 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
 - 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts` on demand
@@ -38,52 +126,42 @@ This approach minimizes resource consumption while providing comprehensive skill
 - 🧩 **Extensible Design**: The skill data structure is modularized, with implementations such as `SkillSchema` and `SkillContext` provided for easy extension and customization
 
 
-## Installation
+### 3) Installation
 
-### Prerequisites
-- Python 3.10+
-- ms-agent >= 1.4.0
-
-### Install from PyPI
+* Install from PyPI
 ```bash
-pip install ms-agent -U
+pip install 'ms-agent>=1.4.0'
 ```
 
-### Install from Source
+* Install from Source
 ```bash
 git clone git@github.com:modelscope/ms-agent.git
 cd ms-agent
 pip install -e .
 ```
 
-### Environment Variables
+* Configuration
 ```bash
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="your-base-url"
 ```
 
-## Quick Start
-
-### Usage
+### 4) Usage
 
 > The following example demonstrates how to create and run agent skill to generate `flow fields particle` using p5.js
 
 ```python
 import os
-from pathlib import Path
-
 from ms_agent.agent import create_agent_skill
-
-_PATH = Path(__file__).parent.resolve()
 
 
 def main():
     """
     Main function to create and run an agent with skills.
     """
-    work_dir: str = str(_PATH / 'temp_workspace')
+    work_dir: str = './temp_workspace'
     # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
-    skills_dir: str = str(_PATH / 'skills')
+    skills_dir: str = './skills'
     use_sandbox: bool = True
 
     ## Configuration for ModelScope API-Inference, or set your own model with OpenAI API compatible format
@@ -123,63 +201,14 @@ if __name__ == '__main__':
 </div>
 
 
+<br>
 
-
-## Skill Definition
-
-The Agent Skill Architecture:
-
-<img src="static/skill_architecture.png" alt="Skill-Architecture" style="width: 750px; display: block; margin: 0 auto;" />
-
-For more details on skill structure and definitions, refer to:
-[Anthropic Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
-
-### Directory Structure
-```
-skill-name/
-├── SKILL.md              # Main skill definition           (Required)
-├── reference.md          # Detailed reference material     (Optional)
-├── LICENSE.txt           # License information             (Optional)
-├── resources/            # Additional resources            (Optional)
-│   ├── template.xlsx     # Example files
-│   └── data.json         # Data files
-└── scripts/              # Executable scripts              (Optional)
-    ├── main.py           # Main implementation
-    └── helper.py         # Helper functions
-```
-
-### SKILL.md Format
-
-```markdown
----
-name: "Skill Name"
-description: "Brief description of the skill"
-tags: ["tag1", "tag2", "tag3"]
-author: "Author Name"
-version: "1.0.0"
-dependencies: ["numpy", "pandas"]
 ---
 
-# Skill Title
-
-Detailed explanation of what the skill does...
-
-## Key Features
-
-- Feature 1
-- Feature 2
-- Feature 3
-
-## Usage
-
-Instructions on how to use this skill...
-
-## Examples
-
-```
-
-💡 Tips:
- - Fields in the front matter (YAML section) are mandatory, `name` and `description` are required.
- - The body of the SKILL.md should provide comprehensive details about the skill, including features, usage instructions, references, resources, and examples.
+## References
+* Anthropic Agent Skills Documentation：https://docs.claude.com/en/docs/agents-and-tools/agent-skills
+* Anthropic Skills GitHub Repo： https://github.com/anthropics/skills
 
 <br>
+
+---
