@@ -49,6 +49,7 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
 * 🚀 2025.11.07：发布MS-Agent v1.4.0，包含以下更新：
   - 🔥 新增 [**MS-Agent Skills**](projects/agent_skills/README.md), 基于 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议实现.
   - 🔥 新增 [中文文档](https://ms-agent.readthedocs.io/zh-cn)和[英文文档](https://ms-agent-en.readthedocs.io/en)
+  - 🔥 支持沙箱框架 [ms-enclave](https://github.com/modelscope/ms-enclave)
 
 * 🚀 2025.9.22：发布MS-Agent v1.3.0，包含以下更新：
   - 🔥 支持[Code Scratch](projects/code_scratch/README.md)

@@ -143,6 +143,7 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="your-base-url"
 ```
 
+
 ### 4) Usage
 
 > The following example demonstrates how to create and run agent skill to generate `flow fields particle` using p5.js
@@ -190,6 +191,20 @@ if __name__ == '__main__':
     main()
 ```
 
+
+* Local Execution
+  - If `use_sandbox=False`, the skill scripts are executed directly in the local environment
+  - Ensure you trust the skill scripts, to avoid security risks
+  - Ensure that the necessary dependencies are installed in your local Python environment
+
+* Sandboxed Execution
+  - If `use_sandbox=True`, the skill scripts are executed in an isolated Docker container using [**ms-enclave**](https://github.com/modelscope/ms-enclave)
+  - This provides a secure environment, preventing potential harm to the host system
+  - Make sure Docker is installed and the Docker Daemon is running on your machine
+  - The required dependencies will be automatically installed in the sandbox environment based on the skill requirements
+
+<br>
+
 **Result:**
 
 <div align="center">
@@ -202,6 +217,7 @@ if __name__ == '__main__':
 
 
 ## References
+
 * Anthropic Agent Skills Documentation：https://docs.claude.com/en/docs/agents-and-tools/agent-skills
 * Anthropic Skills GitHub Repo： https://github.com/anthropics/skills
 
