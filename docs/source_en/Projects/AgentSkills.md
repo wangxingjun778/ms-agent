@@ -1,6 +1,5 @@
 # Agent Skills
 
----
 
 ## 1. Motivation
 
@@ -23,7 +22,6 @@ For more details about `Agent Skills`, see: [Anthropic Agent Skills](https://doc
 
 <br>
 
----
 
 ## 2. What are Agent Skills?
 
@@ -86,7 +84,6 @@ Additional files can be included in the `SKILL.md` to expand skill capabilities,
 
 <br>
 
----
 
 ## 3. Implementation
 
@@ -203,12 +200,9 @@ if __name__ == '__main__':
 
 <br>
 
----
 
 ## References
 * Anthropic Agent Skills Documentation：https://docs.claude.com/en/docs/agents-and-tools/agent-skills
 * Anthropic Skills GitHub Repo： https://github.com/anthropics/skills
 
 <br>
-
----
