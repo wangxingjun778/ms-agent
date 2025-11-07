@@ -2,7 +2,6 @@
 from typing import Union
 
 from ms_agent.utils import get_logger
-from ms_enclave.sandbox.manager import HttpSandboxManager, LocalSandboxManager
 from omegaconf import DictConfig
 
 logger = get_logger()
@@ -14,7 +13,7 @@ class SandboxManagerFactory:
     @staticmethod
     async def create_manager(
         config: Union[DictConfig, dict]
-    ) -> Union[LocalSandboxManager, HttpSandboxManager]:
+    ) -> Union['LocalSandboxManager', 'HttpSandboxManager']:
         """
         Create and initialize a sandbox manager based on configuration.
 
@@ -27,6 +26,8 @@ class SandboxManagerFactory:
         Raises:
             ValueError: If sandbox mode is unknown
         """
+        from ms_enclave.sandbox.manager import HttpSandboxManager, LocalSandboxManager
+
         # Extract sandbox configuration
         if isinstance(config, DictConfig):
             sandbox_config = config.get('sandbox', {})

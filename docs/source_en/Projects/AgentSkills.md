@@ -71,7 +71,7 @@ Additional files can be included in the `SKILL.md` to expand skill capabilities,
 <img src="../../resources/skill_additional_scripts.png" alt="Skill-Additional-Scripts" style="width: 750px; display: block; margin: 0 auto;" />
 
 
-### 3) Skills & Context
+### 4) Skills & Context
 
 - Context Loading & Limitations
   - Skills can load additional context from files in the skill directory, token limitations are recommended.

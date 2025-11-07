@@ -126,11 +126,7 @@ class SkillLoader:
                 for error in validation_errors:
                     logger.warning(f'  - {error}')
 
-            if skill_schema.validate():
-                return skill_schema
-            else:
-                logger.error(f'Skill validation failed: {skill_dir}')
-                return None
+            return skill_schema
 
         except Exception as e:
             logger.error(f'Error loading skill ({skill_dir}): {str(e)}')

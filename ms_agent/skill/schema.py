@@ -409,38 +409,51 @@ class SkillContext:
         # Initialize scripts info
         self.scripts = [
             {
-                'name': script.name,
-                'file': script.to_dict(),
-                'path': str(script.path.resolve().relative_to(self.root_path)),
+                'name':
+                script.name,
+                'file':
+                script.to_dict(),
+                'path':
+                str(script.path.resolve().relative_to(
+                    self.root_path.resolve())),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content': self._read_file_content(script.path.resolve()),
+                'content':
+                self._read_file_content(script.path.resolve()),
             } for script in self.skill.scripts
         ]
 
         # Initialize references info
         self.references = [
             {
-                'name': reference.name,
-                'file': reference.to_dict(),
+                'name':
+                reference.name,
+                'file':
+                reference.to_dict(),
                 'path':
-                str(reference.path.resolve().relative_to(self.root_path)),
+                str(reference.path.resolve().relative_to(
+                    self.root_path.resolve())),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content': self._read_file_content(reference.path.resolve()),
+                'content':
+                self._read_file_content(reference.path.resolve()),
             } for reference in self.skill.references
         ]
 
         # Initialize resources info
         self.resources = [
             {
-                'name': resource.name,
-                'file': resource.to_dict(),
+                'name':
+                resource.name,
+                'file':
+                resource.to_dict(),
                 'path':
-                str(resource.path.resolve().relative_to(self.root_path)),
+                str(resource.path.resolve().relative_to(
+                    self.root_path.resolve())),
                 'description':
                 '',  # May need to call the LLM to generate description in the future
-                'content': self._read_file_content(resource.path.resolve()),
+                'content':
+                self._read_file_content(resource.path.resolve()),
             } for resource in self.skill.resources
             if resource.name not in ['SKILL.md', 'LICENSE.txt']
         ]

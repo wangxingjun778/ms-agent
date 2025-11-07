@@ -10,10 +10,7 @@ from ms_agent.tools.base import ToolBase
 from ms_agent.tools.code.sandbox_manager import SandboxManagerFactory
 from ms_agent.utils import get_logger
 from ms_agent.utils.constants import DEFAULT_OUTPUT_DIR
-from ms_enclave.sandbox.manager import SandboxManager
-from ms_enclave.sandbox.model import (DockerNotebookConfig,
-                                      DockerSandboxConfig, ExecutionStatus,
-                                      SandboxStatus, SandboxType)
+from ms_agent.utils.utils import install_package
 from omegaconf import DictConfig
 
 logger = get_logger()
@@ -95,12 +92,19 @@ class CodeExecutionTool(ToolBase):
     """
 
     def __init__(self, config):
+        logger.info('Installing ms-enclave package...')
+        try:
+            install_package(
+                package_name='ms-enclave', import_name='ms_enclave')
+        except Exception as e:
+            raise e
+
         super().__init__(config)
-        self.manager: Optional[SandboxManager] = None
+        self.manager: Optional['SandboxManager'] = None
         self.sandbox_id: Optional[str] = None
         self._initialized = False
         self._original_port: Optional[int] = None
-        self.sandbox_type: Optional[SandboxType] = None
+        self.sandbox_type: Optional['SandboxType'] = None
 
         # Extract sandbox configuration
         self.sandbox_config = self._build_sandbox_config(config)
@@ -110,8 +114,11 @@ class CodeExecutionTool(ToolBase):
         logger.info('CodeExecutionTool initialized (ms-enclave based)')
 
     def _build_sandbox_config(
-            self, config) -> Union[DockerNotebookConfig, DockerSandboxConfig]:
+            self,
+            config) -> Union['DockerNotebookConfig', 'DockerSandboxConfig']:
         """Build sandbox configuration from agent config"""
+
+        from ms_enclave.sandbox.model import DockerNotebookConfig, DockerSandboxConfig, SandboxType
 
         # Get sandbox-specific config or use defaults
         if isinstance(config, DictConfig) and hasattr(
@@ -196,6 +203,8 @@ class CodeExecutionTool(ToolBase):
 
     async def connect(self) -> None:
         """Initialize sandbox manager and create sandbox instance with automatic port retry"""
+        from ms_enclave.sandbox.model import SandboxType
+
         if self._initialized:
             logger.debug('Sandbox already initialized')
             return
@@ -532,6 +541,8 @@ class CodeExecutionTool(ToolBase):
         Returns:
             JSON string with execution results
         """
+        from ms_enclave.sandbox.model import ExecutionStatus
+
         try:
             logger.info(f'Executing code: {description or code[:50]}...')
 
@@ -585,6 +596,8 @@ class CodeExecutionTool(ToolBase):
         Returns:
             JSON string with execution results
         """
+        from ms_enclave.sandbox.model import ExecutionStatus
+
         try:
             logger.info(f'Executing code: {description or code[:50]}...')
 
@@ -636,6 +649,8 @@ class CodeExecutionTool(ToolBase):
         Returns:
             JSON string with execution results
         """
+        from ms_enclave.sandbox.model import ExecutionStatus
+
         try:
             logger.info(f'Executing command: {command[:50]}...')
 
@@ -683,6 +698,8 @@ class CodeExecutionTool(ToolBase):
         Returns:
             JSON string with file content
         """
+        from ms_enclave.sandbox.model import ExecutionStatus
+
         try:
             result = await self.manager.execute_tool(
                 sandbox_id=self.sandbox_id,
@@ -731,6 +748,8 @@ class CodeExecutionTool(ToolBase):
         Returns:
             JSON string with result
         """
+        from ms_enclave.sandbox.model import SandboxType
+
         try:
             logger.info('Resetting sandbox...')
 
@@ -811,6 +830,8 @@ class CodeExecutionTool(ToolBase):
             TimeoutError: If sandbox doesn't become ready in time
             RuntimeError: If sandbox enters error state
         """
+        from ms_enclave.sandbox.model import SandboxStatus
+
         logger.info('Waiting for sandbox to be ready...')
 
         for i in range(max_wait):
