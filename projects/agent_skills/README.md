@@ -70,32 +70,43 @@ export OPENAI_BASE_URL="your-base-url"
 
 ```python
 import os
+from pathlib import Path
+
 from ms_agent.agent import create_agent_skill
+
+_PATH = Path(__file__).parent.resolve()
 
 
 def main():
     """
     Main function to create and run an agent with skills.
     """
-    work_dir: str = 'temp_workspace'
-    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
-    model_name: str = 'qwen-max-latest'
+    work_dir: str = str(_PATH / 'temp_workspace')
+    # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
+    skills_dir: str = str(_PATH / 'skills')
+    use_sandbox: bool = True
+
+    ## Configuration for ModelScope API-Inference, or set your own model with OpenAI API compatible format
+    ## Free LLM API inference calls for ModelScope users, refer to [ModelScope API-Inference](https://modelscope.cn/docs/model-service/API-Inference/intro)
+    model: str = 'Qwen/Qwen3-235B-A22B-Instruct-2507'
+    api_key: str = 'xx-xx'  # For ModelScope users, refer to `https://modelscope.cn/my/myaccesstoken` to get your access token
+    base_url: str = 'https://api-inference.modelscope.cn/v1/'
 
     agent = create_agent_skill(
         skills=skills_dir,
-        model=model_name,
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv(
-            'OPENAI_BASE_URL',
-            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
+        model=model,
+        api_key=os.getenv('OPENAI_API_KEY', api_key),
+        base_url=os.getenv('OPENAI_BASE_URL', base_url),
         stream=True,
-        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
+        # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
+        use_sandbox=use_sandbox,
         work_dir=work_dir,
     )
 
-    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
+    user_query: str = ('Create generative art using p5.js with seeded randomness, flow fields, and particle systems, '
+                       'please fill in the details and provide the complete code based on the templates.')
 
-    response = agent.run(user_query)
+    response = agent.run(query=user_query)
     print(f'\n\n** Agent skill results: {response}\n')
 
 

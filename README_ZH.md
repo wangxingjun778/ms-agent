@@ -273,41 +273,9 @@ pip install ms-agent
 **使用示例**：
 > 该示例展示了如何配置和运行一个Agent Skill，基于p5.js的流场生成艺术代码。
 
-```python
-import os
-from ms_agent.agent import create_agent_skill
 
+参考代码： [Run Skills](projects/agent_skills/run.py)
 
-def main():
-    """
-    Main function to create and run an agent with skills.
-    """
-    work_dir: str = 'temp_workspace'
-    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
-    model_name: str = 'qwen-max-latest'
-
-    agent = create_agent_skill(
-        skills=skills_dir,
-        model=model_name,
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv(
-            'OPENAI_BASE_URL',
-            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
-        stream=True,
-        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
-        work_dir=work_dir,
-    )
-
-    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
-
-    response = agent.run(user_query)
-    print(f'\n\n** Agent skill results: {response}\n')
-
-
-if __name__ == '__main__':
-
-    main()
-```
 
 **运行结果**：
 

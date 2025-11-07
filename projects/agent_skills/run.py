@@ -12,18 +12,17 @@ _PATH = Path(__file__).parent.resolve()
 def main():
     """
     Main function to create and run an agent with skills.
-
-    Free Model Inference: Free LLM API inference calls for ModelScope users,
-        refer to [ModelScope API-Inference](https://modelscope.cn/docs/model-service/API-Inference/intro)
     """
     work_dir: str = str(_PATH / 'temp_workspace')
+    # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
     skills_dir: str = str(_PATH / 'skills')
     example_data_dir: str = str(_PATH / 'example_data')
     use_sandbox: bool = True
 
     ## Configuration for ModelScope API-Inference, or set your own model with OpenAI API compatible format
+    ## Free LLM API inference calls for ModelScope users, refer to [ModelScope API-Inference](https://modelscope.cn/docs/model-service/API-Inference/intro)
     model: str = 'Qwen/Qwen3-235B-A22B-Instruct-2507'
-    api_key: str = 'xxx-xxx'  # For ModelScope users, refer to `https://modelscope.cn/my/myaccesstoken` to get your access token
+    api_key: str = 'xx-xx'  # For ModelScope users, refer to `https://modelscope.cn/my/myaccesstoken` to get your access token
     base_url: str = 'https://api-inference.modelscope.cn/v1/'
 
     agent = create_agent_skill(
