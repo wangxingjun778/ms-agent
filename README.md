@@ -49,7 +49,7 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 
 ## 🎉 News
 
-* 🚀 Oct 30, 2025: Release MS-Agent v1.4.0, which includes the following updates:
+* 🚀 Nov 07, 2025: Release MS-Agent v1.4.0, which includes the following updates:
   - 🔥 We present [**MS-Agent Skills**](projects/agent_skills/README.md), an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
 * 🚀 Sep 22, 2025: Release MS-Agent v1.3.0, which includes the following updates:
   - 🔥 Support [Code Scratch](projects/code_scratch/README.md)
