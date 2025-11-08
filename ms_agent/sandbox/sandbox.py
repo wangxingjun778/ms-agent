@@ -82,7 +82,9 @@ class EnclaveSandbox(Sandbox):
         logger.info('Installing ms-enclave package...')
         try:
             install_package(
-                package_name='ms-enclave', import_name='ms_enclave')
+                package_name='ms-enclave',
+                import_name='ms_enclave',
+                extend_module='docker')
         except Exception as e:
             raise e
 

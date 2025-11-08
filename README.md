@@ -7,7 +7,7 @@
 <p>
 
 <p align="center">
-<a href="https://modelscope.cn/mcp/playground">MCP Playground</a> | <a href="https://arxiv.org/abs/2309.00986">Paper</a> | <a href="https://ms-agent-en.readthedocs.io">Docs</a>
+<a href="https://modelscope.cn/mcp/playground">MCP Playground</a> | <a href="https://arxiv.org/abs/2309.00986">Paper</a> | <a href="https://ms-agent-en.readthedocs.io">Documentation</a> | <a href="https://ms-agent.readthedocs.io/zh-cn">中文文档</a>
 <br>
 </p>
 
@@ -36,6 +36,7 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 - **Multi-Agent for general purpose**: Chat with agent with tool-calling capabilities based on MCP.
 - **Deep Research**: To enable advanced capabilities for autonomous exploration and complex task execution.
 - **Code Generation**: Supports code generation tasks with artifacts.
+- **Agent Skills**: Implementation of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
 - **Lightweight and Extensible**: Easy to extend and customize for various applications.
 
 
@@ -48,8 +49,11 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 
 ## 🎉 News
 
-* 🚀 Oct 30, 2025: Release MS-Agent v1.4.0, which includes the following updates:
+* 🚀 Nov 07, 2025: Release MS-Agent v1.4.0, which includes the following updates:
   - 🔥 We present [**MS-Agent Skills**](projects/agent_skills/README.md), an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+  - 🔥 Add [Docs](https://ms-agent-en.readthedocs.io/en) and [中文文档](https://ms-agent.readthedocs.io/zh-cn)
+  - 🔥 Support Sandbox Framework [ms-enclave](https://github.com/modelscope/ms-enclave)
+
 * 🚀 Sep 22, 2025: Release MS-Agent v1.3.0, which includes the following updates:
   - 🔥 Support [Code Scratch](projects/code_scratch/README.md)
   - Support `Memory` for building agents with long-term and short-term memory
@@ -276,41 +280,9 @@ pip install ms-agent
 
 > This example demonstrates how to configure and run an Agent Skill that generates generative art code based on p5.js flow fields.
 
-```python
-import os
-from ms_agent.agent import create_agent_skill
 
+Refer to: [Run Skills](projects/agent_skills/run.py)
 
-def main():
-    """
-    Main function to create and run an agent with skills.
-    """
-    work_dir: str = 'temp_workspace'
-    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
-    model_name: str = 'qwen-max-latest'
-
-    agent = create_agent_skill(
-        skills=skills_dir,
-        model=model_name,
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv(
-            'OPENAI_BASE_URL',
-            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
-        stream=True,
-        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
-        work_dir=work_dir,
-    )
-
-    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
-
-    response = agent.run(user_query)
-    print(f'\n\n** Agent skill results: {response}\n')
-
-
-if __name__ == '__main__':
-
-    main()
-```
 
 **Result**:
 
@@ -443,10 +415,11 @@ For more details, refer to [Code Scratch](projects/code_scratch/README.md).
 1. A news collection agent [ms-agent/newspaper](https://www.modelscope.cn/models/ms-agent/newspaper/summary)
 
 
-## Outlook
+## Roadmap
 
 We are committed to continuously improving and expanding the MS-Agent framework to push the boundaries of large models and AI agents. Our future roadmap includes:
 
+- [x] **Anthropic Agent Skills** - Full support for the [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) protocol, enabling agents to autonomously explore and execute complex tasks using predefined or custom "skills".
 - [ ] **FinResearch** – A financial deep-research agent dedicated to in-depth analysis and research in the finance domain.
 - [ ] **Multimodal Agentic Search** – Supporting large-scale multimodal document retrieval and generation of search results combining text and images.
 - [ ] Enhanced **Agent Skills** – Providing a richer set of predefined skills and tools to expand agent capabilities and enabling multi-skill collaboration for complex task execution.

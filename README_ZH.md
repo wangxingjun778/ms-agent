@@ -7,7 +7,7 @@
 <p>
 
 <p align="center">
-<a href="https://modelscope.cn/mcp/playground">MCP Playground</a> | <a href="https://arxiv.org/abs/2309.00986">Paper</a> | <a href="https://ms-agent-en.readthedocs.io">Docs</a>
+<a href="https://modelscope.cn/mcp/playground">MCP Playground</a> | <a href="https://arxiv.org/abs/2309.00986">Paper</a> | <a href="https://ms-agent-en.readthedocs.io">Documentation</a> | <a href="https://ms-agent.readthedocs.io/zh-cn">中文文档</a>
 <br>
 </p>
 
@@ -35,6 +35,7 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
 - **通用多智能体**：基于MCP的工具调用能力与智能体聊天。
 - **深度研究**：启用自主探索和复杂任务执行的高级能力。
 - **代码生成**：支持带有工件的代码生成任务。
+- **Agent Skills**：兼容Anthropic-Agent-Skills协议，实现智能体技能模块。
 - **轻量级且可扩展**：易于扩展和定制以适应各种应用。
 
 > 历史存档版本，请参考：https://github.com/modelscope/ms-agent/tree/0.8.0
@@ -45,8 +46,11 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
 
 ## 🎉 新闻
 
-* 🚀 2025.10.30：发布MS-Agent v1.4.0，包含以下更新：
+* 🚀 2025.11.07：发布MS-Agent v1.4.0，包含以下更新：
   - 🔥 新增 [**MS-Agent Skills**](projects/agent_skills/README.md), 基于 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议实现.
+  - 🔥 新增 [中文文档](https://ms-agent.readthedocs.io/zh-cn)和[英文文档](https://ms-agent-en.readthedocs.io/en)
+  - 🔥 支持沙箱框架 [ms-enclave](https://github.com/modelscope/ms-enclave)
+
 * 🚀 2025.9.22：发布MS-Agent v1.3.0，包含以下更新：
   - 🔥 支持[Code Scratch](projects/code_scratch/README.md)
   - 支持`Memory`用于构建具有长期和短期记忆的智能体
@@ -273,41 +277,9 @@ pip install ms-agent
 **使用示例**：
 > 该示例展示了如何配置和运行一个Agent Skill，基于p5.js的流场生成艺术代码。
 
-```python
-import os
-from ms_agent.agent import create_agent_skill
 
+参考代码： [Run Skills](projects/agent_skills/run.py)
 
-def main():
-    """
-    Main function to create and run an agent with skills.
-    """
-    work_dir: str = 'temp_workspace'
-    skills_dir: str = '/path/to/skills'   # Refer to `https://github.com/modelscope/ms-agent/tree/main/projects/agent_skills/skills`
-    model_name: str = 'qwen-max-latest'
-
-    agent = create_agent_skill(
-        skills=skills_dir,
-        model=model_name,
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv(
-            'OPENAI_BASE_URL',
-            'https://dashscope.aliyuncs.com/compatible-mode/v1'),
-        stream=True,
-        use_sandbox=True,  # Note: Make sure the `Docker Daemon` is running if use_sandbox=True
-        work_dir=work_dir,
-    )
-
-    user_query: str = 'Create generative art using p5.js with seeded randomness, flow fields, and particle systems, please fill in the details and provide the complete code based on the templates.'
-
-    response = agent.run(user_query)
-    print(f'\n\n** Agent skill results: {response}\n')
-
-
-if __name__ == '__main__':
-
-    main()
-```
 
 **运行结果**：
 
@@ -438,10 +410,11 @@ PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_
 1. 新闻收集智能体 [ms-agent/newspaper](https://www.modelscope.cn/models/ms-agent/newspaper/summary)
 
 
-## 展望
+## 未来计划
 
 我们致力于不断改进和扩展 MS-Agent 框架，提升大模型和智能体的能力边界。未来的计划包括：
 
+- [x] 支持[Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议，实现智能体技能模块，提升智能体在复杂任务上的表现。
 - [ ] 金融深度研究智能体 **FinResearch** - 专注于金融领域的深度研究和分析。
 - [ ] 多模态检索增强生成 **Multimodal Agentic Search** - 支持大规模多模态文档检索和图文检索结果生成。
 - [ ] 增强的 **Agent Skills** - 提供更多预定义的技能和工具，提升智能体技能边界，并支持多技能协作，完成复杂任务执行。
