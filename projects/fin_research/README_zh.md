@@ -71,7 +71,7 @@ cd ms-agent
 # Python 环境
 conda create -n fin_research python=3.11
 conda activate fin_research
-# 从 PyPI 安装（>=v1.4.1）
+# 从 PyPI 安装（>=v1.5.0）
 pip install 'ms-agent[research]'
 # 从源码安装
 pip install -r requirements/framework.txt

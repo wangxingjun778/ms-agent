@@ -49,7 +49,7 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 
 ## 🎉 News
 
-* 🚀 Nov 12, 2025: Release MS-Agent v1.4.1, which includes the following updates:
+* 🚀 Nov 12, 2025: Release MS-Agent v1.5.0, which includes the following updates:
   - 🔥 We present [FinResearch](projects/fin_research/README.md), a multi-agent workflow tailored for financial research
   - Support financial data collection via [Akshare](https://github.com/akfamily/akshare) and [Baostock](http://baostock.com/mainContent?file=home.md)
   - Support DagWorkflow for workflow orchestration
@@ -438,7 +438,7 @@ The MS-Agent FinResearch project is a multi-agent workflow tailored for financia
 
 > 💡 Tips:
 > 1. Before running the examples below, set the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables to access the required model APIs. To run the full workflow, also configure the search engine variables EXA_API_KEY (https://exa.ai) or SERPAPI_API_KEY (https://serpapi.com).
-> 2. FinResearch requires ms-agent version >= 1.4.1.
+> 2. FinResearch requires ms-agent version >= 1.5.0.
 
 **Usage**:
 
