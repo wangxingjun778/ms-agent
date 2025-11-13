@@ -27,6 +27,9 @@
 <a href="https://trendshift.io/repositories/323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/323" alt="modelscope%2Fms-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
+
+[**中文**](README_ZH.md)
+
 ## Introduction
 
 MS-Agent is a lightweight framework designed to empower agents with autonomous exploration capabilities. It provides a flexible and extensible architecture that allows developers to create agents capable of performing complex tasks, such as code generation, data analysis, and tool calling for general purposes with MCP (Model Calling Protocol) support.
