@@ -45,7 +45,9 @@ class ToolManager:
         if hasattr(config, 'tools') and hasattr(config.tools, 'split_task'):
             self.extra_tools.append(SplitTask(config))
         if hasattr(config, 'tools') and hasattr(config.tools, 'file_system'):
-            self.extra_tools.append(FileSystemTool(config))
+            self.extra_tools.append(
+                FileSystemTool(
+                    config, trust_remote_code=self.trust_remote_code))
         if hasattr(config, 'tools') and hasattr(config.tools, 'code_executor'):
             self.extra_tools.append(CodeExecutionTool(config))
         if hasattr(config, 'tools') and hasattr(config.tools,
