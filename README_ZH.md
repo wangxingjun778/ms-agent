@@ -58,6 +58,7 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
   - 支持基于[Akshare](https://github.com/akfamily/akshare)和[Baostock](http://baostock.com/mainContent?file=home.md)的金融数据获取工具
   - 支持以Dag形式编排工作流
   - 优化DeepResearch稳定性与效率
+  - 官方文档： [金融深度研究](https://ms-agent.readthedocs.io/zh-cn/latest/Projects/fin-research.html)
 
 * 🚀 2025.11.07：发布MS-Agent v1.4.0，包含以下更新：
   - 🔥 新增 [**MS-Agent Skills**](projects/agent_skills/README.md), 基于 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议实现.
