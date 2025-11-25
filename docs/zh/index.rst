@@ -30,5 +30,5 @@ MS-Agent DOCUMENTATION
    Projects/智能体技能.md
    Projects/深度研究.md
    Projects/代码生成.md
-   Projects/金融深度研究.md
+   金融深度研究 <fin-research>
    Projects/短视频生成.md
