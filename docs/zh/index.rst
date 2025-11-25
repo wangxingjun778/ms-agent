@@ -29,6 +29,5 @@ MS-Agent 官方文档
 
    Projects/agent-skills
    Projects/deep-research
-   Projects/code-scratch
    Projects/fin-research
    Projects/video-generation
