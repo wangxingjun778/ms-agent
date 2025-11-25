@@ -59,6 +59,8 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
   - 支持以Dag形式编排工作流
   - 优化DeepResearch稳定性与效率
   - 官方文档： [金融深度研究](https://ms-agent.readthedocs.io/zh-cn/latest/Projects/fin-research.html)
+  - 魔搭创空间DEMO: [FinResearchStudio](https://modelscope.cn/studios/ms-agent/FinResearch)
+  - 报告样例: [FinResearchExamples](https://www.modelscope.cn/models/ms-agent/fin_research_examples)
 
 * 🚀 2025.11.07：发布MS-Agent v1.4.0，包含以下更新：
   - 🔥 新增 [**MS-Agent Skills**](projects/agent_skills/README.md), 基于 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议实现.
