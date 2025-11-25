@@ -1,3 +1,9 @@
+---
+slug: agent-skills
+title: 智能体技能
+description: Ms-Agent 智能体技能：模块化封装领域知识，提升智能体在特定任务上的表现，完全兼容 Anthropic Agent Skills 协议。
+---
+
 # Agent Skills (智能体技能)
 
 

@@ -1,3 +1,9 @@
+---
+slug: tools
+title: 工具
+description: Ms-Agent 工具：支持多种内置工具和自定义工具扩展
+---
+
 # 工具
 
 ## 工具列表
@@ -151,7 +157,7 @@ ms-agent run --config xxx/xxx --mcp_server_file ./mcp.json
 
 ### 配置yaml文件
 
-yaml中可以在tools中添加额外工具。可以参考[配置与参数](./配置与参数.md#工具配置)
+yaml中可以在tools中添加额外工具。可以参考[配置与参数](./config#工具配置)
 
 ### 编写新的工具
 

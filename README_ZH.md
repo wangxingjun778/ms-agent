@@ -521,7 +521,7 @@ OPENAI_API_KEY=xxx-xxx T2I_API_KEY=ms-xxx-xxx MANIM_TEST_API_KEY=xxx-xxx ms-agen
 
 #### 3) 参考文档
 
-- [完整文档](./docs/zh/Projects/短视频生成.md)
+- [完整文档](./docs/zh/Projects/video-generation)
 
 <br>
 
