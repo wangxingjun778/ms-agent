@@ -324,7 +324,8 @@ class ComposeVideo(CodeAgent):
                 fg_clip = fg_clip.with_duration(duration)
                 current_video_clips.append(fg_clip)
             if self.config.use_subtitle:
-                if duration is not None and i < len(subtitle_paths) and subtitle_paths[i]:
+                if duration is not None and i < len(
+                        subtitle_paths) and subtitle_paths[i]:
                     segment_subs = subtitle_paths[i]
                     num_subs = len(segment_subs)
                     sub_duration = duration / num_subs
@@ -351,8 +352,7 @@ class ComposeVideo(CodeAgent):
                                 current_video_clips.append(subtitle_clip)
                             except Exception as e:
                                 logger.error(
-                                    f'Failed to load subtitle {sub_path}: {e}'
-                                )
+                                    f'Failed to load subtitle {sub_path}: {e}')
 
             # Add background as top layer (transparent PNG with decorative elements)
             if background_path and os.path.exists(background_path):
