@@ -324,26 +324,35 @@ class ComposeVideo(CodeAgent):
                 fg_clip = fg_clip.with_duration(duration)
                 current_video_clips.append(fg_clip)
             if self.config.use_subtitle:
-                if i < len(subtitle_paths
-                           ) and subtitle_paths[i] and os.path.exists(
-                               subtitle_paths[i]):
-                    subtitle_img = Image.open(subtitle_paths[i])
-                    subtitle_w, subtitle_h = subtitle_img.size
+                if duration is not None and i < len(subtitle_paths) and subtitle_paths[i]:
+                    segment_subs = subtitle_paths[i]
+                    num_subs = len(segment_subs)
+                    sub_duration = duration / num_subs
 
-                    # Validate subtitle dimensions
-                    if subtitle_w <= 0 or subtitle_h <= 0:
-                        logger.error(
-                            f'Invalid subtitle dimensions: {subtitle_w}x{subtitle_h} for {subtitle_paths[i]}'
-                        )
-                    else:
-                        subtitle_clip = mp.ImageClip(
-                            subtitle_paths[i], duration=duration)
-                        subtitle_clip = subtitle_clip.resized(
-                            (subtitle_w, subtitle_h))
-                        subtitle_y = 900
-                        subtitle_clip = subtitle_clip.with_position(
-                            ('center', subtitle_y))
-                        current_video_clips.append(subtitle_clip)
+                    for k, sub_path in enumerate(segment_subs):
+                        if os.path.exists(sub_path):
+                            try:
+                                subtitle_img = Image.open(sub_path)
+                                subtitle_w, subtitle_h = subtitle_img.size
+
+                                if subtitle_w <= 0 or subtitle_h <= 0:
+                                    logger.error(
+                                        f'Invalid subtitle dimensions: {subtitle_w}x{subtitle_h} for {sub_path}'
+                                    )
+                                    continue
+
+                                subtitle_clip = mp.ImageClip(
+                                    sub_path, duration=sub_duration)
+                                subtitle_y = 900
+                                subtitle_clip = subtitle_clip.with_position(
+                                    ('center', subtitle_y))
+                                subtitle_clip = subtitle_clip.with_start(
+                                    k * sub_duration)
+                                current_video_clips.append(subtitle_clip)
+                            except Exception as e:
+                                logger.error(
+                                    f'Failed to load subtitle {sub_path}: {e}'
+                                )
 
             # Add background as top layer (transparent PNG with decorative elements)
             if background_path and os.path.exists(background_path):
@@ -498,9 +507,19 @@ class ComposeVideo(CodeAgent):
                              f'Scene{i+1}.mov'))
             audio_paths.append(
                 os.path.join(self.tts_dir, f'segment_{i + 1}.mp3'))
-            subtitle_paths.append(
-                os.path.join(self.subtitle_dir,
-                             f'bilingual_subtitle_{i + 1}.png'))
+
+            segment_subtitles = []
+            j = 0
+            while True:
+                sub_path = os.path.join(self.subtitle_dir,
+                                        f'bilingual_subtitle_{i + 1}_{j}.png')
+                if os.path.exists(sub_path):
+                    segment_subtitles.append(sub_path)
+                    j += 1
+                else:
+                    break
+            subtitle_paths.append(segment_subtitles)
+
             video_paths.append(
                 os.path.join(self.videos_dir, f'video_{i + 1}.mp4'))
 
