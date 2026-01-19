@@ -22,22 +22,22 @@ echo "║               Intelligent Agent Platform                   ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Check for Python 3.10+
-PYTHON_CMD=""
-for py in python3.12 python3.11 python3.10; do
-    if command -v $py &> /dev/null; then
-        PYTHON_CMD=$py
-        break
-    fi
-done
-
-if [ -z "$PYTHON_CMD" ]; then
-    echo -e "${RED}Error: Python 3.10 or higher is required but not found.${NC}"
-    echo -e "${YELLOW}Please install Python 3.10+ and try again.${NC}"
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}Error: Python is not found.${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Using Python: $PYTHON_CMD ($(${PYTHON_CMD} --version))${NC}"
+PY_VERSION=$($PYTHON_CMD -c "import sys; print(sys.version_info[:2] >= (3, 10))")
+if [ "$PY_VERSION" != "True" ]; then
+    echo -e "${RED}Error: Python 3.10+ required.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Using Python: $PYTHON_CMD ($($PYTHON_CMD --version))${NC}"
 
 # Check for Node.js
 if ! command -v node &> /dev/null; then
@@ -45,15 +45,16 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-# Create virtual environment if not exists
-VENV_DIR="$SCRIPT_DIR/.venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${YELLOW}Creating Python virtual environment with ${PYTHON_CMD}...${NC}"
-    $PYTHON_CMD -m venv "$VENV_DIR"
+if [ -n "$VIRTUAL_ENV" ] || [ -n "$CONDA_PREFIX" ]; then
+    echo -e "${GREEN}Using existing environment: ${VIRTUAL_ENV:-$CONDA_PREFIX}${NC}"
+else
+    VENV_DIR="$SCRIPT_DIR/.venv"
+    if [ ! -d "$VENV_DIR" ]; then
+        echo -e "${YELLOW}Creating Python virtual environment with ${PYTHON_CMD}...${NC}"
+        $PYTHON_CMD -m venv "$VENV_DIR"
+    fi
+    source "$VENV_DIR/bin/activate"
 fi
-
-# Activate virtual environment
-source "$VENV_DIR/bin/activate"
 
 # Install Python dependencies
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
