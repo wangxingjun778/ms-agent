@@ -1,10 +1,15 @@
 import asyncio
 import math
+import os
 from typing import List, Tuple
 
 import faiss
 import numpy as np
 from ms_agent.utils.tokenizer_util import TokenizerUtil
+
+os.environ['OMP_NUM_THREADS'] = '1'  # noqa: E402
+os.environ['MKL_NUM_THREADS'] = '1'  # noqa: E402
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # noqa: E402
 
 
 class BM25Retriever:
@@ -265,9 +270,8 @@ class HybridRetriever:
         """
         query_vec = self._get_embeddings([query])
         faiss.normalize_L2(query_vec)
-        # Search all documents for global distribution stats
-        dense_dists, dense_indices = self.index.search(query_vec,
-                                                       len(self.corpus))
+        search_k: int = min(len(self.corpus), 500)
+        dense_dists, dense_indices = self.index.search(x=query_vec, k=search_k)
 
         dense_scores_map = {
             idx: float(score)
