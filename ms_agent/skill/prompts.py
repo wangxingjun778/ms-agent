@@ -116,3 +116,117 @@ Given the comprehensive context:\n\n{comprehensive_context}\n\n
 Provide a concise summary of the entire process, highlighting key actions taken, decisions made, and the final outcome achieved.
 Ensure the summary is clear and informative.
 """
+
+
+# ============================================================
+# AutoSkills Prompts - for automatic skill retrieval and DAG
+# ============================================================
+
+PROMPT_ANALYZE_QUERY_FOR_SKILLS = """You are a skill analyzer. Given a user query, identify what types of skills/capabilities are needed, or just chatting is sufficient.
+
+User Query: {query}
+
+Available Skills Overview:
+{skills_overview}
+
+Analyze the query and determine:
+1. Whether this query requires specific skills/capabilities to fulfill
+2. If skills are needed, what capabilities/functions are directly required
+3. What prerequisites or dependencies might be required
+
+Output in JSON format:
+{{
+    "needs_skills": true/false,
+    "intent_summary": "Brief description of user intent",
+    "skill_queries": ["query1", "query2", ...],
+    "chat_response": "Direct response if no skills needed, null otherwise",
+    "reasoning": "Brief explanation"
+}}
+
+Notes:
+- Set `needs_skills` to false if the query is casual chat, greeting, or can be answered directly without special skills.
+- If `needs_skills` is false, provide the `chat_response` with a helpful direct answer.
+- If `needs_skills` is true, `skill_queries` should contain search queries for finding relevant skills.
+"""
+
+PROMPT_EVALUATE_SKILLS_COMPLETENESS = """You are evaluating if the retrieved skills are sufficient to complete a user task.
+
+User Query: {query}
+Intent Summary: {intent_summary}
+
+Retrieved Skills:
+{retrieved_skills}
+
+Evaluate:
+1. Can these skills collectively fulfill the user's request?
+2. Are there any missing capabilities or dependencies?
+3. Is there any gap that needs additional skills?
+
+Output in JSON format:
+{{
+    "is_complete": true/false,
+    "missing_capabilities": ["capability1", ...],
+    "additional_queries": ["query1", ...],
+    "clarification_needed": null or "question to ask user if unable to proceed"
+}}
+"""
+
+PROMPT_BUILD_SKILLS_DAG = """You are building a dependency graph (DAG) for executing skills.
+
+User Query: {query}
+
+Selected Skills:
+{selected_skills}
+
+Build an execution DAG where:
+- Each skill is a node identified by skill_id
+- Edges represent dependencies (A -> B means A must complete before B)
+- Consider logical execution order and data dependencies
+
+Output in JSON format:
+{{
+    "dag": {{
+        "skill_id_1": ["dependent_skill_id_a", "dependent_skill_id_b"],
+        "skill_id_2": [],
+        ...
+    }},
+    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4", ...],
+    "reasoning": "Brief explanation of the dependency structure"
+}}
+
+Notes:
+    The `execution_order` can include parallel execution steps represented as lists.
+    The `execution_order` must respect the dependencies defined in the `dag`.
+"""
+
+PROMPT_DIRECT_SELECT_SKILLS = """You are a skill selector. Given a user query and all available skills, select the relevant skills and build an execution DAG.
+
+User Query: {query}
+
+All Available Skills:
+{all_skills}
+
+Tasks:
+1. Determine if this query needs skills or is just casual chat
+2. If skills are needed, select ALL relevant skills from the list above
+3. Build a dependency DAG for the selected skills
+
+Output in JSON format:
+{{
+    "needs_skills": true/false,
+    "chat_response": "Direct response if no skills needed, null otherwise",
+    "selected_skill_ids": ["skill_id_1", "skill_id_2", ...],
+    "dag": {{
+        "skill_id_1": ["dependent_skill_id_a", "dependent_skill_id_b"],
+        "skill_id_2": [],
+        ...
+    }},
+    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4", ...],
+    "reasoning": "Brief explanation of skill selection and dependencies"
+}}
+
+Notes:
+- Set `needs_skills` to false if the query is casual chat or can be answered directly.
+- Only include skill_ids that exist in the available skills list.
+- The `execution_order` can include parallel execution steps represented as lists.
+"""
