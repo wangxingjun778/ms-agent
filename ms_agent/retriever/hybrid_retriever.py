@@ -7,9 +7,9 @@ import faiss
 import numpy as np
 from ms_agent.utils.tokenizer_util import TokenizerUtil
 
-os.environ['OMP_NUM_THREADS'] = '1'  # noqa: E402
-os.environ['MKL_NUM_THREADS'] = '1'  # noqa: E402
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # noqa: E402
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 
 class BM25Retriever:
