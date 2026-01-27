@@ -7,3 +7,4 @@ numpy
 omegaconf
 openai
 pillow
+sentence-transformers
