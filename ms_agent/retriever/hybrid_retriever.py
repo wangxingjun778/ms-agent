@@ -1,3 +1,4 @@
+import asyncio
 import math
 from typing import List, Tuple
 
@@ -232,6 +233,125 @@ class HybridRetriever:
         """Map Z-score to [0, 1]."""
         return 1 / (1 + math.exp(-x))
 
+    def _validate_corpus(self, corpus: List[str] = None):
+        """
+        Validate and initialize corpus if needed.
+
+        Args:
+            corpus: Optional new corpus to re-initialize the retriever.
+
+        Raises:
+            ValueError: If corpus is empty or index not built.
+        """
+        self.corpus = corpus or self.corpus
+        if self.corpus:
+            self._init_corpus(corpus=corpus)
+        else:
+            raise ValueError(
+                'Corpus is empty. Please provide a valid corpus for searching.'
+            )
+        if self.index is None:
+            raise ValueError('Index not built.')
+
+    def _compute_dense_scores(self, query: str) -> List[float]:
+        """
+        Compute dense retrieval scores using FAISS.
+
+        Args:
+            query: The search query string.
+
+        Returns:
+            List of raw dense scores for all documents in corpus.
+        """
+        query_vec = self._get_embeddings([query])
+        faiss.normalize_L2(query_vec)
+        # Search all documents for global distribution stats
+        dense_dists, dense_indices = self.index.search(query_vec,
+                                                       len(self.corpus))
+
+        dense_scores_map = {
+            idx: float(score)
+            for idx, score in zip(dense_indices[0], dense_dists[0])
+            if idx != -1
+        }
+        return [dense_scores_map.get(i, 0.0) for i in range(len(self.corpus))]
+
+    def _compute_sparse_scores(self, query: str) -> List[float]:
+        """
+        Compute sparse retrieval scores using BM25.
+
+        Args:
+            query: The search query string.
+
+        Returns:
+            List of raw BM25 scores for all documents in corpus.
+        """
+        return self.bm25.get_scores(self.tokenizer_util.segment(query))
+
+    def _fuse_and_normalize_scores(
+        self,
+        raw_dense_scores: List[float],
+        raw_bm25_scores: List[float],
+        alpha: float,
+    ) -> List[dict]:
+        """
+        Normalize scores using Z-score, fuse with weighted sum, and map to [0, 1].
+
+        Args:
+            raw_dense_scores: Raw dense retrieval scores.
+            raw_bm25_scores: Raw BM25 scores.
+            alpha: Weight for dense component. [0.0, 1.0].
+
+        Returns:
+            List of dicts with 'text' and 'score' keys, sorted by score descending.
+        """
+        # Normalization (Z-score)
+        norm_dense = self._z_score_normalization(raw_dense_scores)
+        norm_bm25 = self._z_score_normalization(raw_bm25_scores)
+
+        # Weighted Fusion & Range Normalization
+        candidates = []
+        for i in range(len(self.corpus)):
+            # Weighted sum of Z-scores
+            z_fused = (alpha * norm_dense[i]) + ((1.0 - alpha) * norm_bm25[i])
+            # Normalize to [0, 1] using Sigmoid
+            final_score = self._sigmoid(z_fused)
+            candidates.append({'text': self.corpus[i], 'score': final_score})
+
+        # Sort descending
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+        return candidates
+
+    def _filter_and_rank(
+        self,
+        candidates: List[dict],
+        top_k: int,
+        min_score: float,
+    ) -> List[Tuple[str, float]]:
+        """
+        Filter candidates by minimum score and return top_k results.
+
+        Args:
+            candidates: List of candidate dicts with 'text' and 'score'.
+            top_k: Maximum number of results to return.
+            min_score: Minimum score threshold for filtering.
+
+        Returns:
+            List of (document, score) tuples.
+        """
+        total_score_sum = sum(c['score'] for c in candidates)
+        if total_score_sum == 0:
+            return []
+
+        final_results = []
+        for item in candidates:
+            current_score: float = item['score']
+            if current_score < min_score:
+                continue
+            final_results.append((item['text'], current_score))
+
+        return final_results[:top_k]
+
     def search(
         self,
         query: str,
@@ -257,63 +377,58 @@ class HybridRetriever:
         Returns:
             List of (document, combined_score) tuples, normalized to [0, 1].
         """
-        self.corpus = corpus or self.corpus
-        if self.corpus:
-            self._init_corpus(corpus=corpus)
-        else:
-            raise ValueError(
-                'Corpus is empty. Please provide a valid corpus for searching.'
-            )
-        if self.index is None:
-            raise ValueError('Index not built.')
+        # Validate and initialize corpus
+        self._validate_corpus(corpus)
 
-        # --- 1. Dense Search (FAISS) ---
-        query_vec = self._get_embeddings([query])
-        faiss.normalize_L2(query_vec)
-        # Search all documents for global distribution stats
-        dense_dists, dense_indices = self.index.search(query_vec,
-                                                       len(self.corpus))
+        # Compute dense and sparse scores
+        raw_dense_scores = self._compute_dense_scores(query)
+        raw_bm25_scores = self._compute_sparse_scores(query)
 
-        dense_scores_map = {
-            idx: float(score)
-            for idx, score in zip(dense_indices[0], dense_dists[0])
-            if idx != -1
-        }
-        raw_dense_scores = [
-            dense_scores_map.get(i, 0.0) for i in range(len(self.corpus))
-        ]
+        # Fuse and normalize scores
+        candidates = self._fuse_and_normalize_scores(raw_dense_scores,
+                                                     raw_bm25_scores, alpha)
 
-        # --- 2. Sparse Search (BM25) ---
-        raw_bm25_scores = self.bm25.get_scores(
-            self.tokenizer_util.segment(query))
+        # Filter and rank results
+        return self._filter_and_rank(candidates, top_k, min_score)
 
-        # --- 3. Normalization (Z-score) ---
-        norm_dense = self._z_score_normalization(raw_dense_scores)
-        norm_bm25 = self._z_score_normalization(raw_bm25_scores)
+    async def async_search(
+        self,
+        query: str,
+        corpus: List[str] = None,
+        top_k: int = 3,
+        min_score: float = 0.7,
+        alpha: float = 0.7,
+    ) -> List[Tuple[str, float]]:
+        """
+        Perform async hybrid search (Dense + Sparse) with Z-score normalization and weighted fusion.
 
-        # --- 4. Weighted Fusion & Range Normalization ---
-        candidates = []
-        for i in range(len(self.corpus)):
-            # Weighted sum of Z-scores
-            z_fused = (alpha * norm_dense[i]) + ((1.0 - alpha) * norm_bm25[i])
-            # Normalize to [0, 1] using Sigmoid
-            final_score = self._sigmoid(z_fused)
-            candidates.append({'text': self.corpus[i], 'score': final_score})
+        Args:
+            query: The search query string.
+            top_k: Number of results to return (hard limit).
+            alpha: Weight for dense (semantic) component. [0.0, 1.0].
+                   - alpha > 0.5 favors semantic meaning.
+                   - alpha < 0.5 favors BM25 lexical matching.
+            min_score: Minimum score threshold for filtering. [0.0, 1.0].
+                If the num of results with prob >= min_prob is less than top_k, returns all those results.
+                Otherwise, returns top_k results.
+            corpus: Optional new corpus to re-initialize the retriever.
 
-        # Sort descending
-        candidates.sort(key=lambda x: x['score'], reverse=True)
+        Returns:
+            List of (document, combined_score) tuples, normalized to [0, 1].
+        """
+        # Validate and initialize corpus
+        self._validate_corpus(corpus)
 
-        total_score_sum = sum(c['score'] for c in candidates)
-        if total_score_sum == 0:
-            return []
+        # Compute dense and sparse scores concurrently
+        dense_task = asyncio.to_thread(self._compute_dense_scores, query)
+        sparse_task = asyncio.to_thread(self._compute_sparse_scores, query)
 
-        final_results = []
+        raw_dense_scores, raw_bm25_scores = await asyncio.gather(
+            dense_task, sparse_task)
 
-        for item in candidates:
-            current_score: float = item['score']
-            if current_score < min_score:
-                continue
+        # Fuse and normalize scores
+        candidates = self._fuse_and_normalize_scores(raw_dense_scores,
+                                                     raw_bm25_scores, alpha)
 
-            final_results.append((item['text'], current_score))
-
-        return final_results[:top_k]
+        # Filter and rank results
+        return self._filter_and_rank(candidates, top_k, min_score)
