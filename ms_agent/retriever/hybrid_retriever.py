@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+import threading
 from typing import List, Tuple
 
 import faiss
@@ -138,6 +139,9 @@ class HybridRetriever:
         """
         self.corpus = corpus
 
+        # Lock for corpus re-initialization (prevent concurrent modification)
+        self._corpus_lock = threading.Lock()
+
         # Initialize Tokenizer Utility
         print(f'Loading Tokenizer: {tokenizer_model_id}...')
         self.tokenizer_util = TokenizerUtil(model_id=tokenizer_model_id)
@@ -248,15 +252,16 @@ class HybridRetriever:
         Raises:
             ValueError: If corpus is empty or index not built.
         """
-        self.corpus = corpus or self.corpus
-        if self.corpus:
-            self._init_corpus(corpus=corpus)
-        else:
-            raise ValueError(
-                'Corpus is empty. Please provide a valid corpus for searching.'
-            )
-        if self.index is None:
-            raise ValueError('Index not built.')
+        with self._corpus_lock:
+            # Only re-initialize if new corpus is provided
+            if corpus is not None and corpus != self.corpus:
+                self._init_corpus(corpus=corpus)
+            elif self.corpus is None:
+                raise ValueError(
+                    'Corpus is empty. Please provide a valid corpus for searching.'
+                )
+            if self.index is None:
+                raise ValueError('Index not built.')
 
     def _compute_dense_scores(self, query: str) -> List[float]:
         """
