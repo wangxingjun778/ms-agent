@@ -2,16 +2,33 @@
 """
 API endpoints for the MS-Agent Web UI
 """
+import mimetypes
 import os
-import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 # Import shared instances
 from shared import config_manager, project_discovery, session_manager
 
 router = APIRouter()
+
+
+def get_backend_root() -> Path:
+    return Path(__file__).resolve().parents[
+        1]  # equal to dirname(dirname(__file__))
+
+
+def get_session_root(session_id: str) -> Path:
+    if not session_id or not str(session_id).strip():
+        raise HTTPException(status_code=400, detail='session_id is required')
+
+    backend_root = get_backend_root()
+    work_dir = (backend_root / 'work_dir' / str(session_id)).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return work_dir
 
 
 # Request/Response Models
@@ -67,6 +84,9 @@ class GlobalConfig(BaseModel):
 @router.get('/projects', response_model=List[ProjectInfo])
 async def list_projects():
     """List all available projects"""
+    print(
+        f'project_discovery.discover_projects(): {project_discovery.discover_projects()}'
+    )
     return project_discovery.discover_projects()
 
 
@@ -240,22 +260,70 @@ async def list_available_models():
 class FileReadRequest(BaseModel):
     path: str
     session_id: Optional[str] = None
+    root_dir: Optional[str] = None
 
 
 @router.get('/files/list')
-async def list_output_files():
-    """List all files in the output directory as a tree structure"""
-    base_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    output_dir = os.path.join(base_dir, 'ms-agent', 'output')
-
-    # Folders to exclude
+async def list_output_files(
+        output_dir: Optional[str] = Query(default='output'),
+        session_id: Optional[str] = Query(default=None),
+        root_dir: Optional[str] = Query(default=None),
+):
+    """List all files under root_dir as a tree structure.
+    root_dir: optional. If not provided, defaults to ms-agent/output.
+              Also supports 'projects' or 'projects/xxx' etc.
+    """
+    # Excluded folders
     exclude_dirs = {
         'node_modules', '__pycache__', '.git', '.venv', 'venv', 'dist', 'build'
     }
 
+    # Base directories (same way as read_file_content)
+    base_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
+
+    if session_id:
+
+        session_root = get_session_root(session_id)
+        resolved_root = (session_root / '').resolve()
+
+    elif not root_dir or root_dir.strip() == '':
+        resolved_root = output_dir
+    else:
+        root_dir = root_dir.strip()
+
+        # If absolute, use as-is (but still must be within allowed_roots)
+        if os.path.isabs(root_dir):
+            resolved_root = root_dir
+        else:
+            # Try relative to output first, then projects
+            cand1 = os.path.join(output_dir, root_dir)
+            cand2 = os.path.join(projects_dir, root_dir)
+
+            if os.path.exists(cand1):
+                resolved_root = cand1
+            elif os.path.exists(cand2):
+                resolved_root = cand2
+            else:
+                # If user passes "output" or "projects" explicitly (common case)
+                # allow interpreting it as those roots even if not exist check above
+                if root_dir in ('output', 'output/'):
+                    resolved_root = output_dir
+                elif root_dir in ('projects', 'projects/'):
+                    resolved_root = projects_dir
+                else:
+                    # fall back to output + root_dir (but it likely doesn't exist)
+                    resolved_root = cand1
+
+    resolved_root = os.path.normpath(os.path.abspath(resolved_root))
+
+    # Warning: Web UI is for local-only convenience (frontend/backend assumed localhost).
+    # For production, enforce strict backend file-access validation and authorization
+    # to prevent arbitrary path read/write (e.g., path traversal).
+    # TODO: Security check: ensure `resolved_root` is within configured allowed roots.
+
     def build_tree(dir_path: str) -> dict:
-        """Recursively build a tree structure"""
         result = {'folders': {}, 'files': []}
 
         if not os.path.exists(dir_path):
@@ -267,77 +335,125 @@ async def list_output_files():
             return result
 
         for item in sorted(items):
-            # Skip hidden files/folders and excluded directories
             if item.startswith('.') or item in exclude_dirs:
                 continue
 
             full_path = os.path.join(dir_path, item)
 
             if os.path.isdir(full_path):
-                # Recursively build subtree
                 subtree = build_tree(full_path)
-                # Only include folder if it has content
                 if subtree['folders'] or subtree['files']:
                     result['folders'][item] = subtree
             else:
+                # Return RELATIVE path to resolved_root (better for frontend + read API)
+                rel_path = os.path.relpath(full_path, resolved_root)
+
                 result['files'].append({
                     'name': item,
-                    'path': full_path,
+                    'path': rel_path,  # <-- relative path
+                    'abs_path':
+                    full_path,  # optional: if you still want absolute for debugging
                     'size': os.path.getsize(full_path),
                     'modified': os.path.getmtime(full_path)
                 })
 
-        # Sort files by modification time (newest first)
         result['files'].sort(key=lambda x: x['modified'], reverse=True)
-
         return result
 
-    tree = build_tree(output_dir)
-    return {'tree': tree, 'output_dir': output_dir}
+    print('resolved_root =', resolved_root)
+    tree = build_tree(resolved_root)
+    return {'tree': tree, 'root_dir': resolved_root}
 
 
-@router.post('/files/read')
-async def read_file_content(request: FileReadRequest):
-    """Read content of a generated file"""
-    file_path = request.path
-
-    # Get base directories for security check
+def get_allowed_roots():
     base_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     output_dir = os.path.join(base_dir, 'ms-agent', 'output')
     projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
+    return base_dir, os.path.normpath(output_dir), os.path.normpath(
+        projects_dir)
 
-    # Resolve the file path
-    if not os.path.isabs(file_path):
-        # Try output dir first
-        full_path = os.path.join(output_dir, file_path)
-        if not os.path.exists(full_path):
-            # Try projects dir
-            full_path = os.path.join(projects_dir, file_path)
+
+def resolve_root_dir(root_dir: Optional[str]) -> str:
+    """
+    Resolve optional root_dir to an absolute normalized path within allowed roots.
+    Default: output_dir
+    Supports:
+      - None/"" => output_dir
+      - "output", "projects", "projects/xxx"
+      - absolute path (must still be under allowed roots)
+    """
+    _, output_dir, projects_dir = get_allowed_roots()
+
+    if not root_dir or root_dir.strip() == '':
+        resolved = output_dir
     else:
-        full_path = file_path
+        rd = root_dir.strip()
 
-    # Normalize path
-    full_path = os.path.normpath(full_path)
+        if os.path.isabs(rd):
+            resolved = rd
+        else:
+            # Allow explicit "output"/"projects"
+            if rd in ('output', 'output/'):
+                resolved = output_dir
+            elif rd in ('projects', 'projects/'):
+                resolved = projects_dir
+            else:
+                cand1 = os.path.join(output_dir, rd)
+                cand2 = os.path.join(projects_dir, rd)
+                # choose existing one if possible, otherwise default to cand1
+                resolved = cand1 if os.path.exists(cand1) else (
+                    cand2 if os.path.exists(cand2) else cand1)
 
-    # Security check: ensure file is within allowed directories
-    allowed_dirs = [output_dir, projects_dir]
-    is_allowed = any(
-        full_path.startswith(os.path.normpath(d)) for d in allowed_dirs)
+    resolved = os.path.normpath(os.path.abspath(resolved))
 
-    if not is_allowed:
-        raise HTTPException(
-            status_code=403,
-            detail='Access denied: file outside allowed directories')
+    # Warning: Web UI is for local-only convenience (frontend/backend assumed localhost).
+    # For production, enforce strict backend file-access validation and authorization
+    # to prevent arbitrary path read/write (e.g., path traversal).
+    # TODO: Security check: ensure `resolved` is within configured allowed roots.
+
+    return resolved
+
+
+def resolve_file_path(root_dir_abs: str, file_path: str) -> str:
+    """
+    Resolve file_path against root_dir_abs.
+    - if file_path is absolute, require it's within root_dir_abs
+    - if relative, join(root_dir_abs, file_path)
+    """
+    root_dir_abs = os.path.normpath(os.path.abspath(root_dir_abs))
+
+    if os.path.isabs(file_path):
+        full_path = os.path.normpath(os.path.abspath(file_path))
+    else:
+        full_path = os.path.normpath(
+            os.path.abspath(os.path.join(root_dir_abs, file_path)))
+
+    # Warning: Web UI is for local-only convenience (frontend/backend assumed localhost).
+    # For production, enforce strict backend file-access validation and authorization
+    # to prevent arbitrary path read/write (e.g., path traversal).
+    # TODO: Security check: ensure `full_path` is within configured allowed roots.
+
+    return full_path
+
+
+@router.post('/files/read')
+async def read_file_content(request: FileReadRequest):
+    if request.session_id:
+        session_root = get_session_root(request.session_id)
+        root_abs = os.path.normpath(os.path.abspath(str(session_root)))
+    else:
+        root_abs = resolve_root_dir(request.root_dir)
+    full_path = resolve_file_path(root_abs, request.path)
 
     if not os.path.exists(full_path):
         raise HTTPException(
-            status_code=404, detail=f'File not found: {file_path}')
+            status_code=404, detail=f'File not found: {full_path}')
 
     if not os.path.isfile(full_path):
-        raise HTTPException(status_code=400, detail='Path is not a file')
-
-    # Check file size (limit to 1MB)
+        raise HTTPException(
+            status_code=400, detail=f'Path {full_path} is not a file')
+    # limit 1MB
     file_size = os.path.getsize(full_path)
     if file_size > 1024 * 1024:
         raise HTTPException(status_code=400, detail='File too large (max 1MB)')
@@ -346,7 +462,6 @@ async def read_file_content(request: FileReadRequest):
         with open(full_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Detect language from extension
         ext = os.path.splitext(full_path)[1].lower()
         lang_map = {
             '.py': 'python',
@@ -368,9 +483,14 @@ async def read_file_content(request: FileReadRequest):
         }
         language = lang_map.get(ext, 'text')
 
+        # Return a relative path (relative to root_dir) for consistent handling on the frontend.
+        rel_path = os.path.relpath(full_path, root_abs)
+
         return {
             'content': content,
-            'path': full_path,
+            'path': rel_path,
+            'abs_path': full_path,
+            'root_dir': root_abs,
             'filename': os.path.basename(full_path),
             'language': language,
             'size': file_size
@@ -380,3 +500,56 @@ async def read_file_content(request: FileReadRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f'Error reading file: {str(e)}')
+
+
+def resolve_and_check_path(file_path: str) -> str:
+    base_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    output_dir = os.path.join(base_dir, 'ms-agent', 'output')
+    projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
+
+    if not os.path.isabs(file_path):
+        full_path = os.path.join(output_dir, file_path)
+        if not os.path.exists(full_path):
+            full_path = os.path.join(projects_dir, file_path)
+    else:
+        full_path = file_path
+
+    full_path = os.path.normpath(full_path)
+
+    # Warning: Web UI is for local-only convenience (frontend/backend assumed localhost).
+    # For production, enforce strict backend file-access validation and authorization
+    # to prevent arbitrary path read/write (e.g., path traversal).
+    # TODO: Security check: ensure `full_path` is within configured allowed roots.
+
+    if not os.path.exists(full_path):
+        raise HTTPException(
+            status_code=404, detail=f'File not found: {full_path}')
+    if not os.path.isfile(full_path):
+        raise HTTPException(
+            status_code=400, detail=f'Path {full_path} is not a file')
+
+    return full_path
+
+
+@router.get('/files/stream')
+async def stream_file(path: str,
+                      session_id: Optional[str] = Query(default=None)):
+    if session_id:
+        session_root = get_session_root(session_id)
+        root_abs = str(session_root.resolve())
+        full_path = resolve_file_path(root_abs, path)
+    else:
+        full_path = resolve_and_check_path(path)
+
+    media_type, _ = mimetypes.guess_type(full_path)
+    media_type = media_type or 'application/octet-stream'
+    return FileResponse(
+        full_path,
+        media_type=media_type,
+        filename=os.path.basename(full_path),
+        headers={
+            'Content-Disposition':
+            f'inline; filename="{os.path.basename(full_path)}"'
+        },
+    )
