@@ -149,26 +149,27 @@ Notes:
 - If `needs_skills` is true, `skill_queries` should contain search queries for finding relevant skills.
 """
 
-PROMPT_EVALUATE_SKILLS_COMPLETENESS = """You are evaluating if the retrieved skills are sufficient to complete a user task.
+PROMPT_QUICK_FILTER_SKILLS = """Quickly filter candidate skills based on their name and description.
 
 User Query: {query}
-Intent Summary: {intent_summary}
 
-Retrieved Skills:
-{retrieved_skills}
+Candidate Skills:
+{candidate_skills}
 
-Evaluate:
-1. Can these skills collectively fulfill the user's request?
-2. Are there any missing capabilities or dependencies?
-3. Is there any gap that needs additional skills?
+For each skill, determine if it's POTENTIALLY relevant to the user's query based on:
+1. Does the skill name suggest it can help with the task?
+2. Does the skill description indicate capabilities matching the user's needs?
 
 Output in JSON format:
 {{
-    "is_complete": true/false,
-    "missing_capabilities": ["capability1", ...],
-    "additional_queries": ["query1", ...],
-    "clarification_needed": null or "question to ask user if unable to proceed"
+    "filtered_skill_ids": ["skill_id_1", "skill_id_2", ...],
+    "reasoning": "Brief explanation of filtering"
 }}
+
+Notes:
+- Only include skills that are POTENTIALLY useful for the task.
+- This is a quick filter - when in doubt, INCLUDE the skill for further analysis.
+- Focus on the main task output format/type matching (e.g., PDF generation needs PDF skill).
 """
 
 PROMPT_BUILD_SKILLS_DAG = """You are building a dependency graph (DAG) for executing skills.
@@ -240,7 +241,7 @@ Notes:
 # Progressive Skill Analysis Prompts
 # ============================================================
 
-PROMPT_VALIDATE_SKILL_RELEVANCE = """You are validating if a skill is truly necessary for the user's query.
+PROMPT_VALIDATE_SKILL_RELEVANCE = """You are an expert at evaluating whether a skill can ACTUALLY EXECUTE and COMPLETE a user's task.
 
 User Query: {query}
 
@@ -249,32 +250,58 @@ Skill Being Evaluated:
 - Name: {skill_name}
 - Description: {skill_description}
 
-Skill Content Summary:
+Skill Content (SKILL.md):
 {skill_content}
 
-Other Selected Skills in DAG:
+Available Scripts: {scripts_list}
+Available Resources: {resources_list}
+
+Other Candidate Skills:
 {other_skills}
 
-Evaluation Criteria:
-1. Does this skill directly contribute to fulfilling the user's query?
-2. Is this skill's functionality already covered by other selected skills?
-3. Is this skill redundant or unnecessary for the specific task?
-4. Does this skill match the user's actual intent?
+**CRITICAL EVALUATION CRITERIA:**
+
+1. **Capability Match (Most Important):**
+   - Can this skill ACTUALLY PRODUCE the output the user wants?
+   - Does it have the necessary scripts/tools to complete the task?
+   - Example: A "theme-factory" skill that only applies styles CANNOT generate PDF files.
+   - Example: A "design" skill without PDF export CANNOT create PDF reports.
+
+2. **Output Format Match:**
+   - If user requests PDF, does this skill generate PDF?
+   - If user requests report, does this skill create reports with content?
+   - Don't select skills that only do PART of the task (e.g., styling without generation).
+
+3. **Redundancy Check:**
+   - Is there another skill that does the SAME thing better?
+   - Don't keep multiple skills that serve the same purpose.
+
+4. **Task Completeness:**
+   - Can this skill INDEPENDENTLY complete the user's request?
+   - Or does it require capabilities it doesn't have?
 
 Output in JSON format:
 {{
+    "can_execute_task": true/false,
+    "capability_analysis": {{
+        "required_capabilities": ["what the user needs"],
+        "skill_capabilities": ["what this skill can do"],
+        "missing_capabilities": ["what this skill lacks"]
+    }},
     "is_relevant": true/false,
     "is_redundant": true/false,
-    "redundant_with": "skill_id that provides similar functionality (if redundant)",
+    "redundant_with": "skill_id (if redundant)",
     "relevance_score": 0.0-1.0,
-    "reason": "Brief explanation of the evaluation",
-    "recommendation": "keep|remove|replace_with_skill_id"
+    "reason": "Detailed explanation",
+    "recommendation": "keep|remove|replace_with_skill_id",
+    "better_alternative": "skill_id if another skill is more suitable"
 }}
 
-Notes:
-- Set `is_relevant` to false if the skill doesn't directly help with the query.
-- Set `is_redundant` to true if another skill already covers this functionality.
-- A skill should be removed if relevance_score < 0.5 or if it's redundant.
+**IMPORTANT:**
+- Set `can_execute_task` to false if the skill CANNOT produce the requested output.
+- A "styling" or "theming" skill cannot generate content or create files from scratch.
+- Prefer skills that can INDEPENDENTLY complete the task over partial solutions.
+- If the skill only does decoration/styling but user needs generation, mark as NOT relevant.
 """
 
 
@@ -374,6 +401,13 @@ Loaded References:
 Loaded Resources:
 {resources_content}
 
+**IMPORTANT Environment Variables:**
+- `SKILL_OUTPUT_DIR`: Directory where ALL output files MUST be saved (e.g., PDFs, images, data files)
+- `SKILL_INPUT_DIR`: Directory containing input files
+- `SKILL_DIR`: The skill's directory (for accessing resources like fonts, templates)
+- `SKILL_LOGS_DIR`: Directory for logs and intermediate files
+- `SKILL_ARTIFACTS_DIR`: Directory for artifacts and temporary files
+
 Generate the specific execution command(s) needed.
 
 Output in JSON format:
@@ -392,4 +426,10 @@ Output in JSON format:
     ],
     "expected_output": "Description of expected output"
 }}
+
+**CRITICAL OUTPUT RULE:**
+- ALL generated files (PDFs, images, reports, etc.) MUST be saved to `os.environ['SKILL_OUTPUT_DIR']`
+- Use `os.path.join(os.environ['SKILL_OUTPUT_DIR'], 'filename.pdf')` for output paths
+- NEVER save output files to the current working directory or skill directory
+- The skill directory should be READ-ONLY for resources, not for output
 """

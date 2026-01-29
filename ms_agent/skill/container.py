@@ -391,9 +391,13 @@ class SkillContainer:
         self.input_dir = self.workspace_dir / 'inputs'
         self.output_dir = self.workspace_dir / 'outputs'
         self.scripts_dir = self.workspace_dir / 'scripts'
+        self.logs_dir = self.workspace_dir / 'logs'
+        self.artifacts_dir = self.workspace_dir / 'artifacts'
         self.input_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
         self.scripts_dir.mkdir(exist_ok=True)
+        self.logs_dir.mkdir(exist_ok=True)
+        self.artifacts_dir.mkdir(exist_ok=True)
 
         # Sandbox instance (lazy initialization)
         self._sandbox = None
@@ -713,8 +717,14 @@ class SkillContainer:
             cmd = [self._get_python_executable(), str(script_file)]
             cmd.extend([str(arg) for arg in input_spec.args])
 
+            # Use working_dir from input_spec for proper resource access
+            cwd = input_spec.working_dir if input_spec.working_dir else None
+
             stdout, stderr, exit_code = self._local_run_subprocess(
-                cmd, env=input_spec.env_vars, stdin_input=input_spec.stdin)
+                cmd,
+                env=input_spec.env_vars,
+                cwd=cwd,
+                stdin_input=input_spec.stdin)
 
             # Only cleanup on success, keep script for debugging on failure
             if exit_code == 0 and script_file.exists():
@@ -757,8 +767,14 @@ class SkillContainer:
                                    + [command]) if env_cmds else command
             cmd = shell_exec + [full_cmd]
 
+        # Use working_dir from input_spec for proper resource access
+        cwd = input_spec.working_dir if input_spec.working_dir else None
+
         return self._local_run_subprocess(
-            cmd, env=input_spec.env_vars, stdin_input=input_spec.stdin)
+            cmd,
+            env=input_spec.env_vars,
+            cwd=cwd,
+            stdin_input=input_spec.stdin)
 
     async def _local_execute_javascript(
             self, js_code: str,
@@ -787,8 +803,14 @@ class SkillContainer:
             cmd = [self._get_node_executable(), str(script_file)]
             cmd.extend([str(arg) for arg in input_spec.args])
 
+            # Use working_dir from input_spec for proper resource access
+            cwd = input_spec.working_dir if input_spec.working_dir else None
+
             return self._local_run_subprocess(
-                cmd, env=input_spec.env_vars, stdin_input=input_spec.stdin)
+                cmd,
+                env=input_spec.env_vars,
+                cwd=cwd,
+                stdin_input=input_spec.stdin)
         finally:
             # Cleanup temp script
             if script_file.exists():
@@ -803,7 +825,37 @@ class SkillContainer:
             '# Setup environment for local execution',
             f"os.environ['SKILL_INPUT_DIR'] = {repr(str(self.input_dir))}",
             f"os.environ['SKILL_OUTPUT_DIR'] = {repr(str(self.output_dir))}",
+            f"os.environ['SKILL_LOGS_DIR'] = {repr(str(self.logs_dir))}",
+            f"os.environ['SKILL_ARTIFACTS_DIR'] = {repr(str(self.artifacts_dir))}",
+            '',
+            '# Helper functions for I/O paths',
+            'def get_output_path(filename):',
+            '    """Get the full path for an output file. ALL outputs should use this."""',
+            "    return os.path.join(os.environ['SKILL_OUTPUT_DIR'], filename)",
+            '',
+            'def get_input_path(filename):',
+            '    """Get the full path for an input file."""',
+            "    return os.path.join(os.environ['SKILL_INPUT_DIR'], filename)",
+            '',
+            f'SKILL_OUTPUT_DIR = {repr(str(self.output_dir))}',
+            f'SKILL_INPUT_DIR = {repr(str(self.input_dir))}',
+            f'SKILL_LOGS_DIR = {repr(str(self.logs_dir))}',
+            f'SKILL_ARTIFACTS_DIR = {repr(str(self.artifacts_dir))}',
         ]
+
+        # Add working directory to sys.path for imports and change to it
+        if input_spec.working_dir:
+            work_dir = str(input_spec.working_dir)
+            lines.extend([
+                '',
+                '# Setup working directory for resource access (READ-ONLY for resources)',
+                f'_skill_dir = {repr(work_dir)}',
+                "os.environ['SKILL_DIR'] = _skill_dir",
+                'SKILL_DIR = _skill_dir',
+                'if _skill_dir not in sys.path:',
+                '    sys.path.insert(0, _skill_dir)',
+                'os.chdir(_skill_dir)',
+            ])
 
         # Add custom env vars
         for key, value in input_spec.env_vars.items():
@@ -1065,6 +1117,8 @@ class SkillContainer:
     def _generate_env_setup(self, input_spec: ExecutionInput,
                             sandbox_files: Dict[str, str]) -> str:
         """Generate Python code to setup environment variables and paths."""
+        sandbox_logs_dir = f'{self.SANDBOX_ROOT}/logs'
+        sandbox_artifacts_dir = f'{self.SANDBOX_ROOT}/artifacts'
         lines = [
             'import os',
             'import sys',
@@ -1072,6 +1126,22 @@ class SkillContainer:
             '# Setup environment',
             f"os.environ['SKILL_INPUT_DIR'] = '{self.SANDBOX_INPUT_DIR}'",
             f"os.environ['SKILL_OUTPUT_DIR'] = '{self.SANDBOX_OUTPUT_DIR}'",
+            f"os.environ['SKILL_LOGS_DIR'] = '{sandbox_logs_dir}'",
+            f"os.environ['SKILL_ARTIFACTS_DIR'] = '{sandbox_artifacts_dir}'",
+            '',
+            '# Helper functions for I/O paths',
+            'def get_output_path(filename):',
+            '    """Get the full path for an output file. ALL outputs should use this."""',
+            "    return os.path.join(os.environ['SKILL_OUTPUT_DIR'], filename)",
+            '',
+            'def get_input_path(filename):',
+            '    """Get the full path for an input file."""',
+            "    return os.path.join(os.environ['SKILL_INPUT_DIR'], filename)",
+            '',
+            f"SKILL_OUTPUT_DIR = '{self.SANDBOX_OUTPUT_DIR}'",
+            f"SKILL_INPUT_DIR = '{self.SANDBOX_INPUT_DIR}'",
+            f"SKILL_LOGS_DIR = '{sandbox_logs_dir}'",
+            f"SKILL_ARTIFACTS_DIR = '{sandbox_artifacts_dir}'",
         ]
 
         # Add custom env vars
@@ -1475,10 +1545,11 @@ class SkillContainer:
         return self.spec.to_markdown()
 
     def save_spec_log(self, output_path: Union[str, Path] = None):
-        """Save the execution spec to a markdown file."""
+        """Save the execution spec to a markdown file in logs directory."""
         if output_path is None:
-            output_path = self.workspace_dir / 'execution_spec.md'
+            output_path = self.logs_dir / 'execution_spec.md'
         self.spec.save(output_path)
+        logger.info(f'Saved execution spec to: {output_path}')
 
     def cleanup(self, keep_spec: bool = True):
         """
