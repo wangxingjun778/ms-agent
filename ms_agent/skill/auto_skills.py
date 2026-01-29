@@ -20,7 +20,8 @@ from ms_agent.skill.prompts import (PROMPT_ANALYZE_QUERY_FOR_SKILLS,
                                     PROMPT_DIRECT_SELECT_SKILLS,
                                     PROMPT_EVALUATE_SKILLS_COMPLETENESS,
                                     PROMPT_SKILL_ANALYSIS_PLAN,
-                                    PROMPT_SKILL_EXECUTION_COMMAND)
+                                    PROMPT_SKILL_EXECUTION_COMMAND,
+                                    PROMPT_VALIDATE_SKILL_RELEVANCE)
 from ms_agent.skill.schema import SkillContext, SkillExecutionPlan, SkillSchema
 from ms_agent.utils.logger import get_logger
 
@@ -148,6 +149,7 @@ class SkillAnalyzer:
             required_scripts=parsed.get('required_scripts', []),
             required_references=parsed.get('required_references', []),
             required_resources=parsed.get('required_resources', []),
+            required_packages=parsed.get('required_packages', []),
             parameters=parsed.get('parameters', {}),
             reasoning=parsed.get('reasoning', ''))
 
@@ -156,7 +158,8 @@ class SkillAnalyzer:
 
         logger.info(
             f'Skill analysis plan: can_handle={plan.can_handle}, '
-            f'scripts={plan.required_scripts}, refs={plan.required_references}'
+            f'scripts={plan.required_scripts}, refs={plan.required_references}, '
+            f'packages={plan.required_packages}'
         )
 
         return context
@@ -181,6 +184,124 @@ class SkillAnalyzer:
             f'refs={len(context.references)}, res={len(context.resources)}')
 
         return context
+
+    def validate_skill_relevance(
+            self,
+            skill: SkillSchema,
+            query: str,
+            other_skills: Dict[str, SkillSchema]
+    ) -> Dict[str, Any]:
+        """
+        Validate if a skill is truly relevant and not redundant.
+
+        Args:
+            skill: SkillSchema to validate.
+            query: User's query.
+            other_skills: Other skills in the DAG (excluding current skill).
+
+        Returns:
+            Dict with validation results including is_relevant, is_redundant, etc.
+        """
+        # Format other skills for context
+        other_skills_text = '\n'.join([
+            f'- [{sid}] {s.name}: {s.description[:100]}'
+            for sid, s in other_skills.items()
+        ]) if other_skills else 'None'
+
+        prompt = PROMPT_VALIDATE_SKILL_RELEVANCE.format(
+            query=query,
+            skill_id=skill.skill_id,
+            skill_name=skill.name,
+            skill_description=skill.description,
+            skill_content=skill.content[:2000] if skill.content else '',
+            other_skills=other_skills_text)
+
+        response = self._llm_generate(prompt)
+        parsed = self._parse_json_response(response)
+
+        result = {
+            'skill_id': skill.skill_id,
+            'is_relevant': parsed.get('is_relevant', True),
+            'is_redundant': parsed.get('is_redundant', False),
+            'redundant_with': parsed.get('redundant_with'),
+            'relevance_score': parsed.get('relevance_score', 1.0),
+            'reason': parsed.get('reason', ''),
+            'recommendation': parsed.get('recommendation', 'keep'),
+        }
+
+        logger.info(
+            f'Skill validation [{skill.skill_id}]: relevant={result["is_relevant"]}, '
+            f'redundant={result["is_redundant"]}, score={result["relevance_score"]:.2f}, '
+            f'recommendation={result["recommendation"]}'
+        )
+
+        return result
+
+    def filter_skills_by_relevance(
+            self,
+            skills: Dict[str, SkillSchema],
+            query: str,
+            min_relevance_score: float = 0.5
+    ) -> Tuple[Dict[str, SkillSchema], List[Dict[str, Any]]]:
+        """
+        Filter skills by validating each one's relevance to the query.
+
+        Args:
+            skills: Dict of skill_id to SkillSchema.
+            query: User's query.
+            min_relevance_score: Minimum score to keep a skill.
+
+        Returns:
+            Tuple of (filtered_skills, validation_results).
+        """
+        if not skills:
+            return {}, []
+
+        validation_results = []
+        filtered_skills = {}
+        removed_skills = set()
+
+        # Validate each skill
+        for skill_id, skill in skills.items():
+            # Get other skills (excluding current and already removed)
+            other_skills = {
+                sid: s for sid, s in skills.items()
+                if sid != skill_id and sid not in removed_skills
+            }
+
+            result = self.validate_skill_relevance(skill, query, other_skills)
+            validation_results.append(result)
+
+            # Decide whether to keep the skill
+            should_keep = (
+                result['is_relevant'] and
+                not result['is_redundant'] and
+                result['relevance_score'] >= min_relevance_score and
+                result['recommendation'] != 'remove'
+            )
+
+            if should_keep:
+                filtered_skills[skill_id] = skill
+            else:
+                removed_skills.add(skill_id)
+                logger.info(f'Removing skill [{skill_id}]: {result["reason"]}')
+
+        logger.info(
+            f'Skill filtering: {len(skills)} -> {len(filtered_skills)} '
+            f'(removed {len(removed_skills)})'
+        )
+
+        return filtered_skills, validation_results
+
+    async def async_filter_skills_by_relevance(
+            self,
+            skills: Dict[str, SkillSchema],
+            query: str,
+            min_relevance_score: float = 0.5
+    ) -> Tuple[Dict[str, SkillSchema], List[Dict[str, Any]]]:
+        """Async wrapper for filter_skills_by_relevance."""
+        return await asyncio.to_thread(
+            self.filter_skills_by_relevance, skills, query, min_relevance_score)
 
     def generate_execution_commands(
             self, context: SkillContext) -> List[Dict[str, Any]]:
@@ -497,11 +618,15 @@ class DAGExecutor:
             SkillExecutionResult with execution outcome.
         """
         # Phase 1 & 2: Analyze and load resources
+        # Use skill's directory as root_path for proper file resolution
         context, commands = await self._analyzer.analyze_and_prepare(
-            skill, query, self.workspace_dir)
+            skill, query, skill.skill_path)
 
         # Store context for reference
         self._contexts[skill_id] = context
+
+        # Mount skill directory in container for sandbox access
+        self.container.mount_skill_directory(skill_id, skill.skill_path)
 
         if not context.plan or not context.plan.can_handle:
             return SkillExecutionResult(
@@ -556,6 +681,9 @@ class DAGExecutor:
         Returns:
             SkillExecutionResult with execution outcome.
         """
+        # Mount skill directory for sandbox access
+        self.container.mount_skill_directory(skill_id, skill.skill_path)
+
         executor_type = self._determine_executor_type(skill)
 
         if skill.scripts:
@@ -598,6 +726,23 @@ class DAGExecutor:
         """
         # Merge parameters into input
         params = cmd.get('parameters', {})
+        # Use skill directory as working directory for proper file access
+        working_dir = exec_input.working_dir or context.skill_dir
+
+        # Collect all requirements: from plan, command, and input
+        all_requirements = []
+        if context.plan and context.plan.required_packages:
+            all_requirements.extend(context.plan.required_packages)
+        all_requirements.extend(cmd.get('requirements', []))
+        all_requirements.extend(exec_input.requirements)
+        # Deduplicate while preserving order
+        seen = set()
+        unique_requirements = []
+        for req in all_requirements:
+            if req not in seen:
+                seen.add(req)
+                unique_requirements.append(req)
+
         merged_input = ExecutionInput(
             args=exec_input.args + list(params.values()),
             kwargs={
@@ -606,19 +751,20 @@ class DAGExecutor:
             },
             env_vars={
                 **exec_input.env_vars,
+                'SKILL_DIR': str(context.skill_dir),
                 **{k.upper(): str(v)
                    for k, v in params.items()}
             },
             input_files=exec_input.input_files,
             stdin=exec_input.stdin,
-            working_dir=exec_input.working_dir or context.root_path,
-            requirements=cmd.get('requirements', []) + exec_input.requirements)
+            working_dir=working_dir,
+            requirements=unique_requirements)
 
         if cmd_type == 'python_script':
             script_path = cmd.get('path')
             if script_path:
-                # Resolve path relative to skill
-                full_path = context.skill.skill_path / script_path
+                # Resolve path relative to skill directory
+                full_path = context.skill_dir / script_path
                 if not full_path.exists():
                     full_path = context.root_path / script_path
                 return await self.container.execute_python_script(
@@ -789,8 +935,10 @@ class AutoSkills:
                  llm: LLM,
                  enable_search: Union[bool, None] = None,
                  enable_intent_clarification: bool = True,
+                 enable_skill_filtering: bool = True,
                  top_k: int = 3,
                  min_score: float = 0.7,
+                 min_relevance_score: float = 0.5,
                  max_iterations: int = 3,
                  work_dir: Optional[Union[str, Path]] = None,
                  use_sandbox: bool = True,
@@ -806,8 +954,11 @@ class AutoSkills:
                 If None, enable search only if skills > 10 automatically.
             enable_intent_clarification: If True, verify user intent before
                 execution and prompt for clarification if needed.
+            enable_skill_filtering: If True, filter out redundant/irrelevant
+                skills through progressive content analysis.
             top_k: Number of top results to retrieve per query.
             min_score: Minimum score threshold for retrieval.
+            min_relevance_score: Minimum relevance score to keep a skill (0-1).
             max_iterations: Maximum reflection loop iterations.
             work_dir: Working directory for skill execution.
             use_sandbox: Whether to use Docker sandbox for execution.
@@ -820,8 +971,10 @@ class AutoSkills:
         self.enable_search = len(
             self.all_skills) > 10 if enable_search is None else enable_search
         self.enable_intent_clarification = enable_intent_clarification
+        self.enable_skill_filtering = enable_skill_filtering
         self.top_k = top_k
         self.min_score = min_score
+        self.min_relevance_score = min_relevance_score
         self.max_iterations = max_iterations
         self.work_dir = Path(work_dir) if work_dir else None
         self.use_sandbox = use_sandbox
@@ -1006,6 +1159,35 @@ class AutoSkills:
         dag = parsed.get('dag', {skill_id: [] for skill_id in skill_ids})
         order = parsed.get('execution_order', list(skill_ids))
         return {'dag': dag, 'execution_order': order}
+
+    def _filter_execution_order(
+            self,
+            execution_order: List[Union[str, List[str]]],
+            valid_skill_ids: Set[str]
+    ) -> List[Union[str, List[str]]]:
+        """
+        Filter execution order to only include valid skill_ids.
+
+        Args:
+            execution_order: Original execution order (may contain parallel groups).
+            valid_skill_ids: Set of skill_ids that should be kept.
+
+        Returns:
+            Filtered execution order with only valid skills.
+        """
+        filtered = []
+        for item in execution_order:
+            if isinstance(item, list):
+                # Parallel group: filter and keep if any remain
+                filtered_group = [sid for sid in item if sid in valid_skill_ids]
+                if filtered_group:
+                    if len(filtered_group) == 1:
+                        filtered.append(filtered_group[0])
+                    else:
+                        filtered.append(filtered_group)
+            elif item in valid_skill_ids:
+                filtered.append(item)
+        return filtered
 
     def _clarify_user_intent(
         self, query: str, dag_result: SkillDAGResult
@@ -1194,23 +1376,47 @@ class AutoSkills:
             logger.info(
                 f'Additional queries for next iteration: {skill_queries}')
 
-        # Step 3: Build DAG from collected skills
-        dag_result = self._build_dag(query, collected_skills)
-
-        # Construct result
-        selected = {
+        # Step 3: Filter skills by relevance (progressive analysis)
+        candidate_skills = {
             sid: self.all_skills[sid]
             for sid in collected_skills if sid in self.all_skills
         }
 
+        if self.enable_skill_filtering and len(candidate_skills) > 1:
+            logger.info(f'Filtering {len(candidate_skills)} candidate skills...')
+            analyzer = SkillAnalyzer(self.llm)
+            filtered_skills, validation_results = await analyzer.async_filter_skills_by_relevance(
+                candidate_skills, query, self.min_relevance_score)
+
+            # Update collected skills with filtered results
+            collected_skills = set(filtered_skills.keys())
+            selected = filtered_skills
+
+            # Log removed skills
+            removed = set(candidate_skills.keys()) - set(filtered_skills.keys())
+            if removed:
+                logger.info(f'Removed skills after filtering: {removed}')
+        else:
+            selected = candidate_skills
+
+        if not selected:
+            clarification = 'No relevant skills found after filtering. Please refine your query.'
+            return SkillDAGResult(
+                is_complete=False, clarification=clarification)
+
+        # Step 4: Build DAG from filtered skills
+        dag_result = self._build_dag(query, collected_skills)
+
         skills_dag: Dict[str, Any] = dag_result.get('dag', {})
         execution_order: List[str] = dag_result.get('execution_order', [])
+
+        # Ensure execution_order only contains filtered skills
+        execution_order = self._filter_execution_order(
+            execution_order, set(selected.keys()))
+
         logger.info(
             f'Final DAG built with skills: {skills_dag}, execution order: {execution_order}'
         )
-
-        # TODO: ONLY FOR TEST !
-        execution_order = ['pdf@latest']
 
         return SkillDAGResult(
             dag=skills_dag,

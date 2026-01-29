@@ -183,9 +183,6 @@ Build an execution DAG where:
 - Edges represent dependencies (A -> B means A must complete before B)
 - Consider logical execution order and data dependencies
 
-Principles:
-- You **MUST** follow the principle: MINIMUM NECESSARY SKILLS and DEPENDENCIES REQUIRED to fulfill the user query.
-
 Output in JSON format:
 {{
     "dag": {{
@@ -200,6 +197,11 @@ Output in JSON format:
 Notes:
     The `execution_order` can include parallel execution steps represented as lists.
     The `execution_order` must respect the dependencies defined in the `dag`.
+
+
+You MUST follow principles:
+- Minimal Sufficiency Principle: Choose the smallest set of skills that fully satisfies the user's query—no extra or unnecessary skills should be included.
+- Skill Deduplication: If multiple skills serve similar or overlapping purposes, retain only the most effective or optimal one and remove redundant alternatives.
 """
 
 PROMPT_DIRECT_SELECT_SKILLS = """You are a skill selector. Given a user query and all available skills, select the relevant skills and build an execution DAG.
@@ -238,6 +240,44 @@ Notes:
 # Progressive Skill Analysis Prompts
 # ============================================================
 
+PROMPT_VALIDATE_SKILL_RELEVANCE = """You are validating if a skill is truly necessary for the user's query.
+
+User Query: {query}
+
+Skill Being Evaluated:
+- Skill ID: {skill_id}
+- Name: {skill_name}
+- Description: {skill_description}
+
+Skill Content Summary:
+{skill_content}
+
+Other Selected Skills in DAG:
+{other_skills}
+
+Evaluation Criteria:
+1. Does this skill directly contribute to fulfilling the user's query?
+2. Is this skill's functionality already covered by other selected skills?
+3. Is this skill redundant or unnecessary for the specific task?
+4. Does this skill match the user's actual intent?
+
+Output in JSON format:
+{{
+    "is_relevant": true/false,
+    "is_redundant": true/false,
+    "redundant_with": "skill_id that provides similar functionality (if redundant)",
+    "relevance_score": 0.0-1.0,
+    "reason": "Brief explanation of the evaluation",
+    "recommendation": "keep|remove|replace_with_skill_id"
+}}
+
+Notes:
+- Set `is_relevant` to false if the skill doesn't directly help with the query.
+- Set `is_redundant` to true if another skill already covers this functionality.
+- A skill should be removed if relevance_score < 0.5 or if it's redundant.
+"""
+
+
 PROMPT_SKILL_ANALYSIS_PLAN = """You are analyzing a skill to create an execution plan.
 
 User Query: {query}
@@ -272,6 +312,7 @@ Output in JSON format:
     "required_scripts": ["script_name1", "script_name2", ...],
     "required_references": ["ref_name1", ...],
     "required_resources": ["resource_name1", ...],
+    "required_packages": ["python_package1", "python_package2", ...],
     "parameters": {{"param1": "value or <user_input>", ...}},
     "reasoning": "Why this plan will work"
 }}
@@ -280,6 +321,7 @@ Notes:
 - Only include resources that are actually needed for execution.
 - Steps should be actionable and specific.
 - Parameters should include any values extracted from the query.
+- Extract Python package dependencies from skill content (e.g., reportlab, pandas, numpy).
 """
 
 PROMPT_CLARIFY_USER_INTENT = """You are verifying if the selected skills can fully satisfy the user's intent.

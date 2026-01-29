@@ -363,6 +363,7 @@ class SkillExecutionPlan:
         required_scripts: Script names needed for execution.
         required_references: Reference names needed.
         required_resources: Resource names needed.
+        required_packages: Python packages needed for execution.
         parameters: Parameters extracted from user query.
         reasoning: Explanation of the plan.
     """
@@ -372,6 +373,7 @@ class SkillExecutionPlan:
     required_scripts: List[str] = field(default_factory=list)
     required_references: List[str] = field(default_factory=list)
     required_resources: List[str] = field(default_factory=list)
+    required_packages: List[str] = field(default_factory=list)
     parameters: Dict[str, Any] = field(default_factory=dict)
     reasoning: str = ''
 
@@ -444,6 +446,11 @@ class SkillContext:
         if self.spec is None:
             self.spec = Spec(plan='', tasks='')
 
+    @property
+    def skill_dir(self) -> Path:
+        """Get the skill's directory path."""
+        return self.skill.skill_path
+
     def get_scripts_list(self) -> List[str]:
         """Get list of available script names without loading content."""
         return [s.name for s in self.skill.scripts]
@@ -458,6 +465,25 @@ class SkillContext:
             r.name for r in self.skill.resources
             if r.name not in ['SKILL.md', 'LICENSE.txt']
         ]
+
+    def _get_resource_path(self, file_path: Path) -> str:
+        """
+        Get path string for a resource file.
+
+        Tries relative path first, falls back to absolute path.
+
+        Args:
+            file_path: Path to the resource file.
+
+        Returns:
+            Path string (relative if possible, absolute otherwise).
+        """
+        resolved_path = file_path.resolve()
+        try:
+            return str(resolved_path.relative_to(self.root_path.resolve()))
+        except ValueError:
+            # Path is not under root_path, use absolute path
+            return str(resolved_path)
 
     def load_scripts(self, names: List[str] = None) -> List[Dict[str, Any]]:
         """
@@ -475,16 +501,13 @@ class SkillContext:
 
         loaded = []
         for script in target_scripts:
+            abs_path = script.path.resolve()
             loaded.append({
-                'name':
-                script.name,
-                'file':
-                script.to_dict(),
-                'path':
-                str(script.path.resolve().relative_to(
-                    self.root_path.resolve())),
-                'content':
-                self._read_file_content(script.path.resolve()),
+                'name': script.name,
+                'file': script.to_dict(),
+                'path': self._get_resource_path(script.path),
+                'abs_path': str(abs_path),
+                'content': self._read_file_content(abs_path),
             })
         self.scripts.extend(loaded)
         return loaded
@@ -505,15 +528,13 @@ class SkillContext:
 
         loaded = []
         for ref in target_refs:
+            abs_path = ref.path.resolve()
             loaded.append({
-                'name':
-                ref.name,
-                'file':
-                ref.to_dict(),
-                'path':
-                str(ref.path.resolve().relative_to(self.root_path.resolve())),
-                'content':
-                self._read_file_content(ref.path.resolve()),
+                'name': ref.name,
+                'file': ref.to_dict(),
+                'path': self._get_resource_path(ref.path),
+                'abs_path': str(abs_path),
+                'content': self._read_file_content(abs_path),
             })
         self.references.extend(loaded)
         return loaded
@@ -537,15 +558,13 @@ class SkillContext:
 
         loaded = []
         for res in target_res:
+            abs_path = res.path.resolve()
             loaded.append({
-                'name':
-                res.name,
-                'file':
-                res.to_dict(),
-                'path':
-                str(res.path.resolve().relative_to(self.root_path.resolve())),
-                'content':
-                self._read_file_content(res.path.resolve()),
+                'name': res.name,
+                'file': res.to_dict(),
+                'path': self._get_resource_path(res.path),
+                'abs_path': str(abs_path),
+                'content': self._read_file_content(abs_path),
             })
         self.resources.extend(loaded)
         return loaded

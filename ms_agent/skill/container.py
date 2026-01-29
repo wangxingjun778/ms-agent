@@ -398,6 +398,9 @@ class SkillContainer:
         # Sandbox instance (lazy initialization)
         self._sandbox = None
 
+        # Skill directories to mount in sandbox
+        self._skill_dirs: Dict[str, str] = {}
+
         # Warn about local execution risks
         if not self.use_sandbox:
             logger.warning(
@@ -414,6 +417,7 @@ class SkillContainer:
 
         Volume mapping follows AgentSkill pattern:
         - workspace_dir -> /sandbox (rw mode for full access)
+        - Additional skill directories are mounted to /sandbox/skills/
         """
         if self._sandbox is None:
             from ms_agent.sandbox.sandbox import EnclaveSandbox
@@ -424,12 +428,45 @@ class SkillContainer:
                 (str(self.workspace_dir.resolve()), self.SANDBOX_ROOT, 'rw'),
             ]
 
+            # Add additional skill directory mounts
+            for skill_id, skill_dir in self._skill_dirs.items():
+                safe_id = skill_id.replace('@', '_').replace('/', '_')
+                sandbox_path = f'{self.SANDBOX_ROOT}/skills/{safe_id}'
+                volumes.append(
+                    (str(Path(skill_dir).resolve()), sandbox_path, 'ro'))
+
             self._sandbox = EnclaveSandbox(
                 image=self.image,
                 memory_limit=self.memory_limit,
                 volumes=volumes,
             )
         return self._sandbox
+
+    def mount_skill_directory(self, skill_id: str, skill_dir: Union[str,
+                                                                    Path]):
+        """
+        Mount a skill directory for sandbox access.
+
+        Args:
+            skill_id: Unique identifier for the skill.
+            skill_dir: Path to the skill directory.
+        """
+        self._skill_dirs[skill_id] = str(Path(skill_dir).resolve())
+        # Reset sandbox to recreate with new mount
+        self._sandbox = None
+
+    def get_skill_sandbox_path(self, skill_id: str) -> str:
+        """
+        Get the sandbox path for a mounted skill directory.
+
+        Args:
+            skill_id: The skill identifier.
+
+        Returns:
+            Path inside sandbox where skill is mounted.
+        """
+        safe_id = skill_id.replace('@', '_').replace('/', '_')
+        return f'{self.SANDBOX_ROOT}/skills/{safe_id}'
 
     def _security_check(self,
                         code: str,
@@ -610,6 +647,38 @@ class SkillContainer:
             return 'node.exe'
         return 'node'
 
+    async def _local_install_requirements(
+            self, requirements: List[str]) -> tuple[bool, str]:
+        """
+        Install Python requirements locally using pip.
+
+        Args:
+            requirements: List of packages to install.
+
+        Returns:
+            Tuple of (success, error_message).
+        """
+        if not requirements:
+            return True, ''
+
+        try:
+            cmd = [
+                self._get_python_executable(), '-m', 'pip', 'install',
+                '--quiet', '--disable-pip-version-check'
+            ] + requirements
+
+            stdout, stderr, exit_code = self._local_run_subprocess(cmd)
+
+            if exit_code != 0:
+                logger.warning(f'Failed to install requirements: {stderr}')
+                return False, stderr
+
+            logger.info(f'Installed requirements: {requirements}')
+            return True, ''
+        except Exception as e:
+            logger.error(f'Error installing requirements: {e}')
+            return False, str(e)
+
     async def _local_execute_python_code(
             self, code: str,
             input_spec: ExecutionInput) -> tuple[str, str, int]:
@@ -623,6 +692,13 @@ class SkillContainer:
         Returns:
             Tuple of (stdout, stderr, exit_code).
         """
+        # Install requirements first if any
+        if input_spec.requirements:
+            success, error = await self._local_install_requirements(
+                input_spec.requirements)
+            if not success:
+                return '', f'Failed to install requirements: {error}', -1
+
         # Write code to temp file
         script_file = self.scripts_dir / f'_temp_{uuid.uuid4().hex[:8]}.py'
         try:
@@ -637,12 +713,18 @@ class SkillContainer:
             cmd = [self._get_python_executable(), str(script_file)]
             cmd.extend([str(arg) for arg in input_spec.args])
 
-            return self._local_run_subprocess(
+            stdout, stderr, exit_code = self._local_run_subprocess(
                 cmd, env=input_spec.env_vars, stdin_input=input_spec.stdin)
-        finally:
-            # Cleanup temp script
-            if script_file.exists():
+
+            # Only cleanup on success, keep script for debugging on failure
+            if exit_code == 0 and script_file.exists():
                 script_file.unlink()
+
+            return stdout, stderr, exit_code
+        except Exception as e:
+            # Keep script file for debugging
+            logger.error(f'Local Python execution failed: {e}')
+            raise
 
     async def _local_execute_shell(
             self, command: str,
