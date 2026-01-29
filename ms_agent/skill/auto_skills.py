@@ -2,10 +2,11 @@
 # isort: skip_file
 # yapf: disable
 import asyncio
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 from ms_agent.llm import LLM
@@ -14,18 +15,47 @@ from ms_agent.retriever.hybrid_retriever import HybridRetriever
 from ms_agent.skill.container import (ExecutionInput, ExecutionOutput,
                                       ExecutorType, SkillContainer)
 from ms_agent.skill.loader import load_skills
-from ms_agent.skill.prompts import (PROMPT_ANALYZE_QUERY_FOR_SKILLS,
+from ms_agent.skill.prompts import (PROMPT_ANALYZE_EXECUTION_ERROR,
+                                    PROMPT_ANALYZE_QUERY_FOR_SKILLS,
                                     PROMPT_BUILD_SKILLS_DAG,
                                     PROMPT_CLARIFY_USER_INTENT,
                                     PROMPT_DIRECT_SELECT_SKILLS,
-                                    PROMPT_QUICK_FILTER_SKILLS,
+                                    PROMPT_FILTER_SKILLS_DEEP,
+                                    PROMPT_FILTER_SKILLS_FAST,
                                     PROMPT_SKILL_ANALYSIS_PLAN,
-                                    PROMPT_SKILL_EXECUTION_COMMAND,
-                                    PROMPT_VALIDATE_SKILL_RELEVANCE)
+                                    PROMPT_SKILL_EXECUTION_COMMAND)
 from ms_agent.skill.schema import SkillContext, SkillExecutionPlan, SkillSchema
 from ms_agent.utils.logger import get_logger
 
 logger = get_logger()
+
+
+def _configure_logger_to_dir(log_dir: Path) -> None:
+    """
+    Configure the logger to output to a specific directory.
+
+    Args:
+        log_dir: Directory path for log files.
+    """
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / 'ms_agent.log'
+
+    # Check if file handler for this path already exists
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            if Path(handler.baseFilename).resolve() == log_file.resolve():
+                return  # Already configured
+
+    # Remove existing file handlers and add new one
+    for handler in logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            logger.removeHandler(handler)
+
+    file_handler = logging.FileHandler(str(log_file), mode='a')
+    file_handler.setFormatter(logging.Formatter('[%(levelname)s:%(name)s] %(message)s'))
+    file_handler.setLevel(logger.level)
+    logger.addHandler(file_handler)
+    logger.info(f'Logger configured to output to: {log_file}')
 
 
 @dataclass
@@ -94,15 +124,46 @@ class SkillAnalyzer:
                                            'content') else str(response)
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
-        """Parse JSON from LLM response."""
-        import re
+        """Parse JSON from LLM response with robust extraction."""
+        # Remove markdown code blocks if present
         response = re.sub(r'```json\s*', '', response)
-        response = re.sub(r'```\s*', '', response)
+        response = re.sub(r'```\s*$', '', response)
+        response = response.strip()
+
+        # Try direct parsing first
         try:
-            return json.loads(response.strip())
+            return json.loads(response)
         except json.JSONDecodeError:
-            logger.warning(f'Failed to parse JSON: {response[:200]}')
-            return {}
+            pass
+
+        # Try to extract JSON object from response
+        try:
+            # Find the outermost JSON object
+            start = response.find('{')
+            if start != -1:
+                # Find matching closing brace
+                depth = 0
+                for i, char in enumerate(response[start:], start):
+                    if char == '{':
+                        depth += 1
+                    elif char == '}':
+                        depth -= 1
+                        if depth == 0:
+                            json_str = response[start:i + 1]
+                            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+        # Try regex extraction as fallback
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                return json.loads(json_match.group())
+        except json.JSONDecodeError:
+            pass
+
+        logger.warning(f'Failed to parse JSON: {response[:500]}...')
+        return {}
 
     def analyze_skill_plan(self,
                            skill: SkillSchema,
@@ -185,188 +246,6 @@ class SkillAnalyzer:
 
         return context
 
-    def validate_skill_relevance(
-            self,
-            skill: SkillSchema,
-            query: str,
-            other_skills: Dict[str, SkillSchema]
-    ) -> Dict[str, Any]:
-        """
-        Validate if a skill can ACTUALLY EXECUTE the user's task.
-
-        Performs deep capability analysis to ensure the skill can produce
-        the required output, not just that it's topically related.
-
-        Args:
-            skill: SkillSchema to validate.
-            query: User's query.
-            other_skills: Other skills in the DAG (excluding current skill).
-
-        Returns:
-            Dict with validation results including can_execute_task, is_relevant, etc.
-        """
-        # Format other skills with their capabilities
-        other_skills_text = '\n'.join([
-            f'- [{sid}] {s.name}: {s.description[:1000]}'
-            for sid, s in other_skills.items()
-        ]) if other_skills else 'None'
-
-        # Get scripts and resources info for capability analysis
-        scripts_list = ', '.join([s.name for s in skill.scripts]) if skill.scripts else 'None'
-        resources_list = ', '.join([
-            r.name for r in skill.resources
-            if r.name not in ['SKILL.md', 'LICENSE.txt']
-        ]) if skill.resources else 'None'
-
-        prompt = PROMPT_VALIDATE_SKILL_RELEVANCE.format(
-            query=query,
-            skill_id=skill.skill_id,
-            skill_name=skill.name,
-            skill_description=skill.description,
-            skill_content=skill.content[:5000] if skill.content else '',
-            scripts_list=scripts_list,
-            resources_list=resources_list,
-            other_skills=other_skills_text)
-
-        response = self._llm_generate(prompt)
-        parsed = self._parse_json_response(response)
-
-        # Extract capability analysis
-        capability_analysis = parsed.get('capability_analysis', {})
-        missing_capabilities = capability_analysis.get('missing_capabilities', [])
-
-        result = {
-            'skill_id': skill.skill_id,
-            'can_execute_task': parsed.get('can_execute_task', True),
-            'capability_analysis': capability_analysis,
-            'missing_capabilities': missing_capabilities,
-            'is_relevant': parsed.get('is_relevant', True),
-            'is_redundant': parsed.get('is_redundant', False),
-            'redundant_with': parsed.get('redundant_with'),
-            'relevance_score': parsed.get('relevance_score', 1.0),
-            'reason': parsed.get('reason', ''),
-            'recommendation': parsed.get('recommendation', 'keep'),
-            'better_alternative': parsed.get('better_alternative'),
-        }
-
-        # Log detailed analysis
-        logger.info(
-            f'Skill validation [{skill.skill_id}]: '
-            f'can_execute={result["can_execute_task"]}, '
-            f'relevant={result["is_relevant"]}, '
-            f'score={result["relevance_score"]:.2f}, '
-            f'recommendation={result["recommendation"]}'
-        )
-        if missing_capabilities:
-            logger.warning(
-                f'Skill [{skill.skill_id}] missing capabilities: {missing_capabilities}'
-            )
-        if result.get('better_alternative'):
-            logger.info(
-                f'Better alternative for [{skill.skill_id}]: {result["better_alternative"]}'
-            )
-
-        return result
-
-    def filter_skills_by_relevance(
-            self,
-            skills: Dict[str, SkillSchema],
-            query: str,
-            all_available_skills: Dict[str, SkillSchema] = None,
-            min_relevance_score: float = 0.5
-    ) -> Tuple[Dict[str, SkillSchema], List[Dict[str, Any]]]:
-        """
-        Filter skills by validating each one's capability to execute the task.
-
-        Performs deep capability analysis to ensure skills can actually
-        produce the required output, not just that they're topically related.
-
-        Args:
-            skills: Dict of skill_id to SkillSchema (candidates).
-            query: User's query.
-            all_available_skills: All skills available for replacement suggestions.
-            min_relevance_score: Minimum score to keep a skill.
-
-        Returns:
-            Tuple of (filtered_skills, validation_results).
-        """
-        if not skills:
-            return {}, []
-
-        all_available_skills = all_available_skills or {}
-        validation_results = []
-        filtered_skills = {}
-        removed_skills = set()
-        suggested_replacements = {}
-
-        # Validate each skill
-        for skill_id, skill in skills.items():
-            # Get other skills (excluding current and already removed)
-            other_skills = {
-                sid: s for sid, s in skills.items()
-                if sid != skill_id and sid not in removed_skills
-            }
-
-            result = self.validate_skill_relevance(skill, query, other_skills)
-            validation_results.append(result)
-
-            # Primary check: can this skill actually execute the task?
-            can_execute = result.get('can_execute_task', True)
-
-            # Secondary checks
-            is_relevant = result.get('is_relevant', True)
-            is_redundant = result.get('is_redundant', False)
-            score = result.get('relevance_score', 1.0)
-            recommendation = result.get('recommendation', 'keep')
-
-            # Decide whether to keep the skill
-            should_keep = (
-                can_execute and
-                is_relevant and
-                not is_redundant and
-                score >= min_relevance_score and
-                recommendation != 'remove'
-            )
-
-            if should_keep:
-                filtered_skills[skill_id] = skill
-            else:
-                removed_skills.add(skill_id)
-                reason = result.get('reason', 'No reason provided')
-                logger.info(f'Removing skill [{skill_id}]: {reason}')
-
-                # Track suggested replacements
-                better_alt = result.get('better_alternative')
-                if better_alt and better_alt in all_available_skills:
-                    suggested_replacements[skill_id] = better_alt
-
-        # Add suggested replacements if not already in filtered_skills
-        for removed_id, replacement_id in suggested_replacements.items():
-            if replacement_id not in filtered_skills and replacement_id in all_available_skills:
-                logger.info(
-                    f'Adding suggested replacement [{replacement_id}] for [{removed_id}]'
-                )
-                filtered_skills[replacement_id] = all_available_skills[replacement_id]
-
-        logger.info(
-            f'Skill filtering: {len(skills)} -> {len(filtered_skills)} '
-            f'(removed {len(removed_skills)}, replacements added: {len(suggested_replacements)})'
-        )
-
-        return filtered_skills, validation_results
-
-    async def async_filter_skills_by_relevance(
-            self,
-            skills: Dict[str, SkillSchema],
-            query: str,
-            all_available_skills: Dict[str, SkillSchema] = None,
-            min_relevance_score: float = 0.5
-    ) -> Tuple[Dict[str, SkillSchema], List[Dict[str, Any]]]:
-        """Async wrapper for filter_skills_by_relevance."""
-        return await asyncio.to_thread(
-            self.filter_skills_by_relevance,
-            skills, query, all_available_skills, min_relevance_score)
-
     def generate_execution_commands(
             self, context: SkillContext) -> List[Dict[str, Any]]:
         """
@@ -399,6 +278,34 @@ class SkillAnalyzer:
         parsed = self._parse_json_response(response)
 
         commands = parsed.get('commands', [])
+
+        # Fallback: if no commands generated, try to use loaded scripts directly
+        if not commands:
+            # If no scripts loaded yet, try to load all available scripts
+            if not context.scripts and context.skill.scripts:
+                logger.info(
+                    f'Loading all scripts as fallback: {[s.name for s in context.skill.scripts]}')
+                context.load_scripts()  # Load all scripts
+
+            if context.scripts:
+                logger.warning(
+                    f'No commands generated, using {len(context.scripts)} loaded scripts as fallback')
+                # context.scripts is List[Dict] with keys: name, file, path, abs_path, content
+                for script_info in context.scripts:
+                    script_name = script_info.get('name', '')
+                    script_content = script_info.get('content', '')
+                    if script_name.endswith('.py') and script_content:
+                        commands.append({
+                            'type': 'python_code',
+                            'code': script_content,
+                            'requirements': context.plan.required_packages if context.plan else []
+                        })
+                    elif script_name.endswith('.sh') and script_content:
+                        commands.append({
+                            'type': 'shell',
+                            'code': script_content
+                        })
+
         context.spec.tasks = json.dumps(commands, indent=2)
 
         return commands
@@ -494,7 +401,9 @@ class DAGExecutor:
                  skills: Dict[str, SkillSchema],
                  workspace_dir: Optional[Path] = None,
                  llm: 'LLM' = None,
-                 enable_progressive_analysis: bool = True):
+                 enable_progressive_analysis: bool = True,
+                 enable_self_reflection: bool = True,
+                 max_retries: int = 3):
         """
         Initialize DAG executor.
 
@@ -504,12 +413,16 @@ class DAGExecutor:
             workspace_dir: Optional workspace directory for skill execution.
             llm: LLM instance for progressive skill analysis.
             enable_progressive_analysis: Whether to use progressive analysis.
+            enable_self_reflection: Whether to analyze errors and retry on failure.
+            max_retries: Maximum retry attempts for failed executions.
         """
         self.container = container
         self.skills = skills
         self.workspace_dir = workspace_dir or container.workspace_dir
         self.llm = llm
         self.enable_progressive_analysis = enable_progressive_analysis and llm is not None
+        self.enable_self_reflection = enable_self_reflection and llm is not None
+        self.max_retries = max_retries
 
         # Skill analyzer for progressive analysis
         self._analyzer: Optional[SkillAnalyzer] = None
@@ -521,6 +434,9 @@ class DAGExecutor:
 
         # Skill contexts from progressive analysis
         self._contexts: Dict[str, SkillContext] = {}
+
+        # Track execution attempts for retry logging
+        self._execution_attempts: Dict[str, int] = {}
 
     def _get_skill_dependencies(self, skill_id: str,
                                 dag: Dict[str, List[str]]) -> List[str]:
@@ -706,16 +622,54 @@ class DAGExecutor:
                 success=False,
                 error='No execution commands generated')
 
-        # Phase 3: Execute commands
+        # Phase 3: Execute commands with retry support
         outputs: List[ExecutionOutput] = []
         for cmd in commands:
             cmd_type = cmd.get('type', 'python_code')
-            output = await self._execute_command(cmd, cmd_type, skill_id,
-                                                 exec_input, context)
+
+            # Use retry mechanism for Python code execution
+            if self.enable_self_reflection and cmd_type in ('python_code', 'python_script'):
+                code = cmd.get('code', '')
+                if code:
+                    # Build merged input for this command
+                    params = cmd.get('parameters', {})
+                    working_dir = exec_input.working_dir or context.skill_dir
+                    all_requirements = []
+                    if context.plan and context.plan.required_packages:
+                        all_requirements.extend(context.plan.required_packages)
+                    all_requirements.extend(cmd.get('requirements', []))
+                    all_requirements.extend(exec_input.requirements)
+                    seen = set()
+                    unique_reqs = [r for r in all_requirements
+                                   if r not in seen and not seen.add(r)]
+
+                    merged_input = ExecutionInput(
+                        args=exec_input.args + list(params.values()),
+                        kwargs={**exec_input.kwargs, **params},
+                        env_vars={**exec_input.env_vars,
+                                  'SKILL_DIR': str(context.skill_dir) if context.skill_dir else ''},
+                        input_files=exec_input.input_files,
+                        working_dir=working_dir,
+                        requirements=unique_reqs)
+
+                    output, _ = await self._execute_with_retry(
+                        skill=skill,
+                        skill_id=skill_id,
+                        code=code,
+                        exec_input=merged_input,
+                        context=context,
+                        query=query)
+                else:
+                    output = await self._execute_command(cmd, cmd_type, skill_id,
+                                                         exec_input, context)
+            else:
+                # Non-Python or self-reflection disabled
+                output = await self._execute_command(cmd, cmd_type, skill_id,
+                                                     exec_input, context)
             outputs.append(output)
 
             if output.exit_code != 0:
-                # Stop on first failure
+                # Stop on first failure (after retries exhausted)
                 break
 
         # Merge outputs
@@ -888,6 +842,150 @@ class DAGExecutor:
             output_files=merged_files,
             duration_ms=total_duration)
 
+    def _analyze_execution_error(
+            self,
+            skill: SkillSchema,
+            failed_code: str,
+            output: ExecutionOutput,
+            query: str,
+            attempt: int) -> Dict[str, Any]:
+        """
+        Analyze failed execution and generate a fix using LLM.
+
+        Args:
+            skill: The skill that failed.
+            failed_code: The code that failed.
+            output: ExecutionOutput with error details.
+            query: Original user query.
+            attempt: Current retry attempt number.
+
+        Returns:
+            Dict with error analysis and fixed code.
+        """
+        if not self.llm:
+            return {'error_analysis': {'is_fixable': False},
+                    'fixed_code': None}
+
+        prompt = PROMPT_ANALYZE_EXECUTION_ERROR.format(
+            query=query,
+            skill_id=skill.skill_id,
+            skill_name=skill.name,
+            failed_code=failed_code[:8000],  # Limit code length
+            stderr=output.stderr[:3000] if output.stderr else '',
+            stdout=output.stdout[:1000] if output.stdout else '',
+            attempt=attempt,
+            max_attempts=self.max_retries)
+
+        try:
+            response = self.llm.generate(
+                messages=[Message(role='user', content=prompt)])
+            # Parse JSON response - handle different response formats
+            response_text = (response.content if hasattr(response, 'content')
+                             else str(response)).strip()
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                return json.loads(json_match.group())
+        except Exception as e:
+            logger.warning(f'Error analyzing execution failure: {e}')
+
+        return {'error_analysis': {'is_fixable': False}, 'fixed_code': None}
+
+    async def _execute_with_retry(
+            self,
+            skill: SkillSchema,
+            skill_id: str,
+            code: str,
+            exec_input: ExecutionInput,
+            context: SkillContext,
+            query: str) -> Tuple[ExecutionOutput, str]:
+        """
+        Execute code with self-reflection and retry on failure.
+
+        Args:
+            skill: SkillSchema being executed.
+            skill_id: Skill identifier.
+            code: Python code to execute.
+            exec_input: Execution input.
+            context: SkillContext with loaded resources.
+            query: User query for error analysis.
+
+        Returns:
+            Tuple of (ExecutionOutput, final_code_used).
+        """
+        current_code = code
+        attempt = 0
+
+        while attempt < self.max_retries:
+            attempt += 1
+            self._execution_attempts[skill_id] = attempt
+            logger.info(f'[{skill_id}] Execution attempt {attempt}/{self.max_retries}')
+
+            # Execute the code
+            output = await self.container.execute_python_code(
+                code=current_code,
+                skill_id=skill_id,
+                input_spec=exec_input)
+
+            # Check if successful
+            if output.exit_code == 0:
+                if attempt > 1:
+                    logger.info(
+                        f'[{skill_id}] Execution succeeded after {attempt} attempts')
+                return output, current_code
+
+            # Failed - check if we should retry
+            if not self.enable_self_reflection:
+                logger.warning(
+                    f'[{skill_id}] Execution failed, self-reflection disabled')
+                return output, current_code
+
+            if attempt >= self.max_retries:
+                logger.warning(
+                    f'[{skill_id}] Max retries ({self.max_retries}) reached')
+                return output, current_code
+
+            # Analyze error and attempt fix
+            logger.info(f'[{skill_id}] Analyzing error for retry...')
+            analysis = self._analyze_execution_error(
+                skill=skill,
+                failed_code=current_code,
+                output=output,
+                query=query,
+                attempt=attempt)
+
+            error_info = analysis.get('error_analysis', {})
+            is_fixable = error_info.get('is_fixable', False)
+            fixed_code = analysis.get('fixed_code')
+            additional_reqs = analysis.get('additional_requirements', [])
+
+            logger.info(
+                f'[{skill_id}] Error analysis: type={error_info.get("error_type")}, '
+                f'fixable={is_fixable}, cause={error_info.get("root_cause", "")[:200]}'
+            )
+
+            if not is_fixable or not fixed_code:
+                logger.warning(
+                    f'[{skill_id}] Error not fixable: {error_info.get("root_cause")}')
+                return output, current_code
+
+            # Update code and requirements for retry
+            current_code = fixed_code
+            if additional_reqs:
+                logger.info(f'[{skill_id}] Adding requirements: {additional_reqs}')
+                exec_input = ExecutionInput(
+                    args=exec_input.args,
+                    kwargs=exec_input.kwargs,
+                    env_vars=exec_input.env_vars,
+                    input_files=exec_input.input_files,
+                    working_dir=exec_input.working_dir,
+                    requirements=list(set(exec_input.requirements + additional_reqs)))
+
+            logger.info(
+                f'[{skill_id}] Retrying with fix: {analysis.get("explanation", "")[:200]}')
+
+        return output, current_code
+
     async def _execute_parallel_group(
             self,
             skill_ids: List[str],
@@ -1007,11 +1105,13 @@ class AutoSkills:
                  llm: LLM,
                  enable_search: Union[bool, None] = None,
                  enable_intent_clarification: bool = True,
+                 enable_self_reflection: bool = True,
                  top_k: int = 3,
-                 min_score: float = 0.7,
+                 min_score: float = 0.8,
                  min_relevance_score: float = 0.5,
                  max_candidate_skills: int = 10,
                  max_iterations: int = 3,
+                 max_retries: int = 3,
                  work_dir: Optional[Union[str, Path]] = None,
                  use_sandbox: bool = True,
                  **kwargs):
@@ -1026,11 +1126,13 @@ class AutoSkills:
                 If None, enable search only if skills > 10 automatically.
             enable_intent_clarification: If True, verify user intent before
                 execution and prompt for clarification if needed.
+            enable_self_reflection: If True, analyze errors and auto-retry on failure.
             top_k: Number of top results to retrieve per query.
             min_score: Minimum score threshold for retrieval.
             min_relevance_score: Minimum relevance score to keep a skill (0-1).
             max_candidate_skills: Maximum number of candidate skills to consider.
             max_iterations: Maximum reflection loop iterations.
+            max_retries: Maximum retry attempts for failed executions.
             work_dir: Working directory for skill execution.
             use_sandbox: Whether to use Docker sandbox for execution.
         """
@@ -1042,14 +1144,20 @@ class AutoSkills:
         self.enable_search = len(
             self.all_skills) > 10 if enable_search is None else enable_search
         self.enable_intent_clarification = enable_intent_clarification
+        self.enable_self_reflection = enable_self_reflection
         self.top_k = top_k
         self.min_score = min_score
         self.min_relevance_score = min_relevance_score
         self.max_candidate_skills = max_candidate_skills
         self.max_iterations = max_iterations
+        self.max_retries = max_retries
         self.work_dir = Path(work_dir) if work_dir else None
         self.use_sandbox = use_sandbox
         self.kwargs = kwargs
+
+        # Configure logger to output to work_dir/logs if work_dir is specified
+        if self.work_dir:
+            _configure_logger_to_dir(self.work_dir / 'logs')
 
         # Build corpus and skill_id mapping
         self.corpus: List[str] = []
@@ -1083,22 +1191,53 @@ class AutoSkills:
         return match.group(1) if match else None
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
-        """Parse JSON from LLM response, handling markdown code blocks."""
+        """Parse JSON from LLM response with robust extraction."""
         # Remove markdown code blocks if present
         response = re.sub(r'```json\s*', '', response)
-        response = re.sub(r'```\s*', '', response)
+        response = re.sub(r'```\s*$', '', response)
+        response = response.strip()
+
+        # Try direct parsing first
         try:
-            return json.loads(response.strip())
+            return json.loads(response)
         except json.JSONDecodeError:
-            logger.warning(f'Failed to parse JSON response: {response[:200]}')
-            return {}
+            pass
+
+        # Try to extract JSON object from response
+        try:
+            # Find the outermost JSON object
+            start = response.find('{')
+            if start != -1:
+                # Find matching closing brace
+                depth = 0
+                for i, char in enumerate(response[start:], start):
+                    if char == '{':
+                        depth += 1
+                    elif char == '}':
+                        depth -= 1
+                        if depth == 0:
+                            json_str = response[start:i + 1]
+                            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+        # Try regex extraction as fallback
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                return json.loads(json_match.group())
+        except json.JSONDecodeError:
+            pass
+
+        logger.warning(f'Failed to parse JSON response: {response[:300]}...')
+        return {}
 
     def _get_skills_overview(self, limit: int = 20) -> str:
         """Generate a brief overview of all available skills."""
         lines = []
         for skill_id, skill in self.all_skills.items():
             lines.append(
-                f'- [{skill_id}] {skill.name}: {skill.description[:100]}')
+                f'- [{skill_id}] {skill.name}: {skill.description[:200]}')
         return '\n'.join(lines[:limit])  # Limit to avoid token overflow
 
     def _get_all_skills_context(self) -> str:
@@ -1184,40 +1323,79 @@ class AutoSkills:
                     skill_ids.add(skill_id)
         return skill_ids
 
-    def _quick_filter_skills(
-            self, query: str, skill_ids: Set[str]) -> Set[str]:
+    def _filter_skills(
+            self,
+            query: str,
+            skill_ids: Set[str],
+            mode: Literal['fast', 'deep'] = 'fast'
+    ) -> Set[str]:
         """
-        Quick filter skills based on name and description only.
-
-        This is a shallow filter to reduce candidate count before deep analysis.
+        Filter skills based on relevance to the query.
 
         Args:
             query: User's query.
             skill_ids: Set of candidate skill_ids.
+            mode: 'fast' for name+description only, 'deep' for full content analysis.
 
         Returns:
-            Set of filtered skill_ids that are potentially relevant.
+            Set of filtered skill_ids that are relevant.
         """
         if len(skill_ids) <= 1:
             return skill_ids
 
-        # Format candidate skills with name and description only
-        candidate_skills_text = '\n'.join([
-            f'- [{sid}] {self.all_skills[sid].name}: {self.all_skills[sid].description[:500]}'
-            for sid in skill_ids if sid in self.all_skills
-        ])
-
-        prompt = PROMPT_QUICK_FILTER_SKILLS.format(
-            query=query,
-            candidate_skills=candidate_skills_text)
+        # Format candidate skills based on mode
+        if mode == 'deep':
+            # Include name, description, and content (truncated)
+            skill_entries = []
+            for sid in skill_ids:
+                if sid not in self.all_skills:
+                    continue
+                skill = self.all_skills[sid]
+                content = skill.content[:3000] if skill.content else ''
+                entry = (
+                    f'### [{sid}] {skill.name}\n'
+                    f'**Description**: {skill.description}\n'
+                    f'**Content**: {content}'
+                )
+                skill_entries.append(entry)
+            candidate_skills_text = '\n\n'.join(skill_entries)
+            prompt = PROMPT_FILTER_SKILLS_DEEP.format(
+                query=query,
+                candidate_skills=candidate_skills_text)
+        else:
+            # Fast mode: name and description only
+            candidate_skills_text = '\n'.join([
+                f'- [{sid}] {self.all_skills[sid].name}: {self.all_skills[sid].description}'
+                for sid in skill_ids if sid in self.all_skills
+            ])
+            prompt = PROMPT_FILTER_SKILLS_FAST.format(
+                query=query,
+                candidate_skills=candidate_skills_text)
 
         response = self._llm_generate(prompt)
         parsed = self._parse_json_response(response)
 
         filtered_ids = parsed.get('filtered_skill_ids', list(skill_ids))
+
+        # For deep mode, also check skill_analysis for can_execute
+        if mode == 'deep':
+            skill_analysis = parsed.get('skill_analysis', {})
+            final_ids = []
+            for sid in filtered_ids:
+                analysis = skill_analysis.get(sid, {})
+                # Keep skill if can_execute is True or not specified
+                if analysis.get('can_execute', True):
+                    final_ids.append(sid)
+                else:
+                    logger.info(
+                        f'Removing skill [{sid}]: cannot execute - '
+                        f'{analysis.get("reason", "")[:200]}'
+                    )
+            filtered_ids = final_ids
+
         logger.info(
-            f'Quick filter: {len(skill_ids)} -> {len(filtered_ids)} skills. '
-            f'Reason: {parsed.get("reasoning", "")[:100]}'
+            f'Filter ({mode}): {len(skill_ids)} -> {len(filtered_ids)} skills. '
+            f'Reason: {parsed.get("reasoning", "")[:300]}'
         )
 
         return set(filtered_ids)
@@ -1432,16 +1610,7 @@ class AutoSkills:
             return SkillDAGResult(
                 is_complete=False, clarification=clarification)
 
-        # Step 3: Quick filter by name/description (shallow filtering)
-        collected_skills = self._quick_filter_skills(query, collected_skills)
-        logger.info(f'After quick filter: {collected_skills}')
-
-        if not collected_skills:
-            clarification = 'No relevant skills found after filtering. Please refine your query.'
-            return SkillDAGResult(
-                is_complete=False, clarification=clarification)
-
-        # Limit candidate skills to max_candidate_skills
+        # Limit candidate skills to max_candidate_skills before filtering
         if len(collected_skills) > self.max_candidate_skills:
             logger.warning(
                 f'Too many candidate skills ({len(collected_skills)}), '
@@ -1449,33 +1618,20 @@ class AutoSkills:
             )
             collected_skills = set(list(collected_skills)[:self.max_candidate_skills])
 
-        # Step 4: Deep filter by content analysis (always enabled)
-        candidate_skills = {
-            sid: self.all_skills[sid]
-            for sid in collected_skills if sid in self.all_skills
-        }
+        # Step 3: Deep filter by content analysis (name + description + content)
+        collected_skills = self._filter_skills(query, collected_skills, mode='deep')
+        logger.info(f'After deep filter: {collected_skills}')
 
-        if len(candidate_skills) > 1:
-            logger.info(f'Deep filtering {len(candidate_skills)} candidate skills...')
-            analyzer = SkillAnalyzer(self.llm)
-            filtered_skills, validation_results = await analyzer.async_filter_skills_by_relevance(
-                candidate_skills, query, self.all_skills, self.min_relevance_score)
-
-            # Update collected skills with filtered results
-            collected_skills = set(filtered_skills.keys())
-            selected = filtered_skills
-
-            # Log removed skills
-            removed = set(candidate_skills.keys()) - set(filtered_skills.keys())
-            if removed:
-                logger.info(f'Removed skills after deep filtering: {removed}')
-        else:
-            selected = candidate_skills
-
-        if not selected:
+        if not collected_skills:
             clarification = 'No relevant skills found after filtering. Please refine your query.'
             return SkillDAGResult(
                 is_complete=False, clarification=clarification)
+
+        # Build selected skills dict
+        selected = {
+            sid: self.all_skills[sid]
+            for sid in collected_skills if sid in self.all_skills
+        }
 
         # Step 4: Build DAG from filtered skills
         dag_result = self._build_dag(query, collected_skills)
@@ -1522,7 +1678,9 @@ class AutoSkills:
                 skills=self.all_skills,
                 workspace_dir=self.work_dir,
                 llm=self.llm,
-                enable_progressive_analysis=True)
+                enable_progressive_analysis=True,
+                enable_self_reflection=self.enable_self_reflection,
+                max_retries=self.max_retries)
         return self._executor
 
     async def execute_dag(self,

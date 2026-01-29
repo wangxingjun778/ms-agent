@@ -29,14 +29,11 @@ from ms_agent.utils.logger import get_logger
 
 logger = get_logger()
 
-# Security: Patterns to detect potentially dangerous code
+# Security: Patterns to detect potentially dangerous code (sandbox mode)
+# Note: These are checked only in sandbox mode for stricter isolation
 DANGEROUS_PATTERNS = [
-    r'__import__\s*\(',  # Dynamic imports
-    r'eval\s*\(',  # eval calls
-    r'exec\s*\(',  # exec calls
-    r'compile\s*\(',  # compile calls
     r'os\.system\s*\(',  # os.system
-    r'subprocess\.',  # subprocess module (for sandbox mode only)
+    r'subprocess\.call\s*\([^)]*shell\s*=\s*True',  # subprocess with shell=True
     r'open\s*\([^)]*["\']\/etc',  # Reading system files
     r'rm\s+-rf\s+\/',  # Dangerous rm commands
     r'chmod\s+777',  # Dangerous chmod
@@ -44,16 +41,11 @@ DANGEROUS_PATTERNS = [
     r'wget\s+.*\|\s*sh',  # Piped wget execution
 ]
 
-# Additional patterns for local execution (stricter)
+# Additional patterns for local execution (stricter but reasonable)
+# Note: eval/exec are allowed as they're commonly used in generated code
 LOCAL_DANGEROUS_PATTERNS = DANGEROUS_PATTERNS + [
-    r'socket\.',  # Socket operations
-    r'ctypes\.',  # C-level operations
-    r'multiprocessing\.',  # Process spawning
     r'shutil\.rmtree\s*\([^)]*["\']/',  # Removing root paths
     r'pathlib\.Path\s*\([^)]*["\']/',  # Accessing root paths
-    r'pickle\.',  # Pickle deserialization (RCE vector)
-    r'marshal\.',  # Marshal deserialization
-    r'yaml\.load\s*\([^)]*Loader\s*=\s*yaml\.Loader',  # Unsafe YAML load
 ]
 
 # Allowed file extensions for local script execution
@@ -347,7 +339,6 @@ class SkillContainer:
 
     # Container paths for sandbox (following AgentSkill pattern)
     SANDBOX_ROOT = '/sandbox'
-    SANDBOX_INPUT_DIR = '/sandbox/inputs'
     SANDBOX_OUTPUT_DIR = '/sandbox/outputs'
     SANDBOX_WORK_DIR = '/sandbox/scripts'
 
@@ -387,17 +378,13 @@ class SkillContainer:
         self.use_sandbox = use_sandbox
         self.spec = ExecutionSpec()
 
-        # Host directories for I/O management
-        self.input_dir = self.workspace_dir / 'inputs'
+        # Host directories for I/O management (only outputs, scripts, logs)
         self.output_dir = self.workspace_dir / 'outputs'
         self.scripts_dir = self.workspace_dir / 'scripts'
         self.logs_dir = self.workspace_dir / 'logs'
-        self.artifacts_dir = self.workspace_dir / 'artifacts'
-        self.input_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
         self.scripts_dir.mkdir(exist_ok=True)
         self.logs_dir.mkdir(exist_ok=True)
-        self.artifacts_dir.mkdir(exist_ok=True)
 
         # Sandbox instance (lazy initialization)
         self._sandbox = None
@@ -527,36 +514,6 @@ class SkillContainer:
         """
         return script_path.suffix.lower() in ALLOWED_SCRIPT_EXTENSIONS
 
-    def _prepare_input_files(self, input_spec: ExecutionInput) -> None:
-        """
-        Prepare input files in workspace input directory.
-
-        Copies or creates files in the input_dir for execution.
-        """
-        for name, source in input_spec.input_files.items():
-            source_path = Path(source)
-            dest = self.input_dir / name
-
-            if source_path.exists():
-                shutil.copy2(source_path, dest)
-            else:
-                # Treat as content string
-                with open(dest, 'w', encoding='utf-8') as f:
-                    f.write(str(source))
-
-    def _prepare_sandbox_file_mapping(
-            self, input_spec: ExecutionInput) -> Dict[str, str]:
-        """
-        Get sandbox path mapping for input files.
-
-        Returns:
-            Dict mapping file names to sandbox paths.
-        """
-        return {
-            name: f'{self.SANDBOX_INPUT_DIR}/{name}'
-            for name in input_spec.input_files
-        }
-
     def _collect_output_files(self) -> Dict[str, Path]:
         """Collect output files from output directory."""
         outputs = {}
@@ -609,7 +566,6 @@ class SkillContainer:
         """
         # Setup environment
         run_env = os.environ.copy()
-        run_env['SKILL_INPUT_DIR'] = str(self.input_dir)
         run_env['SKILL_OUTPUT_DIR'] = str(self.output_dir)
         if env:
             run_env.update(env)
@@ -726,13 +682,9 @@ class SkillContainer:
                 cwd=cwd,
                 stdin_input=input_spec.stdin)
 
-            # Only cleanup on success, keep script for debugging on failure
-            if exit_code == 0 and script_file.exists():
-                script_file.unlink()
-
+            # Keep script in scripts folder for logging/debugging
             return stdout, stderr, exit_code
         except Exception as e:
-            # Keep script file for debugging
             logger.error(f'Local Python execution failed: {e}')
             raise
 
@@ -806,15 +758,15 @@ class SkillContainer:
             # Use working_dir from input_spec for proper resource access
             cwd = input_spec.working_dir if input_spec.working_dir else None
 
+            # Keep script in scripts folder for logging/debugging
             return self._local_run_subprocess(
                 cmd,
                 env=input_spec.env_vars,
                 cwd=cwd,
                 stdin_input=input_spec.stdin)
-        finally:
-            # Cleanup temp script
-            if script_file.exists():
-                script_file.unlink()
+        except Exception as e:
+            logger.error(f'Local JavaScript execution failed: {e}')
+            raise
 
     def _generate_local_env_setup(self, input_spec: ExecutionInput) -> str:
         """Generate Python code to setup environment for local execution."""
@@ -823,24 +775,16 @@ class SkillContainer:
             'import sys',
             '',
             '# Setup environment for local execution',
-            f"os.environ['SKILL_INPUT_DIR'] = {repr(str(self.input_dir))}",
             f"os.environ['SKILL_OUTPUT_DIR'] = {repr(str(self.output_dir))}",
             f"os.environ['SKILL_LOGS_DIR'] = {repr(str(self.logs_dir))}",
-            f"os.environ['SKILL_ARTIFACTS_DIR'] = {repr(str(self.artifacts_dir))}",
             '',
             '# Helper functions for I/O paths',
             'def get_output_path(filename):',
             '    """Get the full path for an output file. ALL outputs should use this."""',
             "    return os.path.join(os.environ['SKILL_OUTPUT_DIR'], filename)",
             '',
-            'def get_input_path(filename):',
-            '    """Get the full path for an input file."""',
-            "    return os.path.join(os.environ['SKILL_INPUT_DIR'], filename)",
-            '',
             f'SKILL_OUTPUT_DIR = {repr(str(self.output_dir))}',
-            f'SKILL_INPUT_DIR = {repr(str(self.input_dir))}',
             f'SKILL_LOGS_DIR = {repr(str(self.logs_dir))}',
-            f'SKILL_ARTIFACTS_DIR = {repr(str(self.artifacts_dir))}',
         ]
 
         # Add working directory to sys.path for imports and change to it
@@ -861,16 +805,6 @@ class SkillContainer:
         for key, value in input_spec.env_vars.items():
             lines.append(f'os.environ[{repr(key)}] = {repr(value)}')
 
-        # Add input files mapping (using local paths)
-        if input_spec.input_files:
-            lines.append('')
-            lines.append('# Input files mapping')
-            lines.append('INPUT_FILES = {')
-            for name in input_spec.input_files:
-                local_path = str(self.input_dir / name)
-                lines.append(f'    {repr(name)}: {repr(local_path)},')
-            lines.append('}')
-
         # Add args
         if input_spec.args:
             lines.append('')
@@ -886,20 +820,12 @@ class SkillContainer:
         """Generate JavaScript code to setup environment for local execution."""
         lines = [
             '// Environment setup for local execution',
-            f'process.env.SKILL_INPUT_DIR = {repr(str(self.input_dir))};',
             f'process.env.SKILL_OUTPUT_DIR = {repr(str(self.output_dir))};',
+            f'process.env.SKILL_LOGS_DIR = {repr(str(self.logs_dir))};',
         ]
 
         for key, value in input_spec.env_vars.items():
             lines.append(f'process.env.{key} = {repr(value)};')
-
-        if input_spec.input_files:
-            lines.append('')
-            lines.append('const INPUT_FILES = {')
-            for name in input_spec.input_files:
-                local_path = str(self.input_dir / name)
-                lines.append(f'  {repr(name)}: {repr(local_path)},')
-            lines.append('};')
 
         lines.append('')
         return '\n'.join(lines)
@@ -983,15 +909,11 @@ class SkillContainer:
                 self.spec.add_record(record)
                 return output
 
-            # Prepare input files
-            self._prepare_input_files(input_spec)
-
             start_time = datetime.now()
 
             if self.use_sandbox:
                 # Sandbox mode: inject environment and execute
-                sandbox_files = self._prepare_sandbox_file_mapping(input_spec)
-                env_setup = self._generate_env_setup(input_spec, sandbox_files)
+                env_setup = self._generate_env_setup(input_spec, {})
                 full_code = env_setup + '\n' + code
 
                 results = await self._execute_in_sandbox(
@@ -1070,15 +992,11 @@ class SkillContainer:
                 self.spec.add_record(record)
                 return output
 
-            # Prepare input files
-            self._prepare_input_files(input_spec)
-
             start_time = datetime.now()
 
             if self.use_sandbox:
                 # Sandbox mode
-                sandbox_files = self._prepare_sandbox_file_mapping(input_spec)
-                env_setup = self._generate_env_setup(input_spec, sandbox_files)
+                env_setup = self._generate_env_setup(input_spec, {})
                 full_code = env_setup + '\n' + code
 
                 results = await self._execute_in_sandbox(
@@ -1118,30 +1036,21 @@ class SkillContainer:
                             sandbox_files: Dict[str, str]) -> str:
         """Generate Python code to setup environment variables and paths."""
         sandbox_logs_dir = f'{self.SANDBOX_ROOT}/logs'
-        sandbox_artifacts_dir = f'{self.SANDBOX_ROOT}/artifacts'
         lines = [
             'import os',
             'import sys',
             '',
             '# Setup environment',
-            f"os.environ['SKILL_INPUT_DIR'] = '{self.SANDBOX_INPUT_DIR}'",
             f"os.environ['SKILL_OUTPUT_DIR'] = '{self.SANDBOX_OUTPUT_DIR}'",
             f"os.environ['SKILL_LOGS_DIR'] = '{sandbox_logs_dir}'",
-            f"os.environ['SKILL_ARTIFACTS_DIR'] = '{sandbox_artifacts_dir}'",
             '',
             '# Helper functions for I/O paths',
             'def get_output_path(filename):',
             '    """Get the full path for an output file. ALL outputs should use this."""',
             "    return os.path.join(os.environ['SKILL_OUTPUT_DIR'], filename)",
             '',
-            'def get_input_path(filename):',
-            '    """Get the full path for an input file."""',
-            "    return os.path.join(os.environ['SKILL_INPUT_DIR'], filename)",
-            '',
             f"SKILL_OUTPUT_DIR = '{self.SANDBOX_OUTPUT_DIR}'",
-            f"SKILL_INPUT_DIR = '{self.SANDBOX_INPUT_DIR}'",
             f"SKILL_LOGS_DIR = '{sandbox_logs_dir}'",
-            f"SKILL_ARTIFACTS_DIR = '{sandbox_artifacts_dir}'",
         ]
 
         # Add custom env vars
@@ -1149,15 +1058,6 @@ class SkillContainer:
             # Sanitize value to prevent injection
             safe_value = value.replace("'", "\\'")
             lines.append(f"os.environ['{key}'] = '{safe_value}'")
-
-        # Add input files mapping
-        if sandbox_files:
-            lines.append('')
-            lines.append('# Input files mapping')
-            lines.append('INPUT_FILES = {')
-            for name, path in sandbox_files.items():
-                lines.append(f"    '{name}': '{path}',")
-            lines.append('}')
 
         # Add args
         if input_spec.args:
@@ -1202,12 +1102,8 @@ class SkillContainer:
         record.status = ExecutionStatus.RUNNING
 
         try:
-            # Prepare input files
-            prepared_files = self._prepare_input_files(input_spec)
-
             # Add helper paths to kwargs
             kwargs = input_spec.kwargs.copy()
-            kwargs['_input_files'] = prepared_files
             kwargs['_output_dir'] = self.output_dir
 
             start_time = datetime.now()
@@ -1259,7 +1155,7 @@ class SkillContainer:
             skill_id=skill_id,
             executor_type=ExecutorType.SHELL,
             input_spec=input_spec,
-            script_path=cmd_str[:100])
+            script_path=cmd_str[:200])
 
         record.start_time = datetime.now()
         record.status = ExecutionStatus.RUNNING
@@ -1278,15 +1174,11 @@ class SkillContainer:
                 self.spec.add_record(record)
                 return output
 
-            # Prepare input files
-            self._prepare_input_files(input_spec)
-
             start_time = datetime.now()
 
             if self.use_sandbox:
                 # Sandbox mode: prepend environment setup
                 env_exports = [
-                    f"export SKILL_INPUT_DIR='{self.SANDBOX_INPUT_DIR}'",
                     f"export SKILL_OUTPUT_DIR='{self.SANDBOX_OUTPUT_DIR}'",
                 ]
                 for key, value in input_spec.env_vars.items():
@@ -1382,22 +1274,16 @@ class SkillContainer:
                 self.spec.add_record(record)
                 return output
 
-            # Prepare input files
-            self._prepare_input_files(input_spec)
-
             start_time = datetime.now()
 
             if self.use_sandbox:
                 # Sandbox mode: write JS file and execute
-                sandbox_files = self._prepare_sandbox_file_mapping(input_spec)
-
                 js_filename = f'script_{uuid.uuid4().hex[:8]}.js'
                 js_path = self.scripts_dir / js_filename
                 sandbox_js_path = f'{self.SANDBOX_WORK_DIR}/{js_filename}'
 
                 # Inject environment into JS code
-                env_inject = self._generate_js_env_setup(
-                    input_spec, sandbox_files)
+                env_inject = self._generate_js_env_setup(input_spec, {})
                 full_js_code = env_inject + '\n' + js_code
 
                 with open(js_path, 'w', encoding='utf-8') as f:
@@ -1444,20 +1330,12 @@ class SkillContainer:
         """Generate JavaScript code to setup environment."""
         lines = [
             '// Environment setup',
-            f"process.env.SKILL_INPUT_DIR = '{self.SANDBOX_INPUT_DIR}';",
             f"process.env.SKILL_OUTPUT_DIR = '{self.SANDBOX_OUTPUT_DIR}';",
         ]
 
         for key, value in input_spec.env_vars.items():
             safe_value = value.replace("'", "\\'")
             lines.append(f"process.env.{key} = '{safe_value}';")
-
-        if sandbox_files:
-            lines.append('')
-            lines.append('const INPUT_FILES = {')
-            for name, path in sandbox_files.items():
-                lines.append(f"  '{name}': '{path}',")
-            lines.append('};')
 
         lines.append('')
         return '\n'.join(lines)

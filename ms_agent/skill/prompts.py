@@ -149,7 +149,7 @@ Notes:
 - If `needs_skills` is true, `skill_queries` should contain search queries for finding relevant skills.
 """
 
-PROMPT_QUICK_FILTER_SKILLS = """Quickly filter candidate skills based on their name and description.
+PROMPT_FILTER_SKILLS_FAST = """Quickly filter candidate skills based on their name and description.
 
 User Query: {query}
 
@@ -170,6 +170,37 @@ Notes:
 - Only include skills that are POTENTIALLY useful for the task.
 - This is a quick filter - when in doubt, INCLUDE the skill for further analysis.
 - Focus on the main task output format/type matching (e.g., PDF generation needs PDF skill).
+"""
+
+PROMPT_FILTER_SKILLS_DEEP = """Analyze and filter candidate skills based on their full capabilities.
+
+User Query: {query}
+
+Candidate Skills (with detailed content):
+{candidate_skills}
+
+For each skill, evaluate:
+1. **Capability Match**: Can this skill actually PRODUCE the required output?
+2. **Task Completeness**: Can this skill independently complete the task, or does it need other skills?
+3. **Redundancy**: Are there overlapping skills that do the same thing?
+
+Output in JSON format:
+{{
+    "filtered_skill_ids": ["skill_id_1", "skill_id_2", ...],
+    "skill_analysis": {{
+        "skill_id_1": {{
+            "can_execute": true/false,
+            "reason": "Why this skill can/cannot execute the task"
+        }},
+        ...
+    }},
+    "reasoning": "Overall filtering explanation"
+}}
+
+**CRITICAL**:
+- Only include skills that can ACTUALLY execute and produce the required output.
+- Remove redundant skills - keep only the most suitable one for each capability.
+- The task specified by the user may require the collaboration of multiple skills to be successfully completed.
 """
 
 PROMPT_BUILD_SKILLS_DAG = """You are building a dependency graph (DAG) for executing skills.
@@ -240,70 +271,6 @@ Notes:
 # ============================================================
 # Progressive Skill Analysis Prompts
 # ============================================================
-
-PROMPT_VALIDATE_SKILL_RELEVANCE = """You are an expert at evaluating whether a skill can ACTUALLY EXECUTE and COMPLETE a user's task.
-
-User Query: {query}
-
-Skill Being Evaluated:
-- Skill ID: {skill_id}
-- Name: {skill_name}
-- Description: {skill_description}
-
-Skill Content (SKILL.md):
-{skill_content}
-
-Available Scripts: {scripts_list}
-Available Resources: {resources_list}
-
-Other Candidate Skills:
-{other_skills}
-
-**CRITICAL EVALUATION CRITERIA:**
-
-1. **Capability Match (Most Important):**
-   - Can this skill ACTUALLY PRODUCE the output the user wants?
-   - Does it have the necessary scripts/tools to complete the task?
-   - Example: A "theme-factory" skill that only applies styles CANNOT generate PDF files.
-   - Example: A "design" skill without PDF export CANNOT create PDF reports.
-
-2. **Output Format Match:**
-   - If user requests PDF, does this skill generate PDF?
-   - If user requests report, does this skill create reports with content?
-   - Don't select skills that only do PART of the task (e.g., styling without generation).
-
-3. **Redundancy Check:**
-   - Is there another skill that does the SAME thing better?
-   - Don't keep multiple skills that serve the same purpose.
-
-4. **Task Completeness:**
-   - Can this skill INDEPENDENTLY complete the user's request?
-   - Or does it require capabilities it doesn't have?
-
-Output in JSON format:
-{{
-    "can_execute_task": true/false,
-    "capability_analysis": {{
-        "required_capabilities": ["what the user needs"],
-        "skill_capabilities": ["what this skill can do"],
-        "missing_capabilities": ["what this skill lacks"]
-    }},
-    "is_relevant": true/false,
-    "is_redundant": true/false,
-    "redundant_with": "skill_id (if redundant)",
-    "relevance_score": 0.0-1.0,
-    "reason": "Detailed explanation",
-    "recommendation": "keep|remove|replace_with_skill_id",
-    "better_alternative": "skill_id if another skill is more suitable"
-}}
-
-**IMPORTANT:**
-- Set `can_execute_task` to false if the skill CANNOT produce the requested output.
-- A "styling" or "theming" skill cannot generate content or create files from scratch.
-- Prefer skills that can INDEPENDENTLY complete the task over partial solutions.
-- If the skill only does decoration/styling but user needs generation, mark as NOT relevant.
-"""
-
 
 PROMPT_SKILL_ANALYSIS_PLAN = """You are analyzing a skill to create an execution plan.
 
@@ -403,10 +370,8 @@ Loaded Resources:
 
 **IMPORTANT Environment Variables:**
 - `SKILL_OUTPUT_DIR`: Directory where ALL output files MUST be saved (e.g., PDFs, images, data files)
-- `SKILL_INPUT_DIR`: Directory containing input files
 - `SKILL_DIR`: The skill's directory (for accessing resources like fonts, templates)
 - `SKILL_LOGS_DIR`: Directory for logs and intermediate files
-- `SKILL_ARTIFACTS_DIR`: Directory for artifacts and temporary files
 
 Generate the specific execution command(s) needed.
 
@@ -432,4 +397,62 @@ Output in JSON format:
 - Use `os.path.join(os.environ['SKILL_OUTPUT_DIR'], 'filename.pdf')` for output paths
 - NEVER save output files to the current working directory or skill directory
 - The skill directory should be READ-ONLY for resources, not for output
+"""
+
+PROMPT_ANALYZE_EXECUTION_ERROR = """You are analyzing a failed code execution to diagnose and fix the error.
+
+**User Query**: {query}
+
+**Skill ID**: {skill_id}
+**Skill Name**: {skill_name}
+
+**Failed Code**:
+```python
+{failed_code}
+```
+
+**Error Message (stderr)**:
+```
+{stderr}
+```
+
+**stdout (if any)**:
+```
+{stdout}
+```
+
+**Attempt**: {attempt}/{max_attempts}
+
+**Available Environment Variables**:
+- SKILL_OUTPUT_DIR: Directory for output files
+- SKILL_DIR: Skill's directory for resources (fonts, templates, etc.)
+- SKILL_LOGS_DIR: Directory for logs
+
+**Helper Functions Available**:
+- get_output_path(filename): Returns full path for output file
+
+Analyze the error and provide a fix:
+
+1. Identify the root cause of the error
+2. Determine if it's fixable through code modification
+3. Generate corrected code that addresses the issue
+
+Output in JSON format:
+{{
+    "error_analysis": {{
+        "error_type": "ModuleNotFoundError|FileNotFoundError|SyntaxError|RuntimeError|etc",
+        "root_cause": "Brief description of what caused the error",
+        "is_fixable": true/false,
+        "fix_strategy": "Description of how to fix"
+    }},
+    "fixed_code": "Complete fixed Python code (or null if unfixable)",
+    "additional_requirements": ["package1", "package2"],
+    "explanation": "What was changed and why"
+}}
+
+**IMPORTANT**:
+- Provide COMPLETE fixed code, not just the changed parts
+- Ensure output paths use get_output_path() or os.environ['SKILL_OUTPUT_DIR']
+- If the error is about missing packages, add them to additional_requirements
+- If the error cannot be fixed (e.g., requires user input), set is_fixable to false
 """
