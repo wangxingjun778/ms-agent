@@ -203,37 +203,32 @@ Output in JSON format:
 - The task specified by the user may require the collaboration of multiple skills to be successfully completed.
 """
 
-PROMPT_BUILD_SKILLS_DAG = """You are building a dependency graph (DAG) for executing skills.
+PROMPT_BUILD_SKILLS_DAG = """Filter candidate skills and build execution DAG.
 
 User Query: {query}
 
-Selected Skills:
+Candidate Skills:
 {selected_skills}
 
-Build an execution DAG where:
-- Each skill is a node identified by skill_id
-- Edges represent dependencies (A -> B means A must complete before B)
-- Consider logical execution order and data dependencies
+**Tasks:**
+1. **Filter**: Keep only skills that can ACTUALLY produce required output. Remove redundant/unnecessary skills.
+2. **Build DAG**: Define dependencies (A -> B means A completes before B) and execution order.
 
-Output in JSON format:
+**Output JSON:**
 {{
+    "filtered_skill_ids": ["skill_id_1", ...],
     "dag": {{
-        "skill_id_1": ["dependent_skill_id_a", "dependent_skill_id_b"],
-        "skill_id_2": [],
-        ...
+        "skill_id_1": ["dependent_skill_id"],
+        "skill_id_2": []
     }},
-    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4", ...],
-    "reasoning": "Brief explanation of the dependency structure"
+    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4"],
+    "reasoning": "Brief explanation"
 }}
 
-Notes:
-    The `execution_order` can include parallel execution steps represented as lists.
-    The `execution_order` must respect the dependencies defined in the `dag`.
-
-
-You MUST follow principles:
-- Minimal Sufficiency Principle: Choose the smallest set of skills that fully satisfies the user's query—no extra or unnecessary skills should be included.
-- Skill Deduplication: If multiple skills serve similar or overlapping purposes, retain only the most effective or optimal one and remove redundant alternatives.
+**Rules:**
+- Minimal sufficiency: smallest skill set that fully satisfies the query.
+- Deduplicate: keep only the most effective skill when overlapping.
+- `execution_order` supports parallel steps as nested lists.
 """
 
 PROMPT_DIRECT_SELECT_SKILLS = """You are a skill selector. Given a user query and all available skills, select the relevant skills and build an execution DAG.

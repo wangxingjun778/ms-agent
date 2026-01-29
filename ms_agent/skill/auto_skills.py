@@ -622,48 +622,23 @@ class DAGExecutor:
                 success=False,
                 error='No execution commands generated')
 
-        # Phase 3: Execute commands with retry support
+        # Phase 3: Execute commands with retry support for all types
         outputs: List[ExecutionOutput] = []
         for cmd in commands:
             cmd_type = cmd.get('type', 'python_code')
 
-            # Use retry mechanism for Python code execution
-            if self.enable_self_reflection and cmd_type in ('python_code', 'python_script'):
-                code = cmd.get('code', '')
-                if code:
-                    # Build merged input for this command
-                    params = cmd.get('parameters', {})
-                    working_dir = exec_input.working_dir or context.skill_dir
-                    all_requirements = []
-                    if context.plan and context.plan.required_packages:
-                        all_requirements.extend(context.plan.required_packages)
-                    all_requirements.extend(cmd.get('requirements', []))
-                    all_requirements.extend(exec_input.requirements)
-                    seen = set()
-                    unique_reqs = [r for r in all_requirements
-                                   if r not in seen and not seen.add(r)]
-
-                    merged_input = ExecutionInput(
-                        args=exec_input.args + list(params.values()),
-                        kwargs={**exec_input.kwargs, **params},
-                        env_vars={**exec_input.env_vars,
-                                  'SKILL_DIR': str(context.skill_dir) if context.skill_dir else ''},
-                        input_files=exec_input.input_files,
-                        working_dir=working_dir,
-                        requirements=unique_reqs)
-
-                    output, _ = await self._execute_with_retry(
-                        skill=skill,
-                        skill_id=skill_id,
-                        code=code,
-                        exec_input=merged_input,
-                        context=context,
-                        query=query)
-                else:
-                    output = await self._execute_command(cmd, cmd_type, skill_id,
-                                                         exec_input, context)
+            # Use retry mechanism for all command types
+            if self.enable_self_reflection:
+                output = await self._execute_command_with_retry(
+                    cmd=cmd,
+                    cmd_type=cmd_type,
+                    skill_id=skill_id,
+                    exec_input=exec_input,
+                    context=context,
+                    skill=skill,
+                    query=query)
             else:
-                # Non-Python or self-reflection disabled
+                # Self-reflection disabled - execute without retry
                 output = await self._execute_command(cmd, cmd_type, skill_id,
                                                      exec_input, context)
             outputs.append(output)
@@ -815,6 +790,101 @@ class DAGExecutor:
             return await self.container.execute_python_code(
                 code=code, skill_id=skill_id, input_spec=merged_input)
 
+    async def _execute_command_with_retry(
+            self, cmd: Dict[str, Any], cmd_type: str,
+            skill_id: str, exec_input: ExecutionInput,
+            context: SkillContext, skill: SkillSchema,
+            query: str) -> ExecutionOutput:
+        """
+        Execute a command with retry logic for all execution types.
+
+        Always retries up to max_retries times. Uses LLM analysis to improve
+        the fix between retries when self-reflection is enabled.
+
+        Args:
+            cmd: Command dictionary.
+            cmd_type: Type of command.
+            skill_id: Skill identifier.
+            exec_input: Base execution input.
+            context: SkillContext.
+            skill: SkillSchema for error analysis.
+            query: User query for context.
+
+        Returns:
+            ExecutionOutput from command execution.
+        """
+        current_cmd = cmd.copy()
+        last_output = None
+
+        for attempt in range(1, self.max_retries + 1):
+            self._execution_attempts[skill_id] = attempt
+            logger.info(f'[{skill_id}] Execution attempt {attempt}/{self.max_retries}')
+
+            # Execute the command
+            output = await self._execute_command(
+                current_cmd, cmd_type, skill_id, exec_input, context)
+            last_output = output
+
+            # Check if successful
+            if output.exit_code == 0:
+                if attempt > 1:
+                    logger.info(
+                        f'[{skill_id}] Execution succeeded after {attempt} attempts')
+                return output
+
+            # Collect error info
+            error_msg = output.stderr[:500] if output.stderr else 'Unknown error'
+            logger.warning(f'[{skill_id}] Attempt {attempt} failed: {error_msg[:200]}')
+
+            # Last attempt - no need to analyze
+            if attempt >= self.max_retries:
+                logger.warning(
+                    f'[{skill_id}] Max retries ({self.max_retries}) reached')
+                continue
+
+            # Try to analyze and fix if self-reflection is enabled
+            if self.enable_self_reflection and cmd_type in ('python_code', 'python_script'):
+                code = current_cmd.get('code', '')
+                if code:
+                    logger.info(f'[{skill_id}] Analyzing error for retry...')
+                    analysis = self._analyze_execution_error(
+                        skill=skill,
+                        failed_code=code,
+                        output=output,
+                        query=query,
+                        attempt=attempt)
+
+                    error_info = analysis.get('error_analysis', {})
+                    is_fixable = error_info.get('is_fixable', False)
+                    fixed_code = analysis.get('fixed_code')
+                    additional_reqs = analysis.get('additional_requirements', [])
+
+                    logger.info(
+                        f'[{skill_id}] Error analysis: type={error_info.get("error_type")}, '
+                        f'fixable={is_fixable}')
+
+                    # Apply fix if available
+                    if is_fixable and fixed_code:
+                        current_cmd = current_cmd.copy()
+                        current_cmd['code'] = fixed_code
+                        logger.info(f'[{skill_id}] Applying fix')
+
+                    # Add additional requirements
+                    if additional_reqs:
+                        logger.info(f'[{skill_id}] Adding requirements: {additional_reqs}')
+                        exec_input = ExecutionInput(
+                            args=exec_input.args,
+                            kwargs=exec_input.kwargs,
+                            env_vars=exec_input.env_vars,
+                            input_files=exec_input.input_files,
+                            working_dir=exec_input.working_dir,
+                            requirements=list(set(exec_input.requirements + additional_reqs)))
+            else:
+                logger.info(f'[{skill_id}] Retrying without code modification')
+
+        logger.error(f'[{skill_id}] All {self.max_retries} attempts failed')
+        return last_output
+
     def _merge_outputs(self,
                        outputs: List[ExecutionOutput]) -> ExecutionOutput:
         """Merge multiple execution outputs into one."""
@@ -890,101 +960,6 @@ class DAGExecutor:
             logger.warning(f'Error analyzing execution failure: {e}')
 
         return {'error_analysis': {'is_fixable': False}, 'fixed_code': None}
-
-    async def _execute_with_retry(
-            self,
-            skill: SkillSchema,
-            skill_id: str,
-            code: str,
-            exec_input: ExecutionInput,
-            context: SkillContext,
-            query: str) -> Tuple[ExecutionOutput, str]:
-        """
-        Execute code with self-reflection and retry on failure.
-
-        Args:
-            skill: SkillSchema being executed.
-            skill_id: Skill identifier.
-            code: Python code to execute.
-            exec_input: Execution input.
-            context: SkillContext with loaded resources.
-            query: User query for error analysis.
-
-        Returns:
-            Tuple of (ExecutionOutput, final_code_used).
-        """
-        current_code = code
-        attempt = 0
-
-        while attempt < self.max_retries:
-            attempt += 1
-            self._execution_attempts[skill_id] = attempt
-            logger.info(f'[{skill_id}] Execution attempt {attempt}/{self.max_retries}')
-
-            # Execute the code
-            output = await self.container.execute_python_code(
-                code=current_code,
-                skill_id=skill_id,
-                input_spec=exec_input)
-
-            # Check if successful
-            if output.exit_code == 0:
-                if attempt > 1:
-                    logger.info(
-                        f'[{skill_id}] Execution succeeded after {attempt} attempts')
-                return output, current_code
-
-            # Failed - check if we should retry
-            if not self.enable_self_reflection:
-                logger.warning(
-                    f'[{skill_id}] Execution failed, self-reflection disabled')
-                return output, current_code
-
-            if attempt >= self.max_retries:
-                logger.warning(
-                    f'[{skill_id}] Max retries ({self.max_retries}) reached')
-                return output, current_code
-
-            # Analyze error and attempt fix
-            logger.info(f'[{skill_id}] Analyzing error for retry...')
-            analysis = self._analyze_execution_error(
-                skill=skill,
-                failed_code=current_code,
-                output=output,
-                query=query,
-                attempt=attempt)
-
-            error_info = analysis.get('error_analysis', {})
-            is_fixable = error_info.get('is_fixable', False)
-            fixed_code = analysis.get('fixed_code')
-            additional_reqs = analysis.get('additional_requirements', [])
-
-            logger.info(
-                f'[{skill_id}] Error analysis: type={error_info.get("error_type")}, '
-                f'fixable={is_fixable}, cause={error_info.get("root_cause", "")[:200]}'
-            )
-
-            if not is_fixable or not fixed_code:
-                logger.warning(
-                    f'[{skill_id}] Error not fixable: {error_info.get("root_cause")}')
-                return output, current_code
-
-            # Update code and requirements for retry
-            current_code = fixed_code
-            if additional_reqs:
-                logger.info(f'[{skill_id}] Adding requirements: {additional_reqs}')
-                exec_input = ExecutionInput(
-                    args=exec_input.args,
-                    kwargs=exec_input.kwargs,
-                    env_vars=exec_input.env_vars,
-                    input_files=exec_input.input_files,
-                    working_dir=exec_input.working_dir,
-                    requirements=list(set(exec_input.requirements + additional_reqs)))
-
-            logger.info(
-                f'[{skill_id}] Retrying with fix: {analysis.get("explanation", "")[:200]}')
-
-        return output, current_code
 
     async def _execute_parallel_group(
             self,
@@ -1254,7 +1229,7 @@ class AutoSkills:
             if skill_id in self.all_skills:
                 skill = self.all_skills[skill_id]
                 lines.append(
-                    f'- [{skill_id}] {skill.name}\n  {skill.description}')
+                    f'- [{skill_id}] {skill.name}\n  {skill.description}\n Main Content: {skill.content[:3000]}')
         return '\n'.join(lines)
 
     def _llm_generate(self, prompt: str) -> str:
@@ -1395,21 +1370,23 @@ class AutoSkills:
 
         logger.info(
             f'Filter ({mode}): {len(skill_ids)} -> {len(filtered_ids)} skills. '
-            f'Reason: {parsed.get("reasoning", "")[:300]}'
+            f'Reason: {parsed.get("reasoning", "")[:1000]}'
         )
 
         return set(filtered_ids)
 
     def _build_dag(self, query: str, skill_ids: Set[str]) -> Dict[str, Any]:
         """
-        Build execution DAG from selected skills.
+        Filter skills and build execution DAG.
+
+        Performs deep filtering and DAG construction in one LLM call.
 
         Args:
             query: Original user query.
-            skill_ids: Set of skill_ids to include in DAG.
+            skill_ids: Set of candidate skill_ids.
 
         Returns:
-            Dict containing 'dag' and 'execution_order'.
+            Dict containing 'filtered_skill_ids', 'dag', and 'execution_order'.
         """
         skills_info = self._format_retrieved_skills(skill_ids)
         prompt = PROMPT_BUILD_SKILLS_DAG.format(
@@ -1417,9 +1394,22 @@ class AutoSkills:
         response = self._llm_generate(prompt)
         parsed = self._parse_json_response(response)
 
-        dag = parsed.get('dag', {skill_id: [] for skill_id in skill_ids})
-        order = parsed.get('execution_order', list(skill_ids))
-        return {'dag': dag, 'execution_order': order}
+        # Get filtered skills (defaults to all if not provided)
+        filtered_ids = set(parsed.get('filtered_skill_ids', list(skill_ids)))
+        logger.info(f'DAG filter: {len(skill_ids)} -> {len(filtered_ids)} skills')
+
+        dag = parsed.get('dag', {sid: [] for sid in filtered_ids})
+        order = parsed.get('execution_order', [])
+
+        # Fallback: if execution_order is empty, derive from filtered_ids
+        if not order and filtered_ids:
+            order = list(filtered_ids)
+
+        return {
+            'filtered_skill_ids': filtered_ids,
+            'dag': dag,
+            'execution_order': order
+        }
 
     def _filter_execution_order(
             self,
@@ -1610,7 +1600,7 @@ class AutoSkills:
             return SkillDAGResult(
                 is_complete=False, clarification=clarification)
 
-        # Limit candidate skills to max_candidate_skills before filtering
+        # Limit candidate skills to max_candidate_skills
         if len(collected_skills) > self.max_candidate_skills:
             logger.warning(
                 f'Too many candidate skills ({len(collected_skills)}), '
@@ -1618,30 +1608,48 @@ class AutoSkills:
             )
             collected_skills = set(list(collected_skills)[:self.max_candidate_skills])
 
-        # Step 3: Deep filter by content analysis (name + description + content)
-        collected_skills = self._filter_skills(query, collected_skills, mode='deep')
-        logger.info(f'After deep filter: {collected_skills}')
+        # Step 3: Fast filter by name/description
+        collected_skills = self._filter_skills(query, collected_skills, mode='fast')
+        logger.info(f'After fast filter: {collected_skills}')
+
+        # TODO: ONLY FOR TEST
+        if len(collected_skills) > 1:
+            collected_skills = self._filter_skills(query, collected_skills, mode='deep')
+            logger.info(f'After deep filter: {collected_skills}')
 
         if not collected_skills:
             clarification = 'No relevant skills found after filtering. Please refine your query.'
             return SkillDAGResult(
                 is_complete=False, clarification=clarification)
 
-        # Build selected skills dict
-        selected = {
-            sid: self.all_skills[sid]
-            for sid in collected_skills if sid in self.all_skills
-        }
-
-        # Step 4: Build DAG from filtered skills
+        # Step 4: Build DAG with integrated deep filtering
         dag_result = self._build_dag(query, collected_skills)
 
+        filtered_ids = dag_result.get('filtered_skill_ids', collected_skills)
         skills_dag: Dict[str, Any] = dag_result.get('dag', {})
         execution_order: List[str] = dag_result.get('execution_order', [])
+
+        if not filtered_ids:
+            clarification = 'No relevant skills found after filtering. Please refine your query.'
+            return SkillDAGResult(
+                is_complete=False, clarification=clarification)
+
+        # Build selected skills dict from filtered results
+        selected = {
+            sid: self.all_skills[sid]
+            for sid in filtered_ids if sid in self.all_skills
+        }
 
         # Ensure execution_order only contains filtered skills
         execution_order = self._filter_execution_order(
             execution_order, set(selected.keys()))
+
+        # Fallback: if execution_order is empty but we have skills, use DAG keys
+        if not execution_order and selected:
+            execution_order = list(selected.keys())
+            logger.warning(
+                f'Empty execution_order, using filtered skills: {execution_order}'
+            )
 
         logger.info(
             f'Final DAG built with skills: {skills_dag}, execution order: {execution_order}'
