@@ -183,6 +183,9 @@ Build an execution DAG where:
 - Edges represent dependencies (A -> B means A must complete before B)
 - Consider logical execution order and data dependencies
 
+Principles:
+- You **MUST** follow the principle: MINIMUM NECESSARY SKILLS and DEPENDENCIES REQUIRED to fulfill the user query.
+
 Output in JSON format:
 {{
     "dag": {{

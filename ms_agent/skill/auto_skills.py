@@ -1209,6 +1209,9 @@ class AutoSkills:
             f'Final DAG built with skills: {skills_dag}, execution order: {execution_order}'
         )
 
+        # TODO: ONLY FOR TEST !
+        execution_order = ['pdf@latest']
+
         return SkillDAGResult(
             dag=skills_dag,
             execution_order=execution_order,
