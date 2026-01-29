@@ -352,29 +352,65 @@ class SkillSchemaParser:
 
 
 @dataclass
+class SkillExecutionPlan:
+    """
+    Execution plan generated from progressive skill analysis.
+
+    Attributes:
+        can_handle: Whether the skill can handle the user query.
+        plan_summary: Brief summary of the execution plan.
+        steps: List of execution steps.
+        required_scripts: Script names needed for execution.
+        required_references: Reference names needed.
+        required_resources: Resource names needed.
+        parameters: Parameters extracted from user query.
+        reasoning: Explanation of the plan.
+    """
+    can_handle: bool = False
+    plan_summary: str = ''
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    required_scripts: List[str] = field(default_factory=list)
+    required_references: List[str] = field(default_factory=list)
+    required_resources: List[str] = field(default_factory=list)
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    reasoning: str = ''
+
+
+@dataclass
 class SkillContext:
     """
     Context information for executing a Skill.
+
+    Supports progressive/lazy loading - resources are only loaded when needed.
     """
 
     # The target skill
     skill: SkillSchema
 
-    # The working directory (absolute path to skills folder's parent directory as default)
+    # User query that triggered this skill
+    query: str = ''
+
+    # The working directory (absolute path to skills folder's parent directory)
     root_path: Path = field(
         default_factory=lambda: Path.cwd().parent.resolve())
 
-    # The target scripts to be executed
+    # Execution plan from progressive analysis
+    plan: Optional[SkillExecutionPlan] = None
+
+    # Loaded scripts (lazy loaded based on plan)
     scripts: List[Dict[str, Any]] = field(default_factory=list)
 
-    # The reference documents
+    # Loaded references (lazy loaded based on plan)
     references: List[Dict[str, Any]] = field(default_factory=list)
 
-    # The resource documents
+    # Loaded resources (lazy loaded based on plan)
     resources: List[Dict[str, Any]] = field(default_factory=list)
 
-    # The SPEC context
+    # The SPEC context for execution tracking
     spec: Optional[Spec] = None
+
+    # Whether resources have been loaded
+    _resources_loaded: bool = field(default=False, repr=False)
 
     @staticmethod
     def _read_file_content(file_path: Union[str, Path]) -> str:
@@ -387,13 +423,12 @@ class SkillContext:
         Returns:
             Content of the file as a string
         """
-        # Read the file content by extensions
-        file_path: Path = Path(file_path)
+        file_path = Path(file_path)
 
         if not file_path.exists() or not file_path.is_file():
             return ''
 
-        ext: str = file_path.suffix.lower()
+        ext = file_path.suffix.lower()
         if ext in SUPPORTED_READ_EXT:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -405,10 +440,42 @@ class SkillContext:
         return ''
 
     def __post_init__(self):
+        """Initialize SPEC context only, defer resource loading."""
+        if self.spec is None:
+            self.spec = Spec(plan='', tasks='')
 
-        # Initialize scripts info
-        self.scripts = [
-            {
+    def get_scripts_list(self) -> List[str]:
+        """Get list of available script names without loading content."""
+        return [s.name for s in self.skill.scripts]
+
+    def get_references_list(self) -> List[str]:
+        """Get list of available reference names without loading content."""
+        return [r.name for r in self.skill.references]
+
+    def get_resources_list(self) -> List[str]:
+        """Get list of available resource names without loading content."""
+        return [
+            r.name for r in self.skill.resources
+            if r.name not in ['SKILL.md', 'LICENSE.txt']
+        ]
+
+    def load_scripts(self, names: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Load specific scripts by name, or all if names is None.
+
+        Args:
+            names: List of script names to load, or None for all.
+
+        Returns:
+            List of loaded script dictionaries with content.
+        """
+        target_scripts = self.skill.scripts
+        if names:
+            target_scripts = [s for s in self.skill.scripts if s.name in names]
+
+        loaded = []
+        for script in target_scripts:
+            loaded.append({
                 'name':
                 script.name,
                 'file':
@@ -416,51 +483,128 @@ class SkillContext:
                 'path':
                 str(script.path.resolve().relative_to(
                     self.root_path.resolve())),
-                'description':
-                '',  # May need to call the LLM to generate description in the future
                 'content':
                 self._read_file_content(script.path.resolve()),
-            } for script in self.skill.scripts
-        ]
+            })
+        self.scripts.extend(loaded)
+        return loaded
 
-        # Initialize references info
-        self.references = [
-            {
+    def load_references(self, names: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Load specific references by name, or all if names is None.
+
+        Args:
+            names: List of reference names to load, or None for all.
+
+        Returns:
+            List of loaded reference dictionaries with content.
+        """
+        target_refs = self.skill.references
+        if names:
+            target_refs = [r for r in self.skill.references if r.name in names]
+
+        loaded = []
+        for ref in target_refs:
+            loaded.append({
                 'name':
-                reference.name,
+                ref.name,
                 'file':
-                reference.to_dict(),
+                ref.to_dict(),
                 'path':
-                str(reference.path.resolve().relative_to(
-                    self.root_path.resolve())),
-                'description':
-                '',  # May need to call the LLM to generate description in the future
+                str(ref.path.resolve().relative_to(self.root_path.resolve())),
                 'content':
-                self._read_file_content(reference.path.resolve()),
-            } for reference in self.skill.references
-        ]
+                self._read_file_content(ref.path.resolve()),
+            })
+        self.references.extend(loaded)
+        return loaded
 
-        # Initialize resources info
-        self.resources = [
-            {
+    def load_resources(self, names: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Load specific resources by name, or all if names is None.
+
+        Args:
+            names: List of resource names to load, or None for all.
+
+        Returns:
+            List of loaded resource dictionaries with content.
+        """
+        target_res = [
+            r for r in self.skill.resources
+            if r.name not in ['SKILL.md', 'LICENSE.txt']
+        ]
+        if names:
+            target_res = [r for r in target_res if r.name in names]
+
+        loaded = []
+        for res in target_res:
+            loaded.append({
                 'name':
-                resource.name,
+                res.name,
                 'file':
-                resource.to_dict(),
+                res.to_dict(),
                 'path':
-                str(resource.path.resolve().relative_to(
-                    self.root_path.resolve())),
-                'description':
-                '',  # May need to call the LLM to generate description in the future
+                str(res.path.resolve().relative_to(self.root_path.resolve())),
                 'content':
-                self._read_file_content(resource.path.resolve()),
-            } for resource in self.skill.resources
-            if resource.name not in ['SKILL.md', 'LICENSE.txt']
-        ]
+                self._read_file_content(res.path.resolve()),
+            })
+        self.resources.extend(loaded)
+        return loaded
 
-        # Initialize SPEC context
-        if self.spec is None:
-            self.spec = Spec(plan='', tasks='')
+    def load_from_plan(self) -> None:
+        """
+        Load resources based on the execution plan.
+
+        Loads only the scripts, references, and resources specified in the plan.
+        """
+        if self._resources_loaded or not self.plan:
+            return
+
+        if self.plan.required_scripts:
+            self.load_scripts(self.plan.required_scripts)
+
+        if self.plan.required_references:
+            self.load_references(self.plan.required_references)
+
+        if self.plan.required_resources:
+            self.load_resources(self.plan.required_resources)
+
+        self._resources_loaded = True
+
+    def load_all(self) -> None:
+        """Load all available resources (scripts, references, resources)."""
+        if self._resources_loaded:
+            return
+        self.load_scripts()
+        self.load_references()
+        self.load_resources()
+        self._resources_loaded = True
+
+    def get_loaded_scripts_content(self) -> str:
+        """Get formatted content of all loaded scripts."""
+        if not self.scripts:
+            return 'No scripts loaded.'
+        parts = []
+        for s in self.scripts:
+            parts.append(f"<!-- {s['path']} -->\n{s['content']}")
+        return '\n\n'.join(parts)
+
+    def get_loaded_references_content(self) -> str:
+        """Get formatted content of all loaded references."""
+        if not self.references:
+            return 'No references loaded.'
+        parts = []
+        for r in self.references:
+            parts.append(f"<!-- {r['path']} -->\n{r['content']}")
+        return '\n\n'.join(parts)
+
+    def get_loaded_resources_content(self) -> str:
+        """Get formatted content of all loaded resources."""
+        if not self.resources:
+            return 'No resources loaded.'
+        parts = []
+        for r in self.resources:
+            parts.append(f"<!-- {r['path']} -->\n{r['content']}")
+        return '\n\n'.join(parts)
 
 
 @dataclass

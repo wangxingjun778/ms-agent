@@ -230,3 +230,121 @@ Notes:
 - Only include skill_ids that exist in the available skills list.
 - The `execution_order` can include parallel execution steps represented as lists.
 """
+
+# ============================================================
+# Progressive Skill Analysis Prompts
+# ============================================================
+
+PROMPT_SKILL_ANALYSIS_PLAN = """You are analyzing a skill to create an execution plan.
+
+User Query: {query}
+
+Skill Information:
+- Skill ID: {skill_id}
+- Name: {skill_name}
+- Description: {skill_description}
+
+Skill Content (SKILL.md):
+{skill_content}
+
+Available Resources Overview:
+- Scripts: {scripts_list}
+- References: {references_list}
+- Resources: {resources_list}
+
+Tasks:
+1. Understand what this skill can do based on its description and content
+2. Determine if this skill can address the user's query
+3. Create a step-by-step execution plan
+4. Identify which scripts, references, and resources are needed
+
+Output in JSON format:
+{{
+    "can_handle": true/false,
+    "plan_summary": "Brief summary of the execution plan",
+    "steps": [
+        {{"step": 1, "action": "description", "type": "script|reference|resource|code"}},
+        ...
+    ],
+    "required_scripts": ["script_name1", "script_name2", ...],
+    "required_references": ["ref_name1", ...],
+    "required_resources": ["resource_name1", ...],
+    "parameters": {{"param1": "value or <user_input>", ...}},
+    "reasoning": "Why this plan will work"
+}}
+
+Notes:
+- Only include resources that are actually needed for execution.
+- Steps should be actionable and specific.
+- Parameters should include any values extracted from the query.
+"""
+
+PROMPT_CLARIFY_USER_INTENT = """You are verifying if the selected skills can fully satisfy the user's intent.
+
+User Query: {query}
+
+Selected Skills:
+{selected_skills}
+
+Tasks:
+1. Analyze the user's intent and requirements from the query
+2. Evaluate if the selected skills can completely fulfill the user's needs
+3. Identify any gaps or missing capabilities
+4. If clarification is needed, formulate a clear question for the user
+
+Output in JSON format:
+{{
+    "intent_satisfied": true/false,
+    "intent_summary": "Brief summary of what user wants to achieve",
+    "coverage_analysis": {{
+        "covered": ["capability1 covered by skill_x", ...],
+        "missing": ["missing capability1", ...]
+    }},
+    "confidence": 0.0-1.0,
+    "clarification_needed": null or "Specific question to ask the user",
+    "suggestion": "Optional suggestion for the user if clarification is needed"
+}}
+
+Notes:
+- Set `intent_satisfied` to true only if you are confident (>0.8) skills can fulfill the query.
+- If `intent_satisfied` is false, provide a clear `clarification_needed` question.
+- The question should help gather missing information to better match skills.
+"""
+
+
+PROMPT_SKILL_EXECUTION_COMMAND = """Based on the execution plan and loaded resources, generate the execution command(s).
+
+User Query: {query}
+Skill ID: {skill_id}
+
+Execution Plan:
+{execution_plan}
+
+Loaded Scripts:
+{scripts_content}
+
+Loaded References:
+{references_content}
+
+Loaded Resources:
+{resources_content}
+
+Generate the specific execution command(s) needed.
+
+Output in JSON format:
+{{
+    "execution_type": "script|code|shell",
+    "commands": [
+        {{
+            "type": "python_script|python_code|shell|javascript",
+            "path": "script_path (if applicable)",
+            "code": "inline code (if applicable)",
+            "parameters": {{"param1": "value", ...}},
+            "working_dir": "working directory (optional)",
+            "requirements": ["package1", "package2", ...]
+        }},
+        ...
+    ],
+    "expected_output": "Description of expected output"
+}}
+"""
