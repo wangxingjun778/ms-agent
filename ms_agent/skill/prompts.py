@@ -269,6 +269,15 @@ Notes:
 
 PROMPT_SKILL_ANALYSIS_PLAN = """You are analyzing a skill to create an execution plan.
 
+**IMPORTANT CONTEXT**:
+This skill may be ONE OF SEVERAL skills in a execution chain. It does NOT need to fulfill
+the ENTIRE user query - it only needs to handle its specific sub-task/capability.
+
+For example:
+- If query is "Generate a PDF report with charts", a PDF skill only needs to create PDFs
+- If query is "Analyze data and visualize results", a chart skill only needs visualization
+- Each skill contributes its specialized capability to the overall task
+
 User Query: {query}
 
 Skill Information:
@@ -285,14 +294,15 @@ Available Resources Overview:
 - Resources: {resources_list}
 
 Tasks:
-1. Understand what this skill can do based on its description and content
-2. Determine if this skill can address the user's query
-3. Create a step-by-step execution plan
+1. Understand what this specific skill can do based on its description and content
+2. Determine if this skill can contribute to the user's query (even partially)
+3. Create a step-by-step execution plan for this skill's specific capability
 4. Identify which scripts, references, and resources are needed
 
 Output in JSON format:
 {{
     "can_handle": true/false,
+    "contribution": "What specific part of the query this skill handles",
     "plan_summary": "Brief summary of the execution plan",
     "steps": [
         {{"step": 1, "action": "description", "type": "script|reference|resource|code"}},
@@ -305,6 +315,12 @@ Output in JSON format:
     "parameters": {{"param1": "value or <user_input>", ...}},
     "reasoning": "Why this plan will work"
 }}
+
+**CRITICAL - When to set can_handle**:
+- Set `can_handle: true` if this skill can CONTRIBUTE to the query, even if it only handles a sub-task
+- Set `can_handle: true` if the skill's core capability is RELEVANT to any part of the query
+- Set `can_handle: false` ONLY if the skill has ZERO relevance to the query
+- DO NOT reject a skill just because it can't fulfill the ENTIRE query
 
 Notes:
 - Only include resources that are actually needed for execution.
