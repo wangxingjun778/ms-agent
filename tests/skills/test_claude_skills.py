@@ -72,6 +72,15 @@ def get_skills_path() -> str:
         / 'skills' / 'claude_skills')
 
 
+def get_work_dir() -> str:
+    """Get work directory from env or create temp directory."""
+    work_dir = os.getenv('WORK_DIR')
+    if work_dir:
+        os.makedirs(work_dir, exist_ok=True)
+        return work_dir
+    return tempfile.mkdtemp(prefix='ms_agent_test_')
+
+
 def run_async(coro):
     """Helper to run async coroutines in sync context."""
     loop = asyncio.new_event_loop()
@@ -89,7 +98,7 @@ class TestClaudeSkillsRetrieval(unittest.TestCase):
         """Setup test fixtures before each test."""
         self.config = get_llm_config()
         self.skills_path = get_skills_path()
-        self.work_dir = tempfile.mkdtemp(prefix='ms_agent_test_')
+        self.work_dir = get_work_dir()
 
         # Skip test if no API key
         if not self.config.llm.openai_api_key:
@@ -106,9 +115,9 @@ class TestClaudeSkillsRetrieval(unittest.TestCase):
 
     def tearDown(self):
         """Cleanup after each test."""
-        # Clean up the temporary work directory
+        # Clean up the temporary work directory (only if not from env)
         if IS_REMOVE_WORK_DIR and hasattr(self, 'work_dir') and os.path.exists(
-                self.work_dir):
+                self.work_dir) and not os.getenv('WORK_DIR'):
             try:
                 shutil.rmtree(self.work_dir)
             except Exception as e:
@@ -132,10 +141,19 @@ class TestClaudeSkillsRetrieval(unittest.TestCase):
                 self.assertIsNotNone(
                     result, f'Result should not be None for: {query}')
 
+                # Assert skills_dag and execution_order are not empty
+                self.assertTrue(
+                    result.skills_dag,
+                    f'skills_dag should not be empty for: {query}')
+                self.assertTrue(
+                    result.execution_order,
+                    f'execution_order should not be empty for: {query}')
+
                 if result.selected_skills:
                     skill_ids = list(result.selected_skills.keys())
                     print(f'\n[{skill_name}] Query: {query}')
                     print(f'[{skill_name}] Retrieved skills: {skill_ids}')
+                    print(f'[{skill_name}] Execution order: {result.execution_order}')
 
     def test_algorithmic_art_skill(self):
         """
@@ -393,7 +411,7 @@ class TestSkillsCombination(unittest.TestCase):
         """Setup test fixtures before each test."""
         self.config = get_llm_config()
         self.skills_path = get_skills_path()
-        self.work_dir = tempfile.mkdtemp(prefix='ms_agent_test_')
+        self.work_dir = get_work_dir()
 
         if not self.config.llm.openai_api_key:
             self.skipTest('OPENAI_API_KEY not set')
@@ -409,7 +427,7 @@ class TestSkillsCombination(unittest.TestCase):
     def tearDown(self):
         """Cleanup after each test."""
         if IS_REMOVE_WORK_DIR and hasattr(self, 'work_dir') and os.path.exists(
-                self.work_dir):
+                self.work_dir) and not os.getenv('WORK_DIR'):
             try:
                 shutil.rmtree(self.work_dir)
             except Exception as e:
@@ -417,6 +435,16 @@ class TestSkillsCombination(unittest.TestCase):
 
         if hasattr(self, 'auto_skills'):
             self.auto_skills = None
+
+    def _assert_dag_result(self, result, query: str):
+        """Assert common DAG result validations."""
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
+        self.assertTrue(
+            result.skills_dag,
+            f'skills_dag should not be empty for: {query}')
+        self.assertTrue(
+            result.execution_order,
+            f'execution_order should not be empty for: {query}')
 
     def test_document_with_theme(self):
         """
@@ -427,7 +455,7 @@ class TestSkillsCombination(unittest.TestCase):
         query = 'Create a PowerPoint presentation about AI and apply Ocean Depths theme'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self._assert_dag_result(result, query)
         if result.selected_skills:
             skill_ids = list(result.selected_skills.keys())
             print(f'\n[Combination] Query: {query}')
@@ -443,7 +471,7 @@ class TestSkillsCombination(unittest.TestCase):
         query = 'Build a React dashboard and test it with Playwright'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self._assert_dag_result(result, query)
         if result.selected_skills:
             skill_ids = list(result.selected_skills.keys())
             print(f'\n[Combination] Query: {query}')
@@ -459,7 +487,7 @@ class TestSkillsCombination(unittest.TestCase):
         query = 'Extract data from PDF tables and create an Excel analysis report'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self._assert_dag_result(result, query)
         if result.selected_skills:
             skill_ids = list(result.selected_skills.keys())
             print(f'\n[Combination] Query: {query}')
@@ -475,7 +503,7 @@ class TestSkillsCombination(unittest.TestCase):
         query = 'Create a Word document and apply Anthropic brand styling'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self._assert_dag_result(result, query)
         if result.selected_skills:
             skill_ids = list(result.selected_skills.keys())
             print(f'\n[Combination] Query: {query}')
@@ -494,7 +522,7 @@ class TestSkillsExecution(unittest.TestCase):
         """Setup test fixtures before each test."""
         self.config = get_llm_config()
         self.skills_path = get_skills_path()
-        self.work_dir = tempfile.mkdtemp(prefix='ms_agent_test_')
+        self.work_dir = get_work_dir()
 
         if not self.config.llm.openai_api_key:
             self.skipTest('OPENAI_API_KEY not set')
@@ -513,7 +541,7 @@ class TestSkillsExecution(unittest.TestCase):
         """Cleanup after each test."""
         # Clean up any output files generated during execution
         if IS_REMOVE_WORK_DIR and hasattr(self, 'work_dir') and os.path.exists(
-                self.work_dir):
+                self.work_dir) and not os.getenv('WORK_DIR'):
             try:
                 shutil.rmtree(self.work_dir)
             except Exception as e:
@@ -538,36 +566,55 @@ class TestSkillsExecution(unittest.TestCase):
         query = "Create a simple PDF report titled 'Test Report' with basic text content"
         result = run_async(self.auto_skills.run(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
         print(f'\n[Execution] Query: {query}')
         print(f'[Execution] Is complete: {result.is_complete}')
+
+        # Assert execution_result even if None
         if result.execution_result:
             print(f'[Execution] Success: {result.execution_result.success}')
             print(
                 f'[Execution] Skills executed: {list(result.execution_result.skill_results.keys())}'
             )
+            self.assertTrue(
+                result.execution_result.success,
+                f'Execution should succeed for: {query}')
+        else:
+            self.fail(f'execution_result should not be None for: {query}')
 
     def test_execute_xlsx_creation(self):
         """Test full execution of Excel creation skill."""
         query = 'Create an Excel spreadsheet with a simple budget table and SUM formula'
         result = run_async(self.auto_skills.run(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
         print(f'\n[Execution] Query: {query}')
         print(f'[Execution] Is complete: {result.is_complete}')
+
         if result.execution_result:
             print(f'[Execution] Success: {result.execution_result.success}')
+            self.assertTrue(
+                result.execution_result.success,
+                f'Execution should succeed for: {query}')
+        else:
+            self.fail(f'execution_result should not be None for: {query}')
 
     def test_execute_slack_gif(self):
         """Test full execution of Slack GIF creation skill."""
         query = 'Create a simple bouncing dot animation GIF for Slack emoji'
         result = run_async(self.auto_skills.run(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
         print(f'\n[Execution] Query: {query}')
         print(f'[Execution] Is complete: {result.is_complete}')
+
         if result.execution_result:
             print(f'[Execution] Success: {result.execution_result.success}')
+            self.assertTrue(
+                result.execution_result.success,
+                f'Execution should succeed for: {query}')
+        else:
+            self.fail(f'execution_result should not be None for: {query}')
 
 
 class TestChatOnlyQueries(unittest.TestCase):
@@ -577,7 +624,7 @@ class TestChatOnlyQueries(unittest.TestCase):
         """Setup test fixtures before each test."""
         self.config = get_llm_config()
         self.skills_path = get_skills_path()
-        self.work_dir = tempfile.mkdtemp(prefix='ms_agent_test_')
+        self.work_dir = get_work_dir()
 
         if not self.config.llm.openai_api_key:
             self.skipTest('OPENAI_API_KEY not set')
@@ -593,7 +640,7 @@ class TestChatOnlyQueries(unittest.TestCase):
     def tearDown(self):
         """Cleanup after each test."""
         if IS_REMOVE_WORK_DIR and hasattr(self, 'work_dir') and os.path.exists(
-                self.work_dir):
+                self.work_dir) and not os.getenv('WORK_DIR'):
             try:
                 shutil.rmtree(self.work_dir)
             except Exception as e:
@@ -613,7 +660,8 @@ class TestChatOnlyQueries(unittest.TestCase):
         for query in queries:
             with self.subTest(query=query):
                 result = run_async(self.auto_skills.get_skill_dag(query))
-                self.assertIsNotNone(result)
+                self.assertIsNotNone(result, f'Result should not be None for: {query}')
+
                 print(f'\n[Chat] Query: {query}')
                 print(
                     f'[Chat] Chat response: {result.chat_response is not None}'
@@ -621,6 +669,14 @@ class TestChatOnlyQueries(unittest.TestCase):
                 print(
                     f'[Chat] Selected skills: {list(result.selected_skills.keys()) if result.selected_skills else "None"}'
                 )
+
+                # For chat-only queries, chat_response should be present
+                # OR it should have empty skills (no execution needed)
+                is_chat_only = (result.chat_response is not None or
+                                not result.selected_skills)
+                self.assertTrue(
+                    is_chat_only,
+                    f'Query should be handled as chat-only: {query}')
 
 
 class TestSkillDAGStructure(unittest.TestCase):
@@ -630,7 +686,7 @@ class TestSkillDAGStructure(unittest.TestCase):
         """Setup test fixtures before each test."""
         self.config = get_llm_config()
         self.skills_path = get_skills_path()
-        self.work_dir = tempfile.mkdtemp(prefix='ms_agent_test_')
+        self.work_dir = get_work_dir()
 
         if not self.config.llm.openai_api_key:
             self.skipTest('OPENAI_API_KEY not set')
@@ -646,7 +702,7 @@ class TestSkillDAGStructure(unittest.TestCase):
     def tearDown(self):
         """Cleanup after each test."""
         if IS_REMOVE_WORK_DIR and hasattr(self, 'work_dir') and os.path.exists(
-                self.work_dir):
+                self.work_dir) and not os.getenv('WORK_DIR'):
             try:
                 shutil.rmtree(self.work_dir)
             except Exception as e:
@@ -660,7 +716,8 @@ class TestSkillDAGStructure(unittest.TestCase):
         query = 'Create a PDF document'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
+
         # Check required attributes exist
         self.assertTrue(hasattr(result, 'is_complete'))
         self.assertTrue(hasattr(result, 'selected_skills'))
@@ -669,12 +726,27 @@ class TestSkillDAGStructure(unittest.TestCase):
         self.assertTrue(hasattr(result, 'clarification'))
         self.assertTrue(hasattr(result, 'chat_response'))
 
+        # Assert skills_dag and execution_order are not empty
+        self.assertTrue(
+            result.skills_dag,
+            f'skills_dag should not be empty for: {query}')
+        self.assertTrue(
+            result.execution_order,
+            f'execution_order should not be empty for: {query}')
+
     def test_execution_order_contains_valid_skills(self):
         """Test that execution order only contains valid skill IDs."""
         query = 'Create a PowerPoint presentation and apply theme'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
+        self.assertTrue(
+            result.skills_dag,
+            f'skills_dag should not be empty for: {query}')
+        self.assertTrue(
+            result.execution_order,
+            f'execution_order should not be empty for: {query}')
+
         if result.execution_order and result.selected_skills:
             # Flatten execution order (may contain nested lists for parallel execution)
             flat_order = []
@@ -696,7 +768,14 @@ class TestSkillDAGStructure(unittest.TestCase):
         query = 'Extract PDF data and create Excel report'
         result = run_async(self.auto_skills.get_skill_dag(query))
 
-        self.assertIsNotNone(result)
+        self.assertIsNotNone(result, f'Result should not be None for: {query}')
+        self.assertTrue(
+            result.skills_dag,
+            f'skills_dag should not be empty for: {query}')
+        self.assertTrue(
+            result.execution_order,
+            f'execution_order should not be empty for: {query}')
+
         if result.skills_dag:
             # DAG should be a dict
             self.assertIsInstance(result.skills_dag, dict)
