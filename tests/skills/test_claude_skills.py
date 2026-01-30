@@ -143,7 +143,7 @@ class TestClaudeSkillsRetrieval(unittest.TestCase):
 
                 # Assert skills_dag and execution_order are not empty
                 self.assertTrue(
-                    result.skills_dag,
+                    result.dag,
                     f'skills_dag should not be empty for: {query}')
                 self.assertTrue(
                     result.execution_order,
@@ -440,7 +440,7 @@ class TestSkillsCombination(unittest.TestCase):
         """Assert common DAG result validations."""
         self.assertIsNotNone(result, f'Result should not be None for: {query}')
         self.assertTrue(
-            result.skills_dag,
+            result.dag,
             f'skills_dag should not be empty for: {query}')
         self.assertTrue(
             result.execution_order,
@@ -574,7 +574,7 @@ class TestSkillsExecution(unittest.TestCase):
         if result.execution_result:
             print(f'[Execution] Success: {result.execution_result.success}')
             print(
-                f'[Execution] Skills executed: {list(result.execution_result.skill_results.keys())}'
+                f'[Execution] Skills executed: {list(result.execution_result.results.keys())}'
             )
             self.assertTrue(
                 result.execution_result.success,
@@ -721,14 +721,14 @@ class TestSkillDAGStructure(unittest.TestCase):
         # Check required attributes exist
         self.assertTrue(hasattr(result, 'is_complete'))
         self.assertTrue(hasattr(result, 'selected_skills'))
-        self.assertTrue(hasattr(result, 'skills_dag'))
+        self.assertTrue(hasattr(result, 'dag'))
         self.assertTrue(hasattr(result, 'execution_order'))
         self.assertTrue(hasattr(result, 'clarification'))
         self.assertTrue(hasattr(result, 'chat_response'))
 
         # Assert skills_dag and execution_order are not empty
         self.assertTrue(
-            result.skills_dag,
+            result.dag,
             f'skills_dag should not be empty for: {query}')
         self.assertTrue(
             result.execution_order,
@@ -741,7 +741,7 @@ class TestSkillDAGStructure(unittest.TestCase):
 
         self.assertIsNotNone(result, f'Result should not be None for: {query}')
         self.assertTrue(
-            result.skills_dag,
+            result.dag,
             f'skills_dag should not be empty for: {query}')
         self.assertTrue(
             result.execution_order,
@@ -770,18 +770,18 @@ class TestSkillDAGStructure(unittest.TestCase):
 
         self.assertIsNotNone(result, f'Result should not be None for: {query}')
         self.assertTrue(
-            result.skills_dag,
+            result.dag,
             f'skills_dag should not be empty for: {query}')
         self.assertTrue(
             result.execution_order,
             f'execution_order should not be empty for: {query}')
 
-        if result.skills_dag:
+        if result.dag:
             # DAG should be a dict
-            self.assertIsInstance(result.skills_dag, dict)
+            self.assertIsInstance(result.dag, dict)
 
             # Each value should be a list of dependencies
-            for skill_id, deps in result.skills_dag.items():
+            for skill_id, deps in result.dag.items():
                 self.assertIsInstance(
                     deps, list,
                     f'Dependencies for {skill_id} should be a list')

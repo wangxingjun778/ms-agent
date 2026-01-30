@@ -1549,7 +1549,6 @@ class AutoSkills:
         collected_skills = self._filter_skills(query, collected_skills, mode='fast')
         logger.info(f'After fast filter: {collected_skills}')
 
-        # TODO: ONLY FOR TEST
         if len(collected_skills) > 1:
             collected_skills = self._filter_skills(query, collected_skills, mode='deep')
             logger.info(f'After deep filter: {collected_skills}')
