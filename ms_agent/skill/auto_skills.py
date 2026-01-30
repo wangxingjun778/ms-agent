@@ -1077,12 +1077,9 @@ class AutoSkills:
     def __init__(self,
                  skills: Union[str, List[str], List[SkillSchema]],
                  llm: LLM,
-                 enable_search: Union[bool, None] = None,
-                 top_k: int = 3,
-                 min_score: float = 0.8,
-                 min_relevance_score: float = 0.5,
+                 enable_retrieve: Union[bool, None] = None,
+                 retrieve_args: Dict[str, Any] = None,
                  max_candidate_skills: int = 10,
-                 max_iterations: int = 3,
                  max_retries: int = 3,
                  work_dir: Optional[Union[str, Path]] = None,
                  use_sandbox: bool = True,
@@ -1093,14 +1090,12 @@ class AutoSkills:
         Args:
             skills: Path(s) to skill directories or list of SkillSchema.
             llm: LLM instance for query analysis and evaluation.
-            enable_search: If True, use HybridRetriever for skill search.
+            enable_retrieve: If True, use HybridRetriever for skill search.
                 If False, put all skills into LLM context for direct selection.
                 If None, enable search only if skills > 10 automatically.
             top_k: Number of top results to retrieve per query.
             min_score: Minimum score threshold for retrieval.
-            min_relevance_score: Minimum relevance score to keep a skill (0-1).
             max_candidate_skills: Maximum number of candidate skills to consider.
-            max_iterations: Maximum reflection loop iterations.
             max_retries: Maximum retry attempts for failed executions.
             work_dir: Working directory for skill execution.
             use_sandbox: Whether to use Docker sandbox for execution.
@@ -1110,13 +1105,12 @@ class AutoSkills:
         logger.info(f'Loaded {len(self.all_skills)} skills from {skills}')
 
         self.llm = llm
-        self.enable_search = len(
-            self.all_skills) > 10 if enable_search is None else enable_search
-        self.top_k = top_k
-        self.min_score = min_score
-        self.min_relevance_score = min_relevance_score
+        self.enable_retrieve = len(
+            self.all_skills) > 10 if enable_retrieve is None else enable_retrieve
+        retrieve_args = retrieve_args or {}
+        self.top_k = retrieve_args.get('top_k', 3)
+        self.min_score = retrieve_args.get('min_score', 0.8)
         self.max_candidate_skills = max_candidate_skills
-        self.max_iterations = max_iterations
         self.max_retries = max_retries
         self.work_dir = Path(work_dir) if work_dir else None
         self.use_sandbox = use_sandbox
@@ -1133,7 +1127,7 @@ class AutoSkills:
 
         # Initialize retriever only if search is enabled
         self.retriever: Optional[HybridRetriever] = None
-        if self.enable_search and self.corpus:
+        if self.enable_retrieve and self.corpus:
             self.retriever = HybridRetriever(corpus=self.corpus, **kwargs)
 
         # Container and executor (lazy initialization)
@@ -1547,7 +1541,7 @@ class AutoSkills:
         """
         Directly select skills using LLM with all skills in context.
 
-        Used when enable_search=False. Puts all skills into LLM context
+        Used when enable_retrieve=False. Puts all skills into LLM context
         and lets LLM select relevant skills and build DAG in one call.
 
         Args:
@@ -1612,8 +1606,8 @@ class AutoSkills:
             return SkillDAGResult()
 
         # Direct selection mode: put all skills into LLM context
-        if not self.enable_search:
-            logger.info('Direct selection mode (enable_search=False)')
+        if not self.enable_retrieve:
+            logger.info('Direct selection mode (enable_retrieve=False)')
             return self._direct_select_skills(query)
 
         # Search mode: use HybridRetriever

@@ -40,8 +40,14 @@ from ms_agent.llm.openai_llm import OpenAI
 from ms_agent.skill.auto_skills import AutoSkills
 from omegaconf import DictConfig
 
+
+# ALL ENVs: # LLM_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL, SKILLS_PATH, WORK_DIR, IS_REMOVE_WORK_DIR, USE_SANDBOX
+
 IS_REMOVE_WORK_DIR: bool = os.getenv('IS_REMOVE_WORK_DIR',
                                      'true').lower() == 'true'
+
+USE_SANDBOX: bool = os.getenv('USE_SANDBOX',
+                                'false').lower() == 'true'
 
 
 def get_llm_config() -> DictConfig:
@@ -108,9 +114,8 @@ class TestClaudeSkillsRetrieval(unittest.TestCase):
         self.auto_skills = AutoSkills(
             skills=self.skills_path,
             llm=OpenAI.from_config(self.config),
-            use_sandbox=False,
+            use_sandbox=USE_SANDBOX,
             work_dir=self.work_dir,
-            min_score=0.8,
         )
 
     def tearDown(self):
@@ -419,9 +424,8 @@ class TestSkillsCombination(unittest.TestCase):
         self.auto_skills = AutoSkills(
             skills=self.skills_path,
             llm=OpenAI.from_config(self.config),
-            use_sandbox=False,
+            use_sandbox=USE_SANDBOX,
             work_dir=self.work_dir,
-            min_score=0.8,
         )
 
     def tearDown(self):
@@ -530,10 +534,8 @@ class TestSkillsExecution(unittest.TestCase):
         self.auto_skills = AutoSkills(
             skills=self.skills_path,
             llm=OpenAI.from_config(self.config),
-            use_sandbox=False,
+            use_sandbox=USE_SANDBOX,
             work_dir=self.work_dir,
-            min_score=0.8,
-            enable_self_reflection=True,
             max_retries=3,
         )
 
@@ -632,9 +634,8 @@ class TestChatOnlyQueries(unittest.TestCase):
         self.auto_skills = AutoSkills(
             skills=self.skills_path,
             llm=OpenAI.from_config(self.config),
-            use_sandbox=False,
+            use_sandbox=USE_SANDBOX,
             work_dir=self.work_dir,
-            min_score=0.8,
         )
 
     def tearDown(self):
@@ -694,9 +695,8 @@ class TestSkillDAGStructure(unittest.TestCase):
         self.auto_skills = AutoSkills(
             skills=self.skills_path,
             llm=OpenAI.from_config(self.config),
-            use_sandbox=False,
+            use_sandbox=USE_SANDBOX,
             work_dir=self.work_dir,
-            min_score=0.8,
         )
 
     def tearDown(self):
