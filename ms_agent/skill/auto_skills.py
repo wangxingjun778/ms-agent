@@ -1078,7 +1078,6 @@ class AutoSkills:
                  skills: Union[str, List[str], List[SkillSchema]],
                  llm: LLM,
                  enable_search: Union[bool, None] = None,
-                 enable_self_reflection: bool = True,
                  top_k: int = 3,
                  min_score: float = 0.8,
                  min_relevance_score: float = 0.5,
@@ -1097,7 +1096,6 @@ class AutoSkills:
             enable_search: If True, use HybridRetriever for skill search.
                 If False, put all skills into LLM context for direct selection.
                 If None, enable search only if skills > 10 automatically.
-            enable_self_reflection: If True, analyze errors and auto-retry on failure.
             top_k: Number of top results to retrieve per query.
             min_score: Minimum score threshold for retrieval.
             min_relevance_score: Minimum relevance score to keep a skill (0-1).
@@ -1114,7 +1112,6 @@ class AutoSkills:
         self.llm = llm
         self.enable_search = len(
             self.all_skills) > 10 if enable_search is None else enable_search
-        self.enable_self_reflection = enable_self_reflection
         self.top_k = top_k
         self.min_score = min_score
         self.min_relevance_score = min_relevance_score
@@ -1389,22 +1386,133 @@ class AutoSkills:
         response = self._llm_generate(prompt)
         parsed = self._parse_json_response(response)
 
-        # Get filtered skills (defaults to all if not provided)
-        filtered_ids = set(parsed.get('filtered_skill_ids', list(skill_ids)))
+        # Get filtered skills and validate they exist in input
+        raw_filtered = parsed.get('filtered_skill_ids', list(skill_ids))
+        filtered_ids = set(sid for sid in raw_filtered if sid in skill_ids)
+
+        # If no valid IDs returned, keep all input skills
+        if not filtered_ids:
+            logger.warning('No valid skill IDs in LLM response, keeping all input skills')
+            filtered_ids = skill_ids
+
         logger.info(f'DAG filter: {len(skill_ids)} -> {len(filtered_ids)} skills')
 
-        dag = parsed.get('dag', {sid: [] for sid in filtered_ids})
-        order = parsed.get('execution_order', [])
+        # Validate and clean DAG - only keep valid skill IDs
+        raw_dag = parsed.get('dag', {})
+        dag = {}
+        for sid, deps in raw_dag.items():
+            if sid in filtered_ids:
+                # Filter dependencies to only valid skill IDs
+                valid_deps = [d for d in deps if d in filtered_ids]
+                dag[sid] = valid_deps
 
-        # Fallback: if execution_order is empty, derive from filtered_ids
+        # Ensure all filtered skills are in DAG
+        for sid in filtered_ids:
+            if sid not in dag:
+                dag[sid] = []
+
+        # Validate execution_order - only keep valid skill IDs
+        raw_order = parsed.get('execution_order', [])
+        order = self._validate_execution_order(raw_order, filtered_ids)
+
+        # Fallback: derive execution_order from DAG using topological sort
         if not order and filtered_ids:
-            order = list(filtered_ids)
+            order = self._topological_sort_dag(dag)
+            logger.info(f'Derived execution_order from DAG: {order}')
 
         return {
             'filtered_skill_ids': filtered_ids,
             'dag': dag,
             'execution_order': order
         }
+
+    def _validate_execution_order(
+            self,
+            raw_order: List[Union[str, List[str]]],
+            valid_ids: Set[str]
+    ) -> List[Union[str, List[str]]]:
+        """
+        Validate execution order, keeping only valid skill IDs.
+
+        Args:
+            raw_order: Raw execution order from LLM.
+            valid_ids: Set of valid skill IDs.
+
+        Returns:
+            Validated execution order with only valid skill IDs.
+        """
+        result = []
+        for item in raw_order:
+            if isinstance(item, list):
+                valid_group = [sid for sid in item if sid in valid_ids]
+                if valid_group:
+                    if len(valid_group) == 1:
+                        result.append(valid_group[0])
+                    else:
+                        result.append(valid_group)
+            elif item in valid_ids:
+                result.append(item)
+        return result
+
+    def _topological_sort_dag(self, dag: Dict[str, List[str]]) -> List[str]:
+        """
+        Perform topological sort on DAG to get execution order.
+
+        Args:
+            dag: Adjacency list where dag[A] = [B, C] means A depends on B, C.
+
+        Returns:
+            Topologically sorted list of skill IDs (dependencies first).
+        """
+        if not dag:
+            return []
+
+        # Calculate in-degree for each node
+        in_degree = {node: 0 for node in dag}
+        for node, deps in dag.items():
+            for dep in deps:
+                if dep in in_degree:
+                    pass  # dep is a dependency, node depends on it
+            # Count how many nodes depend on this node
+        for node, deps in dag.items():
+            for dep in deps:
+                if dep not in in_degree:
+                    in_degree[dep] = 0
+
+        # Recalculate: in dag[A] = [B], A depends on B, so B must come before A
+        # We need to build reverse mapping
+        in_degree = {node: 0 for node in dag}
+        for dep in set(d for deps in dag.values() for d in deps):
+            if dep not in in_degree:
+                in_degree[dep] = 0
+
+        for node, deps in dag.items():
+            in_degree[node] = len(deps)
+
+        # Start with nodes that have no dependencies
+        queue = [node for node, degree in in_degree.items() if degree == 0]
+        result = []
+
+        while queue:
+            # Sort for deterministic order
+            queue.sort()
+            node = queue.pop(0)
+            result.append(node)
+
+            # Reduce in-degree for nodes that depend on this node
+            for other_node, deps in dag.items():
+                if node in deps and other_node in in_degree:
+                    in_degree[other_node] -= 1
+                    if in_degree[other_node] == 0:
+                        queue.append(other_node)
+
+        # If not all nodes processed, there might be a cycle or disconnected nodes
+        remaining = set(dag.keys()) - set(result)
+        if remaining:
+            logger.warning(f'Topological sort incomplete, adding remaining: {remaining}')
+            result.extend(sorted(remaining))
+
+        return result
 
     def _filter_execution_order(
             self,
@@ -1576,17 +1684,6 @@ class AutoSkills:
             for sid in filtered_ids if sid in self.all_skills
         }
 
-        # Ensure execution_order only contains filtered skills
-        execution_order = self._filter_execution_order(
-            execution_order, set(selected.keys()))
-
-        # Fallback: if execution_order is empty but we have skills, use DAG keys
-        if not execution_order and selected:
-            execution_order = list(selected.keys())
-            logger.warning(
-                f'Empty execution_order, using filtered skills: {execution_order}'
-            )
-
         logger.info(
             f'Final DAG built with skills: {skills_dag}, execution order: {execution_order}'
         )
@@ -1623,7 +1720,6 @@ class AutoSkills:
                 workspace_dir=self.work_dir,
                 llm=self.llm,
                 enable_progressive_analysis=True,
-                enable_self_reflection=self.enable_self_reflection,
                 max_retries=self.max_retries)
         return self._executor
 

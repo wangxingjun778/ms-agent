@@ -207,60 +207,63 @@ PROMPT_BUILD_SKILLS_DAG = """Filter candidate skills and build execution DAG.
 
 User Query: {query}
 
-Candidate Skills:
+Candidate Skills (USE THESE EXACT IDs in your response):
 {selected_skills}
 
 **Tasks:**
 1. **Filter**: Keep only skills that can ACTUALLY produce required output. Remove redundant/unnecessary skills.
-2. **Build DAG**: Define dependencies (A -> B means A completes before B) and execution order.
+2. **Build DAG**: Define dependencies and execution order using the EXACT skill IDs from above (e.g., `pdf@latest`, `pptx@latest`).
 
 **Output JSON:**
 {{
-    "filtered_skill_ids": ["skill_id_1", ...],
+    "filtered_skill_ids": ["exact_skill_id_from_list", ...],
     "dag": {{
-        "skill_id_1": ["dependent_skill_id"],
-        "skill_id_2": []
+        "exact_skill_id_1": ["depends_on_skill_id"],
+        "exact_skill_id_2": []
     }},
-    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4"],
+    "execution_order": ["first_skill_id", "second_skill_id", ...],
     "reasoning": "Brief explanation"
 }}
 
-**Rules:**
-- Minimal sufficiency: smallest skill set that fully satisfies the query.
-- Deduplicate: keep only the most effective skill when overlapping.
-- `execution_order` supports parallel steps as nested lists.
+**CRITICAL RULES:**
+- **ONLY use exact skill IDs from the Candidate Skills list** (e.g., `pdf@latest`, `pptx@latest`, NOT invented names like `create_pdf` or `generate_report`)
+- Minimal sufficiency: smallest skill set that fully satisfies the query
+- Deduplicate: keep only the most effective skill when overlapping
+- `execution_order` MUST contain ALL skills from `filtered_skill_ids`, ordered by dependencies (parallel execution as nested lists)
+- In `dag`, each skill maps to its dependencies (skills it depends on), empty list `[]` means no dependencies
 """
 
 PROMPT_DIRECT_SELECT_SKILLS = """You are a skill selector. Given a user query and all available skills, select the relevant skills and build an execution DAG.
 
 User Query: {query}
 
-All Available Skills:
+All Available Skills (USE THESE EXACT IDs):
 {all_skills}
 
 Tasks:
 1. Determine if this query needs skills or is just casual chat
-2. If skills are needed, select ALL relevant skills from the list above
+2. If skills are needed, select relevant skills using their EXACT IDs from the list above
 3. Build a dependency DAG for the selected skills
 
 Output in JSON format:
 {{
     "needs_skills": true/false,
     "chat_response": "Direct response if no skills needed, null otherwise",
-    "selected_skill_ids": ["skill_id_1", "skill_id_2", ...],
+    "selected_skill_ids": ["exact_skill_id_from_list", ...],
     "dag": {{
-        "skill_id_1": ["dependent_skill_id_a", "dependent_skill_id_b"],
-        "skill_id_2": [],
+        "exact_skill_id_1": ["depends_on_skill_id"],
+        "exact_skill_id_2": [],
         ...
     }},
-    "execution_order": ["skill_id_1", ["skill_id_2", "skill_id_3"], "skill_id_4", ...],
+    "execution_order": ["first_skill_id", "second_skill_id", ...],
     "reasoning": "Brief explanation of skill selection and dependencies"
 }}
 
-Notes:
-- Set `needs_skills` to false if the query is casual chat or can be answered directly.
-- Only include skill_ids that exist in the available skills list.
-- The `execution_order` can include parallel execution steps represented as lists.
+**CRITICAL:**
+- **ONLY use exact skill IDs from the Available Skills list** (e.g., `pdf@latest`, `pptx@latest`, NOT invented names)
+- Set `needs_skills` to false if the query is casual chat or can be answered directly
+- `execution_order` MUST contain ALL skills from `selected_skill_ids`, ordered by dependencies
+- In `dag`, each skill maps to its dependencies (skills it depends on), empty list `[]` means no dependencies
 """
 
 # ============================================================
