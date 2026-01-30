@@ -329,39 +329,6 @@ Notes:
 - Extract Python package dependencies from skill content (e.g., reportlab, pandas, numpy).
 """
 
-PROMPT_CLARIFY_USER_INTENT = """You are verifying if the selected skills can fully satisfy the user's intent.
-
-User Query: {query}
-
-Selected Skills:
-{selected_skills}
-
-Tasks:
-1. Analyze the user's intent and requirements from the query
-2. Evaluate if the selected skills can completely fulfill the user's needs
-3. Identify any gaps or missing capabilities
-4. If clarification is needed, formulate a clear question for the user
-
-Output in JSON format:
-{{
-    "intent_satisfied": true/false,
-    "intent_summary": "Brief summary of what user wants to achieve",
-    "coverage_analysis": {{
-        "covered": ["capability1 covered by skill_x", ...],
-        "missing": ["missing capability1", ...]
-    }},
-    "confidence": 0.0-1.0,
-    "clarification_needed": null or "Specific question to ask the user",
-    "suggestion": "Optional suggestion for the user if clarification is needed"
-}}
-
-Notes:
-- Set `intent_satisfied` to true only if you are confident (>0.8) skills can fulfill the query.
-- If `intent_satisfied` is false, provide a clear `clarification_needed` question.
-- The question should help gather missing information to better match skills.
-"""
-
-
 PROMPT_SKILL_EXECUTION_COMMAND = """Based on the execution plan and loaded resources, generate the execution command(s).
 
 User Query: {query}

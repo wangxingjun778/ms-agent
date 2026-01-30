@@ -18,7 +18,6 @@ from ms_agent.skill.loader import load_skills
 from ms_agent.skill.prompts import (PROMPT_ANALYZE_EXECUTION_ERROR,
                                     PROMPT_ANALYZE_QUERY_FOR_SKILLS,
                                     PROMPT_BUILD_SKILLS_DAG,
-                                    PROMPT_CLARIFY_USER_INTENT,
                                     PROMPT_DIRECT_SELECT_SKILLS,
                                     PROMPT_FILTER_SKILLS_DEEP,
                                     PROMPT_FILTER_SKILLS_FAST,
@@ -1079,7 +1078,6 @@ class AutoSkills:
                  skills: Union[str, List[str], List[SkillSchema]],
                  llm: LLM,
                  enable_search: Union[bool, None] = None,
-                 enable_intent_clarification: bool = True,
                  enable_self_reflection: bool = True,
                  top_k: int = 3,
                  min_score: float = 0.8,
@@ -1099,8 +1097,6 @@ class AutoSkills:
             enable_search: If True, use HybridRetriever for skill search.
                 If False, put all skills into LLM context for direct selection.
                 If None, enable search only if skills > 10 automatically.
-            enable_intent_clarification: If True, verify user intent before
-                execution and prompt for clarification if needed.
             enable_self_reflection: If True, analyze errors and auto-retry on failure.
             top_k: Number of top results to retrieve per query.
             min_score: Minimum score threshold for retrieval.
@@ -1118,7 +1114,6 @@ class AutoSkills:
         self.llm = llm
         self.enable_search = len(
             self.all_skills) > 10 if enable_search is None else enable_search
-        self.enable_intent_clarification = enable_intent_clarification
         self.enable_self_reflection = enable_self_reflection
         self.top_k = top_k
         self.min_score = min_score
@@ -1440,64 +1435,6 @@ class AutoSkills:
                 filtered.append(item)
         return filtered
 
-    def _clarify_user_intent(
-        self, query: str, dag_result: SkillDAGResult
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Clarify user intent by analyzing if selected skills satisfy the query.
-
-        Args:
-            query: User's original query.
-            dag_result: SkillDAGResult containing selected skills.
-
-        Returns:
-            Tuple of (intent_satisfied, clarification_question, suggestion).
-        """
-        if not dag_result.selected_skills:
-            return (
-                False,
-                'No skills were selected. Could you provide more details about what you want to achieve?',
-                None)
-
-        # Format selected skills with name and description
-        skills_info = []
-        for skill_id, skill in dag_result.selected_skills.items():
-            skills_info.append(
-                f'- [{skill_id}] {skill.name}\n  Description: {skill.description}'
-            )
-        selected_skills_text = '\n'.join(skills_info)
-
-        prompt = PROMPT_CLARIFY_USER_INTENT.format(
-            query=query, selected_skills=selected_skills_text)
-        response = self._llm_generate(prompt)
-        parsed = self._parse_json_response(response)
-
-        intent_satisfied = parsed.get('intent_satisfied', False)
-        confidence = parsed.get('confidence', 0.0)
-        clarification = parsed.get('clarification_needed')
-        suggestion = parsed.get('suggestion')
-
-        # Log analysis results
-        logger.info(
-            f'Intent clarification: satisfied={intent_satisfied}, confidence={confidence}'
-        )
-
-        if not intent_satisfied or confidence < 0.8:
-            coverage = parsed.get('coverage_analysis', {})
-            missing = coverage.get('missing', [])
-            if missing:
-                logger.info(f'Missing capabilities: {missing}')
-            return False, clarification, suggestion
-
-        return True, None, None
-
-    async def _async_clarify_user_intent(
-        self, query: str, dag_result: SkillDAGResult
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Async wrapper for _clarify_user_intent."""
-        return await asyncio.to_thread(self._clarify_user_intent, query,
-                                       dag_result)
-
     def _direct_select_skills(self, query: str) -> SkillDAGResult:
         """
         Directly select skills using LLM with all skills in context.
@@ -1794,21 +1731,18 @@ class AutoSkills:
             self,
             query: str,
             user_input: Optional[ExecutionInput] = None,
-            stop_on_failure: bool = True,
-            enable_intent_clarification: Optional[bool] = None
+            stop_on_failure: bool = True
     ) -> SkillDAGResult:
         """
         Run skill retrieval and execute the resulting DAG in one call.
 
-        Combines get_skill_dag(), intent clarification, and execute_dag().
+        Combines get_skill_dag() and execute_dag().
         Uses progressive skill analysis for each skill execution.
 
         Args:
             query: User's task query.
             user_input: Optional initial input for skills.
             stop_on_failure: Whether to stop on first failure.
-            enable_intent_clarification: Whether to verify intent before execution.
-                If None, uses the instance-level setting.
 
         Returns:
             SkillDAGResult with execution_result populated.
@@ -1825,30 +1759,6 @@ class AutoSkills:
             logger.warning(f'Skills incomplete: {dag_result.clarification}')
             return dag_result
 
-        # Use instance setting if not explicitly provided
-        do_clarification = enable_intent_clarification \
-            if enable_intent_clarification is not None else self.enable_intent_clarification
-
-        # Intent clarification step
-        if do_clarification and dag_result.selected_skills:
-            intent_satisfied, clarification, suggestion = await self._async_clarify_user_intent(
-                query, dag_result)
-
-            if not intent_satisfied:
-                # Build clarification message
-                clarification_msg = clarification or 'The selected skills may not fully address your needs.'
-                if suggestion:
-                    clarification_msg += f'\n\nSuggestion: {suggestion}'
-
-                logger.info(
-                    f'Intent clarification needed: {clarification_msg}')
-                print(f'\n[Clarification Needed]\n{clarification_msg}\n')
-
-                # Mark result as incomplete and return for user input
-                dag_result.is_complete = False
-                dag_result.clarification = clarification_msg
-                return dag_result
-
         # Execute the DAG
         if dag_result.execution_order:
             await self.execute_dag(
@@ -1856,21 +1766,21 @@ class AutoSkills:
 
         return dag_result
 
-    async def run_with_clarification(
+    async def run_with_context(
             self,
             initial_query: str,
             additional_info: str = '',
             user_input: Optional[ExecutionInput] = None,
             stop_on_failure: bool = True) -> SkillDAGResult:
         """
-        Run with support for iterative intent clarification.
+        Run with additional context combined into the query.
 
-        Use this method when the user provides additional information
-        after a clarification request.
+        Use this method when you want to provide additional context
+        along with the initial query.
 
         Args:
             initial_query: Original user query.
-            additional_info: Additional information from user clarification.
+            additional_info: Additional context to append to query.
             user_input: Optional initial input for skills.
             stop_on_failure: Whether to stop on first failure.
 
@@ -1886,5 +1796,4 @@ class AutoSkills:
         return await self.run(
             query=combined_query,
             user_input=user_input,
-            stop_on_failure=stop_on_failure,
-            enable_intent_clarification=None)
+            stop_on_failure=stop_on_failure)
