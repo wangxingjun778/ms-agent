@@ -37,7 +37,7 @@ import {
   AccountTree as WorkflowIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSession, Message } from '../context/SessionContext';
+import { useSession, Message, Session } from '../context/SessionContext';
 import WorkflowProgress from './WorkflowProgress';
 import FileProgress from './FileProgress';
 import LogViewer from './LogViewer';
@@ -90,9 +90,18 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [fileLang, setFileLang] = useState('text');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileKind, setFileKind] = useState<'text' | 'image' | 'video' | 'audio'>('text');
+
+  // Check if waiting for user input
+  const isWaitingForInput = React.useMemo(() => {
+    return messages.some(m => m.type === 'waiting_input');
+  }, [messages]);
+
+  // Check if input should be enabled
+  const inputEnabled = React.useMemo(() => {
+    return !isLoading || isWaitingForInput;
+  }, [isLoading, isWaitingForInput]);
 
   const getFileKind = (fname: string): 'text' | 'image' | 'video' | 'audio' => {
       const ext = fname.split('.').pop()?.toLowerCase() || '';
@@ -198,7 +207,6 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
 
           const data = await response.json();
           setFileContent(data.content);
-          setFileLang(data.language || 'text');
           setFileUrl(null);
           return;
         }
@@ -208,7 +216,6 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
           `/api/files/stream?path=${encodeURIComponent(path)}&session_id=${encodeURIComponent(sid || '')}`;
         setFileUrl(streamUrl);
         setFileContent(null);
-        setFileLang(kind);
       } catch (err) {
         setFileError(err instanceof Error ? err.message : 'Failed to load file');
       } finally {
@@ -873,7 +880,7 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isStreaming, sessionStatus, completedSteps,
+  message, isStreaming,
   showRetry, onRetry
 }) => {
   const theme = useTheme();
