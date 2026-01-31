@@ -41,7 +41,10 @@ from ms_agent.skill.auto_skills import AutoSkills
 from omegaconf import DictConfig
 
 
-# ALL ENVs: # LLM_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL, SKILLS_PATH, WORK_DIR, IS_REMOVE_WORK_DIR, USE_SANDBOX
+#### Prerequisites ####
+# - ALL ENVs: # LLM_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL, SKILLS_PATH, WORK_DIR, IS_REMOVE_WORK_DIR, USE_SANDBOX
+# - Get SKILLS_PATH: git clone https://github.com/anthropics/skills.git and set the path `skills/skills` directory.
+
 
 IS_REMOVE_WORK_DIR: bool = os.getenv('IS_REMOVE_WORK_DIR',
                                      'true').lower() == 'true'
