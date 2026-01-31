@@ -2,4 +2,6 @@ recursive-include ms_agent/tools/code_interpreter *.ttf
 recursive-include ms_agent/utils *.tiktoken
 recursive-include ms_agent/utils/nltk *.zip
 recursive-include ms_agent/ *.yaml
+recursive-include webui/backend *.py
+recursive-include webui/frontend/dist *
 recursive-include projects *
