@@ -1143,6 +1143,13 @@ class AutoSkills:
         self.use_sandbox = use_sandbox
         self.kwargs = kwargs
 
+        if self.use_sandbox:
+            from ms_agent.utils.docker_utils import is_docker_daemon_running
+            if not is_docker_daemon_running():
+                raise RuntimeError(
+                    'Docker daemon is not running. Please start Docker to use sandbox mode.'
+                )
+
         # Configure logger to output to work_dir/logs if work_dir is specified
         if self.work_dir:
             _configure_logger_to_dir(self.work_dir / 'logs')
