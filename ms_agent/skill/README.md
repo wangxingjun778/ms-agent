@@ -24,6 +24,3 @@ User Query
 │  - Execute via SkillContainer            │
 │  - Link outputs for downstream skills    │
 └─────────────────────────────────────────┘
-
-
-1. run中增加确认和澄清意图的环节。

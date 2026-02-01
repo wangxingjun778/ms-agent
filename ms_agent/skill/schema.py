@@ -13,8 +13,11 @@ from typing import Any, Dict, List, Optional, Union
 import yaml
 from ms_agent.utils.logger import logger
 
-from .skill_utils import SUPPORTED_READ_EXT, SUPPORTED_SCRIPT_EXT
 from .spec import Spec
+
+SUPPORTED_SCRIPT_EXT = ('.py', '.sh', '.js')
+SUPPORTED_READ_EXT = ('.md', '.txt', '.py', '.json', '.yaml', '.yml', '.sh',
+                      '.js', '.html', '.xml')
 
 
 @dataclass
@@ -624,31 +627,3 @@ class SkillContext:
         for r in self.resources:
             parts.append(f"<!-- {r['path']} -->\n{r['content']}")
         return '\n\n'.join(parts)
-
-
-@dataclass
-class ExecutionResult:
-    """
-    Result of executing a Skill.
-
-    Attributes:
-        success: Whether execution was successful
-        output: Output content from execution
-        messages: Messages or logs from execution
-    """
-    success: bool = True
-    output: Any = None
-    messages: Union[str, List[str]] = None
-
-    def to_dict(self):
-        """
-        Convert ExecutionResult to dictionary representation.
-
-        Returns:
-            Dictionary containing execution result information
-        """
-        return {
-            'success': self.success,
-            'output': self.output,
-            'messages': self.messages,
-        }
