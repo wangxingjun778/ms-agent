@@ -13,7 +13,6 @@ import {
   alpha,
   Chip,
   Divider,
-  Avatar,
   Tooltip,
   Dialog,
   DialogTitle,
@@ -23,21 +22,19 @@ import {
 import {
   Send as SendIcon,
   Stop as StopIcon,
-  Person as PersonIcon,
-  AutoAwesome as BotIcon,
   PlayArrow as RunningIcon,
   InsertDriveFile as FileIcon,
   Code as CodeIcon,
   Description as DocIcon,
   Image as ImageIcon,
-  CheckCircle as CompleteIcon,
-  HourglassTop as StartIcon,
   Close as CloseIcon,
   ContentCopy as CopyIcon,
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
   ChevronRight as ChevronRightIcon,
   ExpandMore as ExpandMoreIcon,
+  CheckCircle as CheckCircleIcon,
+  AccountTree as WorkflowIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession, Message, Session } from '../context/SessionContext';
@@ -61,6 +58,7 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
     sendMessage,
     stopAgent,
     logs,
+    ws,
   } = useSession();
 
   const lastUserMessageId = React.useMemo(() => {
@@ -80,6 +78,9 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
 
   const [input, setInput] = useState('');
   const [outputFilesOpen, setOutputFilesOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [workflowData, setWorkflowData] = useState<Record<string, any> | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [outputTree, setOutputTree] = useState<any>({folders: {}, files: []});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -89,9 +90,18 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [fileLang, setFileLang] = useState('text');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileKind, setFileKind] = useState<'text' | 'image' | 'video' | 'audio'>('text');
+
+  // Check if waiting for user input
+  const isWaitingForInput = React.useMemo(() => {
+    return messages.some(m => m.type === 'waiting_input');
+  }, [messages]);
+
+  // Check if input should be enabled
+  const inputEnabled = React.useMemo(() => {
+    return !isLoading || isWaitingForInput;
+  }, [isLoading, isWaitingForInput]);
 
   const getFileKind = (fname: string): 'text' | 'image' | 'video' | 'audio' => {
       const ext = fname.split('.').pop()?.toLowerCase() || '';
@@ -111,10 +121,23 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
   }, []);
 
   const handleSend = useCallback(() => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || (!isWaitingForInput && isLoading)) return;
+
+    // If waiting for input, send input to existing agent
+    if (isWaitingForInput && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        action: 'send_input',
+        input: input.trim(),
+      }));
+      setInput('');
+      // Loading state will be set by backend when it starts processing
+      return;
+    }
+
+    // Otherwise, start new agent
     sendMessage(input);
     setInput('');
-  }, [input, isLoading, sendMessage]);
+  }, [input, isLoading, isWaitingForInput, sendMessage, ws]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -184,7 +207,6 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
 
           const data = await response.json();
           setFileContent(data.content);
-          setFileLang(data.language || 'text');
           setFileUrl(null);
           return;
         }
@@ -194,13 +216,36 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
           `/api/files/stream?path=${encodeURIComponent(path)}&session_id=${encodeURIComponent(sid || '')}`;
         setFileUrl(streamUrl);
         setFileContent(null);
-        setFileLang(kind);
       } catch (err) {
         setFileError(err instanceof Error ? err.message : 'Failed to load file');
       } finally {
         setFileLoading(false);
       }
     };
+
+  const loadWorkflow = async () => {
+    if (!currentSession?.project_id) return;
+
+    setWorkflowLoading(true);
+    try {
+      // Include session_id in query params so backend can determine workflow_type
+      const url = `/api/projects/${currentSession.project_id}/workflow${currentSession?.id ? `?session_id=${currentSession.id}` : ''}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setWorkflowData(data.workflow || {});
+      }
+    } catch (err) {
+      console.error('Failed to load workflow:', err);
+    } finally {
+      setWorkflowLoading(false);
+    }
+  };
+
+  const handleOpenWorkflow = () => {
+    loadWorkflow();
+    setWorkflowOpen(true);
+  };
 
   return (
     <Box
@@ -242,6 +287,24 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
               borderRadius: '8px',
             }}
           />
+          {currentSession?.project_id && (
+            <Tooltip title="View workflow">
+              <Chip
+                icon={<WorkflowIcon sx={{ fontSize: 16 }} />}
+                label="Workflow"
+                size="small"
+                onClick={handleOpenWorkflow}
+                sx={{
+                  backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+                  color: theme.palette.secondary.main,
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.secondary.main, 0.2),
+                  },
+                }}
+              />
+            </Tooltip>
+          )}
           <Chip
             icon={currentSession?.status === 'running' ? <RunningIcon sx={{ fontSize: 14 }} /> : undefined}
             label={currentSession?.status}
@@ -391,6 +454,47 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
         </DialogContent>
       </Dialog>
 
+      {/* Workflow Dialog */}
+      <Dialog
+        open={workflowOpen}
+        onClose={() => setWorkflowOpen(false)}
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: theme.palette.background.paper,
+            maxWidth: '95vw',
+            width: '95vw',
+            height: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <WorkflowIcon color="secondary" />
+            <Typography variant="h6">Workflow</Typography>
+          </Box>
+          <IconButton size="small" onClick={() => setWorkflowOpen(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 2, flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {workflowLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+              <CircularProgress size={32} />
+            </Box>
+          ) : workflowData ? (
+            <WorkflowView workflow={workflowData} currentStep={currentSession?.current_step} />
+          ) : (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+              <Typography color="text.secondary">No workflow data available</Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Main Content Area */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Messages Area */}
@@ -407,11 +511,11 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
             sx={{
               flex: 1,
               overflowY: 'auto',
-              px: 3,
-              py: 3,
+              px: 2,
+              py: 2,
               display: 'flex',
               flexDirection: 'column',
-              gap: 2.5,
+              gap: 1,
               '&::-webkit-scrollbar': {
                 width: 6,
               },
@@ -456,51 +560,195 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
                       timestamp: new Date().toISOString(),
                     }}
                     isStreaming
-                      sessionStatus={currentSession?.status}
-                      completedSteps={completedSteps}
                   />
                 </motion.div>
               )}
 
-              {/* Loading Indicator */}
-              {isLoading && !isStreaming && messages.length > 0 && (() => {
-                // Find current running step
-                const runningSteps = messages.filter(m => m.type === 'step_start');
-                const completedSteps = messages.filter(m => m.type === 'step_complete');
-                const currentStep = runningSteps.length > completedSteps.length
-                  ? runningSteps[runningSteps.length - 1]?.content?.replace(/_/g, ' ')
-                  : null;
+              {/* Loading Indicator - Shows current step in progress */}
+              {!isStreaming && messages.length > 0 && currentSession?.status === 'running' && (() => {
+                // If waiting for input, don't show "in progress" indicator
+                // The "Refine completed" message will be shown instead
+                if (isWaitingForInput) {
+                  return null;
+                }
+
+                // Simple fallback: if Install completed but Refine not started/completed yet,
+                // treat it as Coding in progress (even if we don't see Programmer logs).
+                const hasInstallCompleted = messages.some(
+                  m => m.type === 'step_complete' && m.content.toLowerCase() === 'install'
+                );
+                const hasRefineStartedOrCompleted = messages.some(
+                  m =>
+                    (m.type === 'step_start' || m.type === 'step_complete') &&
+                    m.content.toLowerCase() === 'refine'
+                );
+
+                if (hasInstallCompleted && !hasRefineStartedOrCompleted) {
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'flex-start',
+                          mb: 1.5,
+                          px: 2,
+                        }}
+                      >
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            px: 2,
+                            py: 1.25,
+                            borderRadius: '20px',
+                            backgroundColor: theme.palette.background.paper,
+                            border: 'none',
+                            boxShadow: 'none',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              {[0, 1, 2].map((i) => (
+                                <motion.div
+                                  key={i}
+                                  animate={{
+                                    y: [0, -4, 0],
+                                    opacity: [0.4, 1, 0.4],
+                                  }}
+                                  transition={{
+                                    duration: 0.8,
+                                    repeat: Infinity,
+                                    delay: i * 0.15,
+                                  }}
+                                >
+                                  <Box
+                                    sx={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      backgroundColor: theme.palette.primary.main,
+                                    }}
+                                  />
+                                </motion.div>
+                              ))}
+                            </Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                              <Box component="span" sx={{ textTransform: 'capitalize' }}>
+                                Coding
+                              </Box>
+                              <Box component="span" sx={{ opacity: 0.7 }}> in progress...</Box>
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      </Box>
+                    </motion.div>
+                  );
+                }
+
+                // Otherwise, check if any Programmer step is running (even without step_start message)
+                // First check currentSession.current_step for programmer
+                let currentStepName: string | null = null;
+                if (currentSession?.current_step) {
+                  const currentStep = currentSession.current_step.toLowerCase();
+                  if (currentStep.includes('programmer')) {
+                    currentStepName = 'Coding';
+                  } else {
+                    currentStepName = currentSession.current_step.replace(/_/g, ' ');
+                  }
+                }
+
+                // If not found, check messages for step_start
+                if (!currentStepName) {
+                  const runningSteps = messages.filter(m => m.type === 'step_start');
+                  const completedStepsSet = new Set(
+                    messages.filter(m => m.type === 'step_complete').map(m => {
+                      const content = m.content.toLowerCase();
+                      // Normalize Programmer-xxx steps to 'coding' for comparison
+                      if (content.startsWith('programmer')) {
+                        return 'coding';
+                      }
+                      return content;
+                    })
+                  );
+
+                  // Find the last step_start that hasn't been completed yet
+                  const currentRunningStep = runningSteps
+                    .slice()
+                    .reverse()
+                    .find(step => {
+                      const stepContent = step.content.toLowerCase();
+                      // Normalize Programmer-xxx steps to 'coding' for comparison
+                      const normalizedContent = stepContent.startsWith('programmer') ? 'coding' : stepContent;
+                      return !completedStepsSet.has(normalizedContent);
+                    });
+
+                  currentStepName = currentRunningStep?.content?.replace(/_/g, ' ') || null;
+                }
+
+                // Also check if any Programmer step exists in messages (even if no step_start)
+                if (!currentStepName) {
+                  const hasProgrammerStep = messages.some(m =>
+                    (m.type === 'step_start' || m.type === 'step_complete') &&
+                    m.content.toLowerCase().includes('programmer')
+                  );
+                  if (hasProgrammerStep) {
+                    // Check if any Programmer step is still running (not completed)
+                    const programmerSteps = messages.filter(m =>
+                      m.type === 'step_start' &&
+                      m.content.toLowerCase().includes('programmer')
+                    );
+                    const completedProgrammerSteps = new Set(
+                      messages.filter(m =>
+                        m.type === 'step_complete' &&
+                        m.content.toLowerCase().includes('programmer')
+                      ).map(m => m.content.toLowerCase())
+                    );
+                    const runningProgrammerStep = programmerSteps.find(step =>
+                      !completedProgrammerSteps.has(step.content.toLowerCase())
+                    );
+                    if (runningProgrammerStep || programmerSteps.length > completedProgrammerSteps.size) {
+                      currentStepName = 'Coding';
+                    }
+                  }
+                }
+
+                // Show "Coding" instead of individual "Programmer-xxx" steps
+                if (currentStepName && currentStepName.toLowerCase().includes('programmer')) {
+                  currentStepName = 'Coding';
+                }
+
+                if (!currentStepName) {
+                  return null; // No step in progress, don't show indicator
+                }
 
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
                   >
                     <Box
                       sx={{
                         display: 'flex',
-                        gap: 1.5,
                         alignItems: 'flex-start',
+                        justifyContent: 'flex-start',
+                        mb: 1.5,
+                        px: 2,
                       }}
                     >
-                      <Avatar
-                        sx={{
-                          width: 36,
-                          height: 36,
-                          backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                          color: theme.palette.primary.main,
-                        }}
-                      >
-                        <BotIcon fontSize="small" />
-                      </Avatar>
                       <Paper
                         elevation={0}
                         sx={{
-                          px: 2.5,
-                          py: 1.5,
-                          borderRadius: '18px 18px 18px 4px',
-                          backgroundColor: alpha(theme.palette.background.paper, 0.8),
-                          border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                          px: 2,
+                          py: 1.25,
+                          borderRadius: '20px',
+                          backgroundColor: theme.palette.background.paper,
+                          border: 'none',
+                          boxShadow: 'none',
                         }}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -530,14 +778,10 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
                             ))}
                           </Box>
                           <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                            {currentStep ? (
-                              <>
-                                <Box component="span" sx={{ textTransform: 'capitalize' }}>
-                                  {currentStep}
-                                </Box>
-                                <Box component="span" sx={{ opacity: 0.7 }}> in progress...</Box>
-                              </>
-                            ) : 'Processing...'}
+                            <Box component="span" sx={{ textTransform: 'capitalize' }}>
+                              {currentStepName}
+                            </Box>
+                            <Box component="span" sx={{ opacity: 0.7 }}> in progress...</Box>
                           </Typography>
                         </Box>
                       </Paper>
@@ -563,37 +807,41 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
               fullWidth
               multiline
               maxRows={4}
-              placeholder="Type your message..."
+              placeholder={isWaitingForInput ? "Please provide your feedback or modification suggestions..." : "Type your message..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isLoading}
+              disabled={!inputEnabled}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: '12px',
                   backgroundColor: theme.palette.background.paper,
+                  ...(isWaitingForInput && {
+                    border: `2px solid ${alpha(theme.palette.info.main, 0.5)}`,
+                    boxShadow: `0 0 0 3px ${alpha(theme.palette.info.main, 0.1)}`,
+                  }),
                 },
               }}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    {isLoading ? (
+                    {isLoading && !isWaitingForInput ? (
                       <IconButton onClick={stopAgent} color="error">
                         <StopIcon />
                       </IconButton>
                     ) : (
                       <IconButton
                         onClick={handleSend}
-                        disabled={!input.trim()}
+                        disabled={!input.trim() || (!isWaitingForInput && isLoading)}
                         sx={{
-                          backgroundColor: input.trim()
+                          backgroundColor: input.trim() && inputEnabled
                             ? theme.palette.primary.main
                             : 'transparent',
-                          color: input.trim()
+                          color: input.trim() && inputEnabled
                             ? theme.palette.primary.contrastText
                             : theme.palette.text.secondary,
                           '&:hover': {
-                            backgroundColor: input.trim()
+                            backgroundColor: input.trim() && inputEnabled
                               ? theme.palette.primary.dark
                               : 'transparent',
                           },
@@ -632,7 +880,7 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isStreaming, sessionStatus, completedSteps,
+  message, isStreaming,
   showRetry, onRetry
 }) => {
   const theme = useTheme();
@@ -643,6 +891,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isStepStart = message.type === 'step_start';
   const isStepComplete = message.type === 'step_complete';
   const isToolCall = message.type === 'tool_call';
+  const isDeploymentUrl = message.type === 'deployment_url';
+  const isWaitingInput = message.type === 'waiting_input';
 
   // Skip empty messages
   if (!message.content?.trim()) return null;
@@ -651,83 +901,97 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   if (isSystem && message.content.startsWith('Starting step:')) return null;
   if (isSystem && message.content.startsWith('Completed step:')) return null;
 
-  // Step start/complete display
-  if (isStepStart || isStepComplete) {
-    // If a step has a completion record, hide the earlier start record to avoid duplicates.
-    if (isStepStart && completedSteps?.has(message.content)) {
+  // Hide step_start messages (they're shown in Loading Indicator instead)
+  if (isStepStart) {
+    return null;
+  }
+
+  // Convert step_complete to regular assistant message bubble with checkmark
+  if (isStepComplete) {
+    const stepNameRaw = message.content;
+
+    // Hide individual Programmer-xxx completed messages
+    // (they are part of Coding phase, we show "Coding completed" separately)
+    if (stepNameRaw.toLowerCase().startsWith('programmer')) {
       return null;
     }
 
-    const stepName = message.content.replace(/_/g, ' ');
-    const isComplete = isStepComplete || (isStepStart && !!completedSteps?.has(message.content));
-    const isStopped = isStepStart && !isComplete && sessionStatus === 'stopped';
-    const accentColor = isComplete
-      ? theme.palette.success.main
-      : isStopped
-      ? theme.palette.warning.main
-      : theme.palette.info.main;
+    // Hide the second "Install" completed message (the one after Coding)
+    // We detect this by checking the message id pattern or position
+    // For now, mark it to be filtered at render time
 
+    const stepName = stepNameRaw.replace(/_/g, ' ');
+    const completedText = `${stepName.charAt(0).toUpperCase() + stepName.slice(1)} completed`;
+
+    // Render as regular assistant message with checkmark icon
     return (
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.2 }}
       >
         <Box
           sx={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            py: 1,
+            alignItems: 'flex-start',
+            justifyContent: 'flex-start',
+            mb: 1.5,
             px: 2,
-            ml: 5,
-            borderLeft: `3px solid ${accentColor}`,
-            backgroundColor: alpha(
-              accentColor,
-              0.05
-            ),
-            borderRadius: '0 8px 8px 0',
           }}
         >
-          <Box
+          <Paper
+            elevation={0}
             sx={{
+              maxWidth: '75%',
+              minWidth: 60,
+              px: 2,
+              py: 1.25,
+              borderRadius: '20px',
+              backgroundColor: theme.palette.background.paper,
+              border: 'none',
+              position: 'relative',
+              boxShadow: 'none',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              backgroundColor: alpha(
-                accentColor,
-                0.15
-              ),
-              color: accentColor,
+              alignItems: 'flex-start',
+              gap: 1.5,
             }}
           >
-            {isComplete ? <CompleteIcon fontSize="small" /> : <StartIcon fontSize="small" />}
-          </Box>
-          <Box>
-            <Typography
-              variant="body2"
-              sx={{
-                fontWeight: 500,
-                color: accentColor,
-                textTransform: 'capitalize',
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{
+                type: 'spring',
+                stiffness: 200,
+                damping: 15,
+                delay: 0.1
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: '2px', // 微调对齐，与文字第一行对齐
               }}
             >
-              {stepName}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {isComplete ? 'Completed' : isStopped ? 'Stopped' : 'Running...'}
-            </Typography>
-          </Box>
+              <CheckCircleIcon
+                sx={{
+                  color: theme.palette.success.main,
+                  fontSize: 22,
+                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))',
+                }}
+              />
+            </motion.div>
+            <Box sx={{ flex: 1, lineHeight: 1.5 }}>
+              <MessageContent content={completedText} />
+            </Box>
+          </Paper>
         </Box>
       </motion.div>
     );
   }
 
-  // Tool call - skip display (we show step progress instead)
+  // Tool call - hide (too verbose)
   if (isToolCall) {
     return null;
   }
@@ -735,6 +999,156 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   // File output display as compact chip
   if (isFileOutput) {
     return <FileOutputChip filename={message.content} />;
+  }
+
+  // Waiting for user input - show prominent info message
+  if (isWaitingInput) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'flex-start',
+            mb: 2,
+            px: 2,
+          }}
+        >
+          <Paper
+            elevation={2}
+            sx={{
+              maxWidth: '85%',
+              px: 3,
+              py: 2,
+              borderRadius: '16px',
+              backgroundColor: alpha(theme.palette.info.main, 0.12),
+              border: `2px solid ${alpha(theme.palette.info.main, 0.4)}`,
+              boxShadow: `0 4px 12px ${alpha(theme.palette.info.main, 0.2)}`,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+              <Box
+                sx={{
+                  fontSize: 28,
+                  lineHeight: 1,
+                  mt: 0.25,
+                  animation: 'pulse 2s infinite',
+                  '@keyframes pulse': {
+                    '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                    '50%': { opacity: 0.7, transform: 'scale(1.1)' },
+                  },
+                }}
+              >
+                💬
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: theme.palette.info.main,
+                    fontWeight: 600,
+                    lineHeight: 1.6,
+                    mb: 0.5,
+                  }}
+                >
+                  Waiting for Your Feedback
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: theme.palette.info.main,
+                    fontWeight: 400,
+                    lineHeight: 1.6,
+                    opacity: 0.9,
+                  }}
+                >
+                  {message.content}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: theme.palette.info.main,
+                    fontWeight: 400,
+                    lineHeight: 1.6,
+                    opacity: 0.7,
+                    mt: 1,
+                    display: 'block',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Please provide your feedback or modification suggestions in the input box below
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
+      </motion.div>
+    );
+  }
+
+  // Deployment URL display as clickable link
+  if (isDeploymentUrl) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'flex-start',
+            mb: 1.5,
+            px: 2,
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              maxWidth: '75%',
+              minWidth: 60,
+              px: 2,
+              py: 1.25,
+              borderRadius: '20px',
+              backgroundColor: alpha(theme.palette.success.main, 0.08),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
+              position: 'relative',
+              boxShadow: 'none',
+            }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: theme.palette.success.main }}>
+                🚀 Deployment Successful!
+              </Typography>
+              <Typography
+                component="a"
+                href={message.content}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  color: theme.palette.primary.main,
+                  textDecoration: 'none',
+                  wordBreak: 'break-all',
+                  fontSize: '0.875rem',
+                  '&:hover': {
+                    textDecoration: 'underline',
+                  },
+                }}
+              >
+                {message.content}
+              </Typography>
+            </Box>
+          </Paper>
+        </Box>
+      </motion.div>
+    );
   }
 
   return (
@@ -747,60 +1161,29 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       <Box
         sx={{
           display: 'flex',
-          gap: 1.5,
           alignItems: 'flex-start',
-          flexDirection: isUser ? 'row-reverse' : 'row',
-          mb: 0.5,
+          justifyContent: isUser ? 'flex-end' : 'flex-start',
+          mb: 1.5,
+          px: 2,
         }}
       >
-        {/* Avatar */}
-        <Tooltip title={isUser ? 'You' : 'Assistant'} placement={isUser ? 'left' : 'right'}>
-          <Avatar
-            sx={{
-              width: 36,
-              height: 36,
-              backgroundColor: isUser
-                ? alpha(theme.palette.primary.main, 0.15)
-                : isError
-                ? alpha(theme.palette.error.main, 0.15)
-                : alpha(theme.palette.primary.main, 0.1),
-              color: isUser
-                ? theme.palette.primary.main
-                : isError
-                ? theme.palette.error.main
-                : theme.palette.primary.main,
-              border: `2px solid ${isUser
-                ? alpha(theme.palette.primary.main, 0.3)
-                : isError
-                ? alpha(theme.palette.error.main, 0.3)
-                : alpha(theme.palette.primary.main, 0.2)}`,
-            }}
-          >
-            {isUser ? <PersonIcon fontSize="small" /> : <BotIcon fontSize="small" />}
-          </Avatar>
-        </Tooltip>
-
-        {/* Message Content */}
+        {/* Message Content - 简洁的椭圆形对话框 */}
         <Paper
           elevation={0}
           sx={{
             maxWidth: '75%',
             minWidth: 60,
-            px: 2.5,
-            py: 1.5,
-            borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+            px: 2,
+            py: 1.25,
+            borderRadius: '20px', // 完全椭圆形
             backgroundColor: isUser
-              ? alpha(theme.palette.primary.main, 0.12)
+              ? alpha(theme.palette.grey[400], 0.2) // 用户消息：浅灰色椭圆形
               : isError
               ? alpha(theme.palette.error.main, 0.08)
-              : alpha(theme.palette.background.paper, 0.8),
-            border: `1px solid ${isUser
-              ? alpha(theme.palette.primary.main, 0.25)
-              : isError
-              ? alpha(theme.palette.error.main, 0.3)
-              : alpha(theme.palette.divider, 0.5)}`,
-            backdropFilter: 'blur(8px)',
+              : theme.palette.background.paper, // AI消息：白色背景
+            border: 'none',
             position: 'relative',
+            boxShadow: 'none',
           }}
         >
           <MessageContent content={message.content} />
@@ -842,6 +1225,366 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 };
 
 export default ConversationView;
+
+// Workflow View Component
+interface WorkflowViewProps {
+  workflow: Record<string, any>;
+  currentStep?: string;
+}
+
+const WorkflowView: React.FC<WorkflowViewProps> = ({ workflow, currentStep }) => {
+  const theme = useTheme();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Node positions state
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [nodeHeights, setNodeHeights] = useState<Record<string, number>>({});
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Build workflow graph structure
+  const buildWorkflowGraph = () => {
+    const nodes: Array<{ id: string; name: string; config: string }> = [];
+    const edges: Array<{ from: string; to: string }> = [];
+    const hasIncoming = new Set<string>();
+
+    Object.entries(workflow).forEach(([key, value]: [string, any]) => {
+      nodes.push({
+        id: key,
+        name: key.replace(/_/g, ' '),
+        config: value.agent_config || '',
+      });
+
+      if (value.next) {
+        const nextSteps = Array.isArray(value.next) ? value.next : [value.next];
+        nextSteps.forEach((next: string) => {
+          hasIncoming.add(next);
+          edges.push({ from: key, to: next });
+        });
+      }
+    });
+
+    return { nodes, edges };
+  };
+
+  const { nodes, edges } = buildWorkflowGraph();
+
+  // Initialize node positions in a horizontal flow layout
+  useEffect(() => {
+    if (Object.keys(nodePositions).length === 0 && nodes.length > 0) {
+      const positions: Record<string, { x: number; y: number }> = {};
+      const visited = new Set<string>();
+
+      // Find root nodes
+      const hasIncoming = new Set<string>();
+      edges.forEach(e => hasIncoming.add(e.to));
+      const rootNodes = nodes.filter(n => !hasIncoming.has(n.id));
+
+      // BFS to assign positions
+      const queue: Array<{ id: string; level: number }> = [];
+      rootNodes.forEach((node) => {
+        queue.push({ id: node.id, level: 0 });
+      });
+
+      const levelNodes: Record<number, string[]> = {};
+
+      while (queue.length > 0) {
+        const { id, level } = queue.shift()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+
+        if (!levelNodes[level]) levelNodes[level] = [];
+        levelNodes[level].push(id);
+
+        const outgoing = edges.filter(e => e.from === id);
+        outgoing.forEach(edge => {
+          if (!visited.has(edge.to)) {
+            const nextLevel = level + 1;
+            queue.push({ id: edge.to, level: nextLevel });
+          }
+        });
+      }
+
+      // Calculate positions
+      const horizontalSpacing = 200;
+      const verticalSpacing = 100;
+
+      Object.entries(levelNodes).forEach(([levelStr, nodeIds]) => {
+        const level = parseInt(levelStr);
+        const startX = 100 + level * horizontalSpacing;
+        const totalHeight = nodeIds.length * verticalSpacing;
+        const startY = 100 - totalHeight / 2 + verticalSpacing / 2;
+
+        nodeIds.forEach((nodeId, idx) => {
+          positions[nodeId] = {
+            x: startX,
+            y: startY + idx * verticalSpacing,
+          };
+        });
+      });
+
+      setNodePositions(positions);
+    }
+  }, [nodes, edges, nodePositions]);
+
+  // Handle drag start
+  const handleMouseDown = (e: React.MouseEvent, nodeId: string) => {
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const nodePos = nodePositions[nodeId];
+    if (!nodePos) return;
+
+    setDraggingNode(nodeId);
+    setDragOffset({
+      x: e.clientX - rect.left - nodePos.x,
+      y: e.clientY - rect.top - nodePos.y,
+    });
+  };
+
+  // Handle drag
+  useEffect(() => {
+    if (!draggingNode || !containerRef.current) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = containerRef.current!.getBoundingClientRect();
+      const newX = e.clientX - rect.left - dragOffset.x;
+      const newY = e.clientY - rect.top - dragOffset.y;
+
+      setNodePositions(prev => ({
+        ...prev,
+        [draggingNode]: { x: newX, y: newY },
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setDraggingNode(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingNode, dragOffset]);
+
+  // Update node heights when they mount or resize
+  useEffect(() => {
+    const updateHeights = () => {
+      const heights: Record<string, number> = {};
+      Object.entries(nodeRefs.current).forEach(([nodeId, ref]) => {
+        if (ref) {
+          heights[nodeId] = ref.offsetHeight;
+        }
+      });
+      setNodeHeights(heights);
+    };
+
+    updateHeights();
+    const resizeObserver = new ResizeObserver(updateHeights);
+    Object.values(nodeRefs.current).forEach(ref => {
+      if (ref) resizeObserver.observe(ref);
+    });
+
+    return () => resizeObserver.disconnect();
+  }, [nodes]);
+
+  // Calculate curve path for edge - connecting from right edge to left edge, vertically centered
+  const getCurvePath = (fromId: string, toId: string): string => {
+    const fromPos = nodePositions[fromId];
+    const toPos = nodePositions[toId];
+
+    if (!fromPos || !toPos) return '';
+
+    const NODE_WIDTH = 110;
+    // Use actual node height or fallback to estimated height
+    const fromHeight = nodeHeights[fromId] || 50;
+    const toHeight = nodeHeights[toId] || 50;
+
+    // Connect from right edge of source to left edge of target, vertically centered
+    const x1 = fromPos.x + NODE_WIDTH;
+    const y1 = fromPos.y + fromHeight / 2;
+    const x2 = toPos.x;
+    const y2 = toPos.y + toHeight / 2;
+
+    // Calculate direction
+    const dx = x2 - x1;
+
+    // Control points for smooth curve
+    // Use a smooth S-curve for horizontal connections
+    const controlOffset = Math.max(60, Math.abs(dx) * 0.4);
+
+    // For horizontal connections, create a smooth S-curve
+    const cp1x = x1 + controlOffset;
+    const cp1y = y1;
+    const cp2x = x2 - controlOffset;
+    const cp2y = y2;
+
+    return `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+  };
+
+
+  return (
+    <Box
+      ref={containerRef}
+      sx={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* SVG for drawing curves */}
+      <svg
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      >
+        {edges.map((edge, idx) => {
+          const path = getCurvePath(edge.from, edge.to);
+          if (!path) return null;
+
+          return (
+            <g key={`${edge.from}-${edge.to}-${idx}`}>
+              <path
+                d={path}
+                fill="none"
+                stroke={theme.palette.primary.main}
+                strokeWidth="2.5"
+                opacity={0.5}
+                markerEnd={`url(#arrowhead-${idx})`}
+              />
+              <defs>
+                <marker
+                  id={`arrowhead-${idx}`}
+                  markerWidth="8"
+                  markerHeight="8"
+                  refX="7"
+                  refY="4"
+                  orient="auto"
+                  markerUnits="strokeWidth"
+                >
+                  <path
+                    d="M 0 0 L 7 4 L 0 8 Z"
+                    fill={theme.palette.primary.main}
+                    opacity={0.6}
+                    stroke="none"
+                  />
+                </marker>
+              </defs>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Nodes */}
+      <Box
+        sx={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          zIndex: 1,
+        }}
+      >
+        {nodes.map((node) => {
+          const isCurrent = currentStep === node.id;
+          const pos = nodePositions[node.id] || { x: 0, y: 0 };
+          const isDragging = draggingNode === node.id;
+
+          return (
+            <Paper
+              key={node.id}
+              ref={(el) => {
+                nodeRefs.current[node.id] = el;
+              }}
+              elevation={isCurrent ? 4 : isDragging ? 6 : 1}
+              onMouseDown={(e) => handleMouseDown(e, node.id)}
+              sx={{
+                position: 'absolute',
+                left: pos.x,
+                top: pos.y,
+                p: 1,
+                width: 110,
+                borderRadius: 1.5,
+                border: isCurrent ? `2px solid ${theme.palette.primary.main}` : `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                backgroundColor: isCurrent
+                  ? alpha(theme.palette.primary.main, 0.1)
+                  : theme.palette.background.paper,
+                cursor: isDragging ? 'grabbing' : 'grab',
+                transition: isDragging ? 'none' : 'all 0.2s ease',
+                userSelect: 'none',
+                zIndex: isDragging ? 10 : 1,
+                '&:hover': {
+                  transform: isDragging ? 'none' : 'translateY(-2px)',
+                  boxShadow: theme.shadows[4],
+                },
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  textTransform: 'capitalize',
+                  color: isCurrent ? theme.palette.primary.main : theme.palette.text.primary,
+                  mb: 0.25,
+                  textAlign: 'center',
+                  fontSize: '0.75rem',
+                  lineHeight: 1.2,
+                }}
+              >
+                {node.name}
+              </Typography>
+              {node.config && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    display: 'block',
+                    textAlign: 'center',
+                    fontSize: '0.6rem',
+                    lineHeight: 1.1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {node.config}
+                </Typography>
+              )}
+              {isCurrent && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    backgroundColor: theme.palette.primary.main,
+                    animation: 'pulse 2s infinite',
+                    '@keyframes pulse': {
+                      '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                      '50%': { opacity: 0.7, transform: 'scale(1.2)' },
+                    },
+                  }}
+                />
+              )}
+            </Paper>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+};
 
 // Recursive FileTreeView component
 interface TreeNode {
@@ -1055,7 +1798,7 @@ const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 6, py: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, ml: 4, py: 0.5 }}>
           <Chip
             icon={getFileIcon(filename)}
             label={displayName || shortName}

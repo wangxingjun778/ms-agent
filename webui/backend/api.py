@@ -40,11 +40,14 @@ class ProjectInfo(BaseModel):
     type: str  # 'workflow' or 'agent'
     path: str
     has_readme: bool
+    supports_workflow_switch: bool = False
 
 
 class SessionCreate(BaseModel):
     project_id: str
     query: Optional[str] = None
+    workflow_type: Optional[
+        str] = 'standard'  # 'standard' or 'simple' for code_genesis
 
 
 class SessionInfo(BaseModel):
@@ -62,6 +65,17 @@ class LLMConfig(BaseModel):
     base_url: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 4096
+
+
+class EditFileConfig(BaseModel):
+    api_key: Optional[str] = None
+    base_url: str = 'https://api.morphllm.com/v1'
+    diff_model: str = 'morph-v3-fast'
+
+
+class EdgeOnePagesConfig(BaseModel):
+    api_token: Optional[str] = None
+    project_name: Optional[str] = None
 
 
 class MCPServer(BaseModel):
@@ -108,6 +122,49 @@ async def get_project_readme(project_id: str):
     return {'content': readme}
 
 
+@router.get('/projects/{project_id}/workflow')
+async def get_project_workflow(project_id: str,
+                               session_id: Optional[str] = None):
+    """Get the workflow configuration for a project
+
+    If session_id is provided, returns the workflow based on the session's workflow_type.
+    For code_genesis project, 'simple' workflow_type will return simple_workflow.yaml.
+    """
+    project = project_discovery.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+
+    # Determine workflow_type from session if session_id is provided
+    workflow_type = 'standard'  # default
+    if session_id:
+        session = session_manager.get_session(session_id)
+        if session and session.get('workflow_type'):
+            workflow_type = session['workflow_type']
+
+    # Determine which workflow file to use
+    if workflow_type == 'simple' and project.get('supports_workflow_switch'):
+        # For simple workflow, try simple_workflow.yaml first
+        workflow_file = os.path.join(project['path'], 'simple_workflow.yaml')
+        if not os.path.exists(workflow_file):
+            # Fallback to standard workflow.yaml if simple_workflow.yaml doesn't exist
+            workflow_file = os.path.join(project['path'], 'workflow.yaml')
+    else:
+        # Standard workflow
+        workflow_file = os.path.join(project['path'], 'workflow.yaml')
+
+    if not os.path.exists(workflow_file):
+        raise HTTPException(status_code=404, detail='Workflow file not found')
+
+    try:
+        import yaml
+        with open(workflow_file, 'r', encoding='utf-8') as f:
+            workflow_data = yaml.safe_load(f)
+        return {'workflow': workflow_data, 'workflow_type': workflow_type}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f'Error reading workflow file: {str(e)}')
+
+
 # Session Endpoints
 @router.post('/sessions', response_model=SessionInfo)
 async def create_session(session_data: SessionCreate):
@@ -116,8 +173,18 @@ async def create_session(session_data: SessionCreate):
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
 
+    # Validate workflow_type for projects that support switching
+    workflow_type = session_data.workflow_type or 'standard'
+    if project.get('supports_workflow_switch'):
+        if workflow_type not in ['standard', 'simple']:
+            raise HTTPException(
+                status_code=400,
+                detail="workflow_type must be 'standard' or 'simple'")
+
     session = session_manager.create_session(
-        project_id=session_data.project_id, project_name=project['name'])
+        project_id=session_data.project_id,
+        project_name=project['name'],
+        workflow_type=workflow_type)
     return session
 
 
@@ -191,6 +258,32 @@ async def get_mcp_config():
 async def update_mcp_config(servers: Dict[str, Any]):
     """Update MCP servers configuration"""
     config_manager.update_mcp_config(servers)
+    return {'status': 'updated'}
+
+
+@router.get('/config/edit_file')
+async def get_edit_file_config():
+    """Get edit_file_config configuration"""
+    return config_manager.get_edit_file_config()
+
+
+@router.put('/config/edit_file')
+async def update_edit_file_config(config: EditFileConfig):
+    """Update edit_file_config configuration"""
+    config_manager.update_edit_file_config(config.model_dump())
+    return {'status': 'updated'}
+
+
+@router.get('/config/edgeone_pages')
+async def get_edgeone_pages_config():
+    """Get EdgeOne Pages configuration"""
+    return config_manager.get_edgeone_pages_config()
+
+
+@router.put('/config/edgeone_pages')
+async def update_edgeone_pages_config(config: EdgeOnePagesConfig):
+    """Update EdgeOne Pages configuration"""
+    config_manager.update_edgeone_pages_config(config.model_dump())
     return {'status': 'updated'}
 
 

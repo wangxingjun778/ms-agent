@@ -4,7 +4,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
-  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'log' | 'file_output' | 'step_start' | 'step_complete';
+  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'log' | 'file_output' | 'step_start' | 'step_complete' | 'deployment_url' | 'waiting_input';
   timestamp: string;
   metadata?: Record<string, unknown>;
 
@@ -21,6 +21,7 @@ export interface Project {
   type: 'workflow' | 'agent' | 'script';
   path: string;
   has_readme: boolean;
+  supports_workflow_switch?: boolean;
 }
 
 export interface WorkflowProgress {
@@ -43,6 +44,7 @@ export interface Session {
   workflow_progress?: WorkflowProgress;
   file_progress?: FileProgress;
   current_step?: string;
+  workflow_type?: 'standard' | 'simple';
 }
 
 export interface LogEntry {
@@ -61,12 +63,14 @@ interface SessionContextType {
   streamingContent: string;
   isStreaming: boolean;
   isLoading: boolean;
+  ws: WebSocket | null;
   loadProjects: () => Promise<void>;
-  createSession: (projectId: string) => Promise<Session | null>;
+  createSession: (projectId: string, workflowType?: string) => Promise<Session | null>;
   selectSession: (sessionId: string, initialQuery?: string, sessionObj?: Session) => void;
   sendMessage: (content: string, opts?: { reuseMessageId?: string }) => void;
   stopAgent: () => void;
   clearLogs: () => void;
+  clearSession: () => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -122,12 +126,15 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   // Create session
-  const createSession = useCallback(async (projectId: string): Promise<Session | null> => {
+  const createSession = useCallback(async (projectId: string, workflowType: string = 'standard'): Promise<Session | null> => {
     try {
       const response = await fetch(`${API_BASE}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify({
+          project_id: projectId,
+          workflow_type: workflowType
+        }),
       });
 
       if (response.ok) {
@@ -249,14 +256,21 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     switch (type) {
       case 'message':
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: data.role as Message['role'],
-          content: data.content as string,
-          type: (data.message_type as Message['type']) || 'text',
-          timestamp: new Date().toISOString(),
-          metadata: data.metadata as Record<string, unknown>,
-        }]);
+        {
+          const messageType = (data.message_type as Message['type']) || 'text';
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: data.role as Message['role'],
+            content: data.content as string,
+            type: messageType,
+            timestamp: new Date().toISOString(),
+            metadata: data.metadata as Record<string, unknown>,
+          }]);
+          // If waiting for input, enable input field
+          if (messageType === 'waiting_input') {
+            setIsLoading(false);
+          }
+        }
         break;
 
       case 'stream':
@@ -437,6 +451,19 @@ const sendMessage = useCallback((content: string, opts?: { reuseMessageId?: stri
     setLogs([]);
   }, []);
 
+  // Clear session (return to home)
+  const clearSession = useCallback(() => {
+    if (ws) {
+      ws.close();
+    }
+    setCurrentSession(null);
+    setMessages([]);
+    setLogs([]);
+    setStreamingContent('');
+    setIsLoading(false);
+    setIsStreaming(false);
+  }, [ws]);
+
   // Initial load
   useEffect(() => {
     loadProjects();
@@ -462,12 +489,14 @@ const sendMessage = useCallback((content: string, opts?: { reuseMessageId?: stri
         streamingContent,
         isStreaming,
         isLoading,
+        ws,
         loadProjects,
         createSession,
         selectSession,
         sendMessage,
         stopAgent,
         clearLogs,
+        clearSession,
       }}
     >
       {children}
