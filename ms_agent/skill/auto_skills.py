@@ -455,19 +455,19 @@ class DAGExecutor:
             self,
             skill_id: str,
             dag: Dict[str, List[str]],
-            user_input: Optional[ExecutionInput] = None) -> ExecutionInput:
+            execution_input: Optional[ExecutionInput] = None) -> ExecutionInput:
         """
         Build execution input for a skill, linking outputs from dependencies.
 
         Args:
             skill_id: The skill to build input for.
             dag: Skill dependency DAG.
-            user_input: Optional user-provided input.
+            execution_input: Optional user-provided input.
 
         Returns:
             ExecutionInput with linked dependency outputs.
         """
-        base_input = user_input or ExecutionInput()
+        base_input = execution_input or ExecutionInput()
 
         # Get outputs from upstream dependencies
         dependencies = self._get_skill_dependencies(skill_id, dag)
@@ -538,7 +538,7 @@ class DAGExecutor:
             self,
             skill_id: str,
             dag: Dict[str, List[str]],
-            user_input: Optional[ExecutionInput] = None,
+            execution_input: Optional[ExecutionInput] = None,
             query: str = '') -> SkillExecutionResult:
         """
         Execute a single skill with dependency-linked input.
@@ -551,7 +551,7 @@ class DAGExecutor:
         Args:
             skill_id: ID of the skill to execute.
             dag: Skill dependency DAG.
-            user_input: Optional user-provided input.
+            execution_input: Optional user-provided input.
             query: User query for progressive analysis.
 
         Returns:
@@ -566,7 +566,7 @@ class DAGExecutor:
 
         try:
             # Build base input with upstream outputs
-            exec_input = self._build_execution_input(skill_id, dag, user_input)
+            exec_input = self._build_execution_input(skill_id, dag, execution_input)
 
             # Use progressive analysis if enabled
             if self.enable_progressive_analysis and self._analyzer:
@@ -964,7 +964,7 @@ class DAGExecutor:
             self,
             skill_ids: List[str],
             dag: Dict[str, List[str]],
-            user_input: Optional[ExecutionInput] = None,
+            execution_input: Optional[ExecutionInput] = None,
             query: str = '') -> List[SkillExecutionResult]:
         """
         Execute a group of skills in parallel.
@@ -972,14 +972,14 @@ class DAGExecutor:
         Args:
             skill_ids: List of skill_ids to execute concurrently.
             dag: Skill dependency DAG.
-            user_input: Optional user-provided input.
+            execution_input: Optional user-provided input.
             query: User query for progressive analysis.
 
         Returns:
             List of SkillExecutionResult for each skill.
         """
         tasks = [
-            self._execute_single_skill(sid, dag, user_input, query)
+            self._execute_single_skill(sid, dag, execution_input, query)
             for sid in skill_ids
         ]
         return await asyncio.gather(*tasks)
@@ -987,7 +987,7 @@ class DAGExecutor:
     async def execute(self,
                       dag: Dict[str, List[str]],
                       execution_order: List[Union[str, List[str]]],
-                      user_input: Optional[ExecutionInput] = None,
+                      execution_input: Optional[ExecutionInput] = None,
                       stop_on_failure: bool = True,
                       query: str = '') -> DAGExecutionResult:
         """
@@ -1000,7 +1000,7 @@ class DAGExecutor:
         Args:
             dag: Skill dependency DAG (adjacency list).
             execution_order: Ordered list with parallel groups as sublists.
-            user_input: Optional initial input for all skills.
+            execution_input: Optional initial input for all skills.
             stop_on_failure: Whether to stop execution on first failure.
             query: User query for progressive skill analysis.
 
@@ -1018,7 +1018,7 @@ class DAGExecutor:
             if isinstance(item, list):
                 # Parallel execution group
                 group_results = await self._execute_parallel_group(
-                    item, dag, user_input, query)
+                    item, dag, execution_input, query)
                 for res in group_results:
                     results[res.skill_id] = res
                     if not res.success:
@@ -1033,7 +1033,7 @@ class DAGExecutor:
             else:
                 # Sequential execution
                 result = await self._execute_single_skill(
-                    item, dag, user_input, query)
+                    item, dag, execution_input, query)
                 results[result.skill_id] = result
                 actual_order.append(item)
 
@@ -1099,6 +1099,31 @@ class AutoSkills:
             max_retries: Maximum retry attempts for failed executions.
             work_dir: Working directory for skill execution.
             use_sandbox: Whether to use Docker sandbox for execution.
+
+        Examples:
+            >>> from omegaconf import DictConfig
+            >>> from ms_agent.llm.openai_llm import OpenAI
+            >>> from ms_agent.skill.auto_skills import SkillDAGResult
+            >>> config = DictConfig(
+                {
+                    'llm': {
+                        'service': 'openai',
+                        'model': 'gpt-4',
+                        'openai_api_key': 'your-api-key',
+                        'openai_base_url': 'your-base-url'
+                        }
+                    }
+            >>> )
+            >>> llm_instance = OpenAI.from_config(config)
+            >>> auto_skills = AutoSkills(
+                skills='/path/to/skills',
+                llm=llm_instance,
+                )
+            >>> async def main():
+                    result: SkillDAGResult = await auto_skills.run(query='Analyze sales data and generate mock report for Nvidia Q4 2025 in PDF format.')
+                    print(result.execution_result)
+            >>> import asyncio
+            >>> asyncio.run(main())
         """
         # Dict of <skill_id, SkillSchema>
         self.all_skills: Dict[str, SkillSchema] = load_skills(skills=skills)
@@ -1719,7 +1744,7 @@ class AutoSkills:
 
     async def execute_dag(self,
                           dag_result: SkillDAGResult,
-                          user_input: Optional[ExecutionInput] = None,
+                          execution_input: Optional[ExecutionInput] = None,
                           stop_on_failure: bool = True,
                           query: str = '') -> DAGExecutionResult:
         """
@@ -1733,7 +1758,7 @@ class AutoSkills:
 
         Args:
             dag_result: SkillDAGResult containing DAG and execution order.
-            user_input: Optional initial input for skills.
+            execution_input: Optional initial input for skills.
             stop_on_failure: Whether to stop on first failure.
             query: User query for progressive skill analysis.
 
@@ -1751,7 +1776,7 @@ class AutoSkills:
         result = await executor.execute(
             dag=dag_result.dag,
             execution_order=dag_result.execution_order,
-            user_input=user_input,
+            execution_input=execution_input,
             stop_on_failure=stop_on_failure,
             query=query)
 
@@ -1819,7 +1844,7 @@ class AutoSkills:
     async def run(
             self,
             query: str,
-            user_input: Optional[ExecutionInput] = None,
+            execution_input: Optional[ExecutionInput] = None,
             stop_on_failure: bool = True
     ) -> SkillDAGResult:
         """
@@ -1830,7 +1855,7 @@ class AutoSkills:
 
         Args:
             query: User's task query.
-            user_input: Optional initial input for skills.
+            execution_input: Optional initial input for skills.
             stop_on_failure: Whether to stop on first failure.
 
         Returns:
@@ -1851,38 +1876,6 @@ class AutoSkills:
         # Execute the DAG
         if dag_result.execution_order:
             await self.execute_dag(
-                dag_result, user_input, stop_on_failure, query=query)
+                dag_result, execution_input, stop_on_failure, query=query)
 
         return dag_result
-
-    async def run_with_context(
-            self,
-            initial_query: str,
-            additional_info: str = '',
-            user_input: Optional[ExecutionInput] = None,
-            stop_on_failure: bool = True) -> SkillDAGResult:
-        """
-        Run with additional context combined into the query.
-
-        Use this method when you want to provide additional context
-        along with the initial query.
-
-        Args:
-            initial_query: Original user query.
-            additional_info: Additional context to append to query.
-            user_input: Optional initial input for skills.
-            stop_on_failure: Whether to stop on first failure.
-
-        Returns:
-            SkillDAGResult with execution_result populated.
-        """
-        # Combine queries if additional info provided
-        if additional_info:
-            combined_query = f'{initial_query}\n\nAdditional context: {additional_info}'
-        else:
-            combined_query = initial_query
-
-        return await self.run(
-            query=combined_query,
-            user_input=user_input,
-            stop_on_failure=stop_on_failure)
