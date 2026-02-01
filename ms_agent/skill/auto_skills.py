@@ -1093,10 +1093,12 @@ class AutoSkills:
             enable_retrieve: If True, use HybridRetriever for skill search.
                 If False, put all skills into LLM context for direct selection.
                 If None, enable search only if skills > 10 automatically.
-            top_k: Number of top results to retrieve per query.
-            min_score: Minimum score threshold for retrieval.
+            retrieve_args: Additional arguments for HybridRetriever.
+                Attributes:
+                    top_k: Number of top results to retrieve per query.
+                    min_score: Minimum score threshold for retrieval.
             max_candidate_skills: Maximum number of candidate skills to consider.
-            max_retries: Maximum retry attempts for failed executions.
+            max_retries: Maximum retry attempts for failed executions for each skill.
             work_dir: Working directory for skill execution.
             use_sandbox: Whether to use Docker sandbox for execution.
 
