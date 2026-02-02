@@ -1,4 +1,5 @@
 dotenv
+faiss-cpu
 json5
 markdown
 mcp
