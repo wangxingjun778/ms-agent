@@ -44,10 +44,11 @@ class ProjectInfo(BaseModel):
 
 
 class SessionCreate(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None  # Optional for chat mode
     query: Optional[str] = None
     workflow_type: Optional[
         str] = 'standard'  # 'standard' or 'simple' for code_genesis
+    session_type: Optional[str] = 'project'  # 'project' or 'chat'
 
 
 class SessionInfo(BaseModel):
@@ -56,6 +57,7 @@ class SessionInfo(BaseModel):
     project_name: str
     status: str
     created_at: str
+    session_type: Optional[str] = 'project'  # 'project' or 'chat'
 
 
 class LLMConfig(BaseModel):
@@ -168,7 +170,18 @@ async def get_project_workflow(project_id: str,
 # Session Endpoints
 @router.post('/sessions', response_model=SessionInfo)
 async def create_session(session_data: SessionCreate):
-    """Create a new session for a project"""
+    """Create a new session for a project or chat mode"""
+    # Check if this is a chat mode session
+    if session_data.session_type == 'chat':
+        # Create chat session without requiring a project
+        session = session_manager.create_session(
+            project_id='__chat__',
+            project_name='Chat Assistant',
+            workflow_type='standard',
+            session_type='chat')
+        return session
+
+    # For project mode, validate project exists
     project = project_discovery.get_project(session_data.project_id)
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
@@ -184,7 +197,8 @@ async def create_session(session_data: SessionCreate):
     session = session_manager.create_session(
         project_id=session_data.project_id,
         project_name=project['name'],
-        workflow_type=workflow_type)
+        workflow_type=workflow_type,
+        session_type='project')
     return session
 
 
@@ -374,7 +388,7 @@ async def list_output_files(
     # Base directories (same way as read_file_content)
     base_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
+    projects_dir = os.path.join(base_dir, 'projects')
 
     if session_id:
 
@@ -386,9 +400,12 @@ async def list_output_files(
     else:
         root_dir = root_dir.strip()
 
-        # If absolute, use as-is (but still must be within allowed_roots)
+        # If absolute, use as-is
         if os.path.isabs(root_dir):
             resolved_root = root_dir
+        # If starts with 'projects/', join with base_dir
+        elif root_dir.startswith('projects/'):
+            resolved_root = os.path.join(base_dir, root_dir)
         else:
             # Try relative to output first, then projects
             cand1 = os.path.join(output_dir, root_dir)
@@ -399,8 +416,7 @@ async def list_output_files(
             elif os.path.exists(cand2):
                 resolved_root = cand2
             else:
-                # If user passes "output" or "projects" explicitly (common case)
-                # allow interpreting it as those roots even if not exist check above
+                # If user passes "output" or "projects" explicitly
                 if root_dir in ('output', 'output/'):
                     resolved_root = output_dir
                 elif root_dir in ('projects', 'projects/'):
@@ -461,8 +477,8 @@ async def list_output_files(
 def get_allowed_roots():
     base_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    output_dir = os.path.join(base_dir, 'ms-agent', 'output')
-    projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
+    output_dir = os.path.join(base_dir, 'output')
+    projects_dir = os.path.join(base_dir, 'projects')
     return base_dir, os.path.normpath(output_dir), os.path.normpath(
         projects_dir)
 
@@ -511,16 +527,55 @@ def resolve_root_dir(root_dir: Optional[str]) -> str:
 def resolve_file_path(root_dir_abs: str, file_path: str) -> str:
     """
     Resolve file_path against root_dir_abs.
-    - if file_path is absolute, require it's within root_dir_abs
+    - if file_path starts with 'projects/', resolve from ms-agent base dir
+    - if file_path is absolute, use as-is
     - if relative, join(root_dir_abs, file_path)
     """
     root_dir_abs = os.path.normpath(os.path.abspath(root_dir_abs))
 
     if os.path.isabs(file_path):
         full_path = os.path.normpath(os.path.abspath(file_path))
-    else:
+    elif file_path.startswith('projects/'):
+        # Special case: if path starts with 'projects/', resolve from base_dir
+        # This handles: projects/code_genesis/output/config.js
+        base_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         full_path = os.path.normpath(
-            os.path.abspath(os.path.join(root_dir_abs, file_path)))
+            os.path.abspath(os.path.join(base_dir, file_path)))
+    else:
+        # Try multiple locations
+        base_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+        candidates = [
+            # First try with root_dir_abs (for session-based access)
+            os.path.join(root_dir_abs, file_path),
+            # Then try in each project's output directory
+        ]
+
+        # Search in project output directories
+        projects_dir = os.path.join(base_dir, 'projects')
+        if os.path.exists(projects_dir):
+            try:
+                for project_name in os.listdir(projects_dir):
+                    project_path = os.path.join(projects_dir, project_name)
+                    if os.path.isdir(project_path):
+                        candidates.append(
+                            os.path.join(project_path, 'output', file_path))
+            except (OSError, PermissionError):
+                pass
+
+        # Find first existing file
+        full_path = None
+        for candidate in candidates:
+            candidate = os.path.normpath(candidate)
+            if os.path.exists(candidate) and os.path.isfile(candidate):
+                full_path = candidate
+                break
+
+        if not full_path:
+            # Default to first candidate if none found
+            full_path = os.path.normpath(candidates[0])
 
     # Warning: Web UI is for local-only convenience (frontend/backend assumed localhost).
     # For production, enforce strict backend file-access validation and authorization
@@ -596,17 +651,56 @@ async def read_file_content(request: FileReadRequest):
 
 
 def resolve_and_check_path(file_path: str) -> str:
+    """Resolve file path, trying multiple locations"""
     base_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    output_dir = os.path.join(base_dir, 'ms-agent', 'output')
-    projects_dir = os.path.join(base_dir, 'ms-agent', 'projects')
 
-    if not os.path.isabs(file_path):
-        full_path = os.path.join(output_dir, file_path)
-        if not os.path.exists(full_path):
-            full_path = os.path.join(projects_dir, file_path)
-    else:
+    if os.path.isabs(file_path):
         full_path = file_path
+    else:
+        # Smart path resolution:
+        # If path already starts with 'projects/', use it directly under base_dir
+        # Otherwise try output_dir first, then search in project outputs
+
+        candidates = []
+
+        # If path starts with 'projects/', join directly with base_dir
+        if file_path.startswith('projects/'):
+            candidates.append(os.path.join(base_dir, file_path))
+        else:
+            # Try base_dir/output first
+            output_dir = os.path.join(base_dir, 'output')
+            candidates.append(os.path.join(output_dir, file_path))
+
+            # Try base_dir directly
+            candidates.append(os.path.join(base_dir, file_path))
+
+            # Search in each project's output directory
+            projects_dir = os.path.join(base_dir, 'projects')
+            if os.path.exists(projects_dir):
+                try:
+                    for project_name in os.listdir(projects_dir):
+                        project_path = os.path.join(projects_dir, project_name)
+                        if os.path.isdir(project_path):
+                            # Try project/output/filename
+                            candidates.append(
+                                os.path.join(project_path, 'output',
+                                             file_path))
+                except (OSError, PermissionError):
+                    pass
+
+        # Find first existing file
+        full_path = None
+        for candidate in candidates:
+            candidate = os.path.normpath(candidate)
+            if os.path.exists(candidate) and os.path.isfile(candidate):
+                full_path = candidate
+                break
+
+        if not full_path:
+            # If not found, use the first candidate for error message
+            full_path = os.path.normpath(
+                candidates[0] if candidates else file_path)
 
     full_path = os.path.normpath(full_path)
 

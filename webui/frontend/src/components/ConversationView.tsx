@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Refresh as RetryIcon,
-} from '@mui/icons-material';
-import {
   Box,
   TextField,
   IconButton,
@@ -37,7 +34,7 @@ import {
   AccountTree as WorkflowIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSession, Message, Session } from '../context/SessionContext';
+import { useSession, Message } from '../context/SessionContext';
 import WorkflowProgress from './WorkflowProgress';
 import FileProgress from './FileProgress';
 import LogViewer from './LogViewer';
@@ -61,26 +58,18 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
     ws,
   } = useSession();
 
-  const lastUserMessageId = React.useMemo(() => {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') return messages[i].id;
-      }
-      return null;
-    }, [messages]);
-
-  const completedSteps = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const m of messages) {
-      if (m.type === 'step_complete' && m.content) set.add(m.content);
-    }
-    return set;
-  }, [messages]);
-
   const [input, setInput] = useState('');
   const [outputFilesOpen, setOutputFilesOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [workflowData, setWorkflowData] = useState<Record<string, any> | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [toolDetailOpen, setToolDetailOpen] = useState(false);
+  const [selectedToolDetail, setSelectedToolDetail] = useState<{
+    toolName: string;
+    toolArgs: any;
+    toolResult?: any;
+    agent?: string;
+  } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [outputTree, setOutputTree] = useState<any>({folders: {}, files: []});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -89,27 +78,12 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
   const [fileLoading, setFileLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [fileKind, setFileKind] = useState<'text' | 'image' | 'video' | 'audio'>('text');
 
-  // Check if waiting for user input
-  const isWaitingForInput = React.useMemo(() => {
-    return messages.some(m => m.type === 'waiting_input');
-  }, [messages]);
+  // Check if agent is waiting for input
+  const isWaitingForInput = messages.some(m => m.type === 'waiting_input');
+  // Input should be enabled if waiting for input, even if isLoading is true
+  const inputEnabled = !isLoading || isWaitingForInput;
 
-  // Check if input should be enabled
-  const inputEnabled = React.useMemo(() => {
-    return !isLoading || isWaitingForInput;
-  }, [isLoading, isWaitingForInput]);
-
-  const getFileKind = (fname: string): 'text' | 'image' | 'video' | 'audio' => {
-      const ext = fname.split('.').pop()?.toLowerCase() || '';
-      if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
-      if (['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(ext)) return 'video';
-      if (['mp3', 'wav', 'aac', 'flac', 'm4a', 'opus'].includes(ext)) return 'audio';
-      return 'text';
-    };
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -146,24 +120,29 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
     }
   };
 
-    const loadOutputFiles = async (outputDir: string) => {
-      try {
-        if (!currentSession?.id) return;
-
-        const url = new URL('/api/files/list', window.location.origin);
-        url.searchParams.set('output_dir', outputDir);
-        url.searchParams.set('session_id', currentSession.id);
-
-        const response = await fetch(url.toString());
-        if (response.ok) {
-          const data = await response.json();
-          setOutputTree(data.tree || { folders: {}, files: [] });
-          setExpandedFolders(new Set(['']));
-        }
-      } catch (err) {
-        console.error('Failed to load output files:', err);
+  const loadOutputFiles = async () => {
+    try {
+      if (!currentSession?.project_id) {
+        console.error('No project_id in current session');
+        return;
       }
-    };
+
+      // Load files from project's output directory
+      const projectPath = `projects/${currentSession.project_id}/output`;
+      const url = `/api/files/list?root_dir=${encodeURIComponent(projectPath)}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setOutputTree(data.tree || {folders: {}, files: []});
+        // Expand root level by default
+        setExpandedFolders(new Set(['']));
+      } else {
+        console.error('Failed to load files:', await response.text());
+      }
+    } catch (err) {
+      console.error('Failed to load output files:', err);
+    }
+  };
 
   const toggleFolder = (folder: string) => {
     setExpandedFolders(prev => {
@@ -177,51 +156,66 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
     });
   };
 
-  const handleOpenOutputFiles =  () => {
-    loadOutputFiles('output');
+  const handleOpenOutputFiles = () => {
+    loadOutputFiles();
     setOutputFilesOpen(true);
     setSelectedFile(null);
     setFileContent(null);
   };
 
-    const handleViewFile = async (path: string) => {
-      if (!currentSession?.id) return;
+  const handleViewFile = async (path: string) => {
+    setSelectedFile(path);
+    setFileLoading(true);
+    try {
+      // Build path variants - add project-specific paths
+      const pathVariants = [
+        path, // Original path from file tree
+      ];
 
-      setSelectedFile(path);
-      setFileLoading(true);
-      const kind = getFileKind(path);
-      setFileKind(kind);
+      // If we have a project, try project-specific paths
+      if (currentSession?.project_id) {
+        pathVariants.push(`projects/${currentSession.project_id}/output/${path}`);
+      }
 
-      try {
-        if (kind === 'text') {
+      // Also try without prefix
+      pathVariants.push(path.replace(/^output\//, ''));
+      pathVariants.push(path.split('/').pop() || path);
+
+      let lastError: Error | null = null;
+
+      for (const pathVariant of pathVariants) {
+        try {
           const response = await fetch('/api/files/read', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: path, session_id: currentSession?.id }),
+            body: JSON.stringify({ path: pathVariant }),
           });
 
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to load file');
+          if (response.ok) {
+            const data = await response.json();
+            setFileContent(data.content);
+            return; // Success, exit early
+          } else {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+            lastError = new Error(errorData.detail || `Failed to load file: ${pathVariant}`);
           }
-
-          const data = await response.json();
-          setFileContent(data.content);
-          setFileUrl(null);
-          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error('Unknown error');
         }
-
-        const sid = currentSession?.id;
-        const streamUrl =
-          `/api/files/stream?path=${encodeURIComponent(path)}&session_id=${encodeURIComponent(sid || '')}`;
-        setFileUrl(streamUrl);
-        setFileContent(null);
-      } catch (err) {
-        setFileError(err instanceof Error ? err.message : 'Failed to load file');
-      } finally {
-        setFileLoading(false);
       }
-    };
+
+      // If all attempts failed, show the last error
+      if (lastError) {
+        console.error('Failed to load file with all path variants:', lastError);
+        setFileContent(`Error: ${lastError.message}\n\nTried paths:\n${pathVariants.join('\n')}`);
+      }
+    } catch (err) {
+      console.error('Failed to load file:', err);
+      setFileContent(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setFileLoading(false);
+    }
+  };
 
   const loadWorkflow = async () => {
     if (!currentSession?.project_id) return;
@@ -384,73 +378,157 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
               onSelectFile={handleViewFile}
             />
           </Box>
-            {/* File Content */}
-            <Box sx={{ flex: 1, overflow: 'auto', p: 0 }}>
-              {fileLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                  <CircularProgress size={32} />
-                </Box>
-              ) : fileError ? (
-                <Box sx={{ p: 2 }}>
-                  <Typography color="error">{fileError}</Typography>
-                </Box>
-              ) : fileContent ? (
-                <Box
-                  component="pre"
-                  sx={{
-                    m: 0,
-                    p: 2,
-                    fontFamily: 'monospace',
-                    fontSize: '0.85rem',
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  <code>{fileContent}</code>
-                </Box>
-              ) : fileUrl ? (
-                <Box sx={{ p: 2 }}>
-                  {fileKind === 'image' && (
-                    <Box
-                      component="img"
-                      src={fileUrl}
-                      alt={selectedFile ?? 'image'}
-                      sx={{ maxWidth: '100%', height: 'auto', display: 'block' }}
-                    />
-                  )}
+          {/* File Content */}
+          <Box sx={{ flex: 1, overflow: 'auto', p: 0 }}>
+            {fileLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <CircularProgress size={32} />
+              </Box>
+            ) : fileContent ? (
+              <Box
+                component="pre"
+                sx={{
+                  m: 0,
+                  p: 2,
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                }}
+              >
+                <code>{fileContent}</code>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <Typography color="text.secondary">Select a file to view</Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
 
-                  {fileKind === 'video' && (
-                    <Box
-                      component="video"
-                      src={fileUrl}
-                      controls
-                      sx={{ width: '100%', maxHeight: '60vh', display: 'block' }}
-                    />
-                  )}
+      {/* Tool Detail Dialog */}
+      <Dialog
+        open={toolDetailOpen}
+        onClose={() => setToolDetailOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: { backgroundColor: theme.palette.background.paper }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CodeIcon color="secondary" />
+            <Typography variant="h6">工具详情</Typography>
+            {selectedToolDetail?.agent && (
+              <Chip
+                label={selectedToolDetail.agent}
+                size="small"
+                sx={{
+                  height: 24,
+                  fontSize: '0.75rem',
+                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                }}
+              />
+            )}
+          </Box>
+          <IconButton size="small" onClick={() => setToolDetailOpen(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          {selectedToolDetail && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Tool Name */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: theme.palette.text.secondary }}>
+                  工具名称
+                </Typography>
+                <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                  {selectedToolDetail.toolName}
+                </Typography>
+              </Box>
 
-                  {fileKind === 'audio' && (
-                    <Box
-                      component="audio"
-                      src={fileUrl}
-                      controls
-                      style={{ width: '100%' }}
-                    />
-                  )}
-
-                  {/* Fallback: in case kind doesn't match */}
-                  {!['image', 'video', 'audio'].includes(fileKind) && (
-                    <Typography color="text.secondary">
-                      Unsupported preview type. <a href={fileUrl} target="_blank" rel="noreferrer">Open</a>
+              {/* Tool Arguments */}
+              {selectedToolDetail.toolArgs && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: theme.palette.text.secondary }}>
+                    调用参数
+                  </Typography>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      backgroundColor: alpha(theme.palette.background.default, 0.5),
+                      borderRadius: 1,
+                      maxHeight: 300,
+                      overflow: 'auto',
+                    }}
+                  >
+                    <Typography
+                      component="pre"
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        color: theme.palette.text.primary,
+                      }}
+                    >
+                      {typeof selectedToolDetail.toolArgs === 'string'
+                        ? selectedToolDetail.toolArgs
+                        : JSON.stringify(selectedToolDetail.toolArgs, null, 2)}
                     </Typography>
-                  )}
-                </Box>
-              ) : (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                  <Typography color="text.secondary">Select a file to view</Typography>
+                  </Paper>
                 </Box>
               )}
+
+              {/* Tool Result */}
+              {selectedToolDetail.toolResult && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: theme.palette.text.secondary }}>
+                    执行结果
+                  </Typography>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      backgroundColor: alpha(theme.palette.success.main, 0.05),
+                      borderRadius: 1,
+                      maxHeight: 300,
+                      overflow: 'auto',
+                    }}
+                  >
+                    <Typography
+                      component="pre"
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        color: theme.palette.text.primary,
+                      }}
+                    >
+                      {typeof selectedToolDetail.toolResult === 'string'
+                        ? selectedToolDetail.toolResult
+                        : JSON.stringify(selectedToolDetail.toolResult, null, 2)}
+                    </Typography>
+                  </Paper>
+                </Box>
+              )}
+
+              {!selectedToolDetail.toolArgs && !selectedToolDetail.toolResult && (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  暂无详细信息
+                </Typography>
+              )}
             </Box>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -529,21 +607,319 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
             }}
           >
             <AnimatePresence>
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  sessionStatus={currentSession?.status}
-                  completedSteps={completedSteps}
+              {(() => {
+                // Collect all deployment URLs, but only keep the latest one
+                const allDeploymentUrls = messages.filter(m => m.type === 'deployment_url');
+                // Only show the latest deployment URL (replace previous ones)
+                const latestDeploymentUrl = allDeploymentUrls.length > 0
+                  ? [allDeploymentUrls[allDeploymentUrls.length - 1]]
+                  : [];
 
-                 showRetry={
-                  message.role === 'user' &&
-                  message.id === lastUserMessageId &&
-                  !isLoading && !isStreaming
-                 }
-                 onRetry={(content) => sendMessage(content, { reuseMessageId: message.id })}
-                />
-              ))}
+                // Track if we've already injected deployment URL + waiting input after Refine
+                let refineDeploymentInjected = false;
+
+                return messages.map((message, index) => {
+                  // Check if we need to inject "Coding completed" before Refine step
+                  const isRefineStart = message.type === 'step_start' &&
+                    message.content.toLowerCase() === 'refine';
+
+                  // Check if any Programmer steps exist before this message
+                  const hasProgrammerSteps = messages.slice(0, index).some(
+                    m => (m.type === 'step_start' || m.type === 'step_complete') &&
+                         m.content.toLowerCase().startsWith('programmer')
+                  );
+
+                  // Check if Coding completed was already shown
+                  const codingCompletedShown = messages.slice(0, index).some(
+                    m => m.type === 'step_complete' && m.content.toLowerCase() === 'coding'
+                  );
+
+                  // Check if this is Refine completed
+                  const isRefineComplete = message.type === 'step_complete' &&
+                    message.content.toLowerCase() === 'refine';
+
+                  // Hide file_output messages (we'll show them grouped after Coding completed)
+                  if (message.type === 'file_output') {
+                    return null;
+                  }
+
+                  // Hide deployment_url messages here; we'll only show the latest one
+                  // once after Refine completed via latestDeploymentUrl injection.
+                  if (message.type === 'deployment_url') {
+                    return null;
+                  }
+
+                  // Hide waiting_input messages that appear before Refine completed or before deployment URLs
+                  // (they will be shown after Deployment URLs)
+                  if (message.type === 'waiting_input') {
+                    // Check if Refine has been completed
+                    const refineCompleted = messages.slice(0, index).some(
+                      m => m.type === 'step_complete' && m.content.toLowerCase() === 'refine'
+                    );
+                    if (!refineCompleted) {
+                      return null; // Hide if Refine not completed yet
+                    }
+                    // Check if there are deployment URLs that haven't been shown yet
+                    const hasDeploymentUrls = latestDeploymentUrl.length > 0;
+                    if (hasDeploymentUrls) {
+                      // Hide this waiting_input message, it will be shown after deployment URLs
+                      return null;
+                    }
+                  }
+
+                  // Don't hide tool_call messages - we'll show them below their corresponding assistant messages
+                  // Show all assistant messages (don't hide intermediate ones)
+
+                  // Hide the second "Install completed" (the one after Programmer steps)
+                  if (message.type === 'step_complete' &&
+                      message.content.toLowerCase() === 'install' &&
+                      hasProgrammerSteps) {
+                    return null;
+                  }
+
+                  return (
+                    <React.Fragment key={message.id}>
+                      {/* Inject "Coding completed" + files before Refine starts */}
+                      {isRefineStart && hasProgrammerSteps && !codingCompletedShown && (
+                        <>
+                          {/* Coding completed message */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                justifyContent: 'flex-start',
+                                mb: 1.5,
+                                px: 2,
+                              }}
+                            >
+                              <Paper
+                                elevation={0}
+                                sx={{
+                                  maxWidth: '75%',
+                                  minWidth: 60,
+                                  px: 2,
+                                  py: 1.25,
+                                  borderRadius: '20px',
+                                  backgroundColor: theme.palette.background.paper,
+                                  border: 'none',
+                                  position: 'relative',
+                                  boxShadow: 'none',
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: 1.5,
+                                }}
+                              >
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 200,
+                                    damping: 15,
+                                    delay: 0.1
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    marginTop: '2px',
+                                  }}
+                                >
+                                  <CheckCircleIcon
+                                    sx={{
+                                      color: theme.palette.success.main,
+                                      fontSize: 22,
+                                      filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))',
+                                    }}
+                                  />
+                                </motion.div>
+                                <Box sx={{ flex: 1, lineHeight: 1.5 }}>
+                                  <MessageContent content="Coding completed" />
+                                </Box>
+                              </Paper>
+                            </Box>
+                          </motion.div>
+
+                          {/* All generated files from tasks.txt */}
+                          {(() => {
+                            // Find file_output message (now contains array of files from tasks.txt)
+                            const fileOutputMsg = messages.find(m => m.type === 'file_output');
+
+                            if (!fileOutputMsg) return null;
+
+                            // Handle both old format (single file) and new format (array of files)
+                            let generatedFiles: string[] = [];
+
+                            if (Array.isArray(fileOutputMsg.content)) {
+                              // New format: array of files from tasks.txt
+                              generatedFiles = fileOutputMsg.content;
+                            } else if (fileOutputMsg.metadata?.files && Array.isArray(fileOutputMsg.metadata.files)) {
+                              // Alternative: files in metadata
+                              generatedFiles = fileOutputMsg.metadata.files as string[];
+                            } else if (typeof fileOutputMsg.content === 'string') {
+                              // Old format: single file
+                              generatedFiles = [fileOutputMsg.content];
+                            }
+
+                            if (generatedFiles.length === 0) return null;
+
+                            return (
+                              <Box sx={{ ml: 4, mb: 1 }}>
+                                {/* Files list */}
+                                {generatedFiles.map((filename, idx) => (
+                                  <FileOutputChip key={`file-${idx}-${filename}`} filename={filename} />
+                                ))}
+                              </Box>
+                            );
+                          })()}
+                        </>
+                      )}
+
+                      {/* Show the message */}
+                      <MessageBubble message={message} />
+
+                      {/* Show tool calls for this assistant message */}
+                      {(message.type === 'text' || message.type === 'agent_output') && message.role === 'assistant' && (() => {
+                        const agent = message.metadata?.agent;
+                        console.log('[ConversationView] Checking tool calls for agent:', agent, 'message index:', index, 'type:', message.type);
+                        if (!agent) return null;
+
+                        // Find tool calls from the same agent that happened AFTER this message
+                        // Tool calls come after the assistant's initial response
+                        const searchRange = 30;
+                        const endIdx = Math.min(messages.length, index + searchRange);
+
+                        // Normalize agent name for comparison
+                        const normalizedAgent = typeof agent === 'string'
+                          ? agent.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_')
+                          : '';
+
+                        // Find tool calls from this agent after this message, STOP at next assistant message
+                        const relatedToolCalls: Message[] = [];
+                        for (let i = index + 1; i < endIdx; i++) {
+                          const m = messages[i];
+
+                          // Stop if we hit another assistant message from same agent
+                          if ((m.type === 'text' || m.type === 'agent_output') &&
+                              m.role === 'assistant' &&
+                              m.metadata?.agent) {
+                            const msgAgent = typeof m.metadata.agent === 'string'
+                              ? m.metadata.agent.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_')
+                              : '';
+                            if (msgAgent === normalizedAgent ||
+                                normalizedAgent.includes(msgAgent) ||
+                                msgAgent.includes(normalizedAgent)) {
+                              break; // Stop at next assistant message from same agent
+                            }
+                          }
+
+                          // Collect tool calls from same agent
+                          if (m.type === 'tool_call' && m.metadata?.tool_name) {
+                            const toolAgent = m.metadata?.agent;
+                            if (toolAgent) {
+                              const normalizedToolAgent = typeof toolAgent === 'string'
+                                ? toolAgent.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_')
+                                : '';
+                              if (normalizedToolAgent === normalizedAgent ||
+                                  normalizedAgent.includes(normalizedToolAgent) ||
+                                  normalizedToolAgent.includes(normalizedAgent)) {
+                                relatedToolCalls.push(m);
+                              }
+                            }
+                          }
+                        }
+
+                        console.log('[ConversationView] Found related tool calls:', relatedToolCalls.length, relatedToolCalls);
+                        if (relatedToolCalls.length === 0) return null;
+
+                        // Build list of all tool calls (no deduplication - show each one)
+                        const toolDetails: Array<{name: string; args: any; result?: any}> = [];
+                        for (const toolCall of relatedToolCalls) {
+                          const toolName = toolCall.metadata?.tool_name;
+                          if (toolName && typeof toolName === 'string') {
+                            toolDetails.push({
+                              name: toolName,
+                              args: toolCall.metadata?.tool_args,
+                              result: toolCall.metadata?.tool_result,
+                            });
+                          }
+                        }
+
+                        if (toolDetails.length === 0) return null;
+
+                        const handleToolClick = (toolDetail: {name: string; args: any; result?: any}) => {
+                          setSelectedToolDetail({
+                            toolName: toolDetail.name,
+                            toolArgs: toolDetail.args,
+                            toolResult: toolDetail.result,
+                            agent: typeof agent === 'string' ? agent : String(agent),
+                          });
+                          setToolDetailOpen(true);
+                        };
+
+                        return (
+                          <Box sx={{ px: 2, mb: 1, mt: -0.5 }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, ml: 1 }}>
+                              {toolDetails.map((toolDetail, idx) => (
+                                <Chip
+                                  key={`${message.id}-tool-${idx}`}
+                                  label={toolDetail.name}
+                                  size="small"
+                                  icon={<CodeIcon sx={{ fontSize: 12 }} />}
+                                  onClick={() => handleToolClick(toolDetail)}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.65rem',
+                                    backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+                                    color: theme.palette.secondary.main,
+                                    cursor: 'pointer',
+                                    width: 'fit-content',
+                                    '&:hover': {
+                                      backgroundColor: alpha(theme.palette.secondary.main, 0.2),
+                                    },
+                                    '& .MuiChip-icon': {
+                                      marginLeft: '4px',
+                                    },
+                                  }}
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        );
+                      })()}
+
+                      {/* Inject latest deployment URL after Refine completed */}
+                      {isRefineComplete && latestDeploymentUrl.length > 0 && !refineDeploymentInjected && (() => {
+                        refineDeploymentInjected = true;
+                        return (
+                          <>
+                            {/* Show only the latest deployment URL (replaces previous ones) */}
+                            {latestDeploymentUrl.map((deployMsg, deployIndex) => (
+                              <MessageBubble key={`deploy-${deployIndex}-${deployMsg.id || deployMsg.content}`} message={deployMsg} />
+                            ))}
+
+                            {/* Show waiting input message after deployment if it exists */}
+                            {(() => {
+                              const waitingInputMsg = messages.find(m => m.type === 'waiting_input');
+                              if (waitingInputMsg) {
+                                return <MessageBubble key={`waiting-${waitingInputMsg.id}`} message={waitingInputMsg} />;
+                              }
+                              return null;
+                            })()}
+                          </>
+                        );
+                      })()}
+                    </React.Fragment>
+                  );
+                });
+              })()}
 
               {/* Streaming Content */}
               {isStreaming && streamingContent && (
@@ -751,38 +1127,122 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
                           boxShadow: 'none',
                         }}
                       >
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            {[0, 1, 2].map((i) => (
-                              <motion.div
-                                key={i}
-                                animate={{
-                                  y: [0, -4, 0],
-                                  opacity: [0.4, 1, 0.4],
-                                }}
-                                transition={{
-                                  duration: 0.8,
-                                  repeat: Infinity,
-                                  delay: i * 0.15,
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: '50%',
-                                    backgroundColor: theme.palette.primary.main,
+                        <Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              {[0, 1, 2].map((i) => (
+                                <motion.div
+                                  key={i}
+                                  animate={{
+                                    y: [0, -4, 0],
+                                    opacity: [0.4, 1, 0.4],
                                   }}
-                                />
-                              </motion.div>
-                            ))}
-                          </Box>
-                          <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                            <Box component="span" sx={{ textTransform: 'capitalize' }}>
-                              {currentStepName}
+                                  transition={{
+                                    duration: 0.8,
+                                    repeat: Infinity,
+                                    delay: i * 0.15,
+                                  }}
+                                >
+                                  <Box
+                                    sx={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      backgroundColor: theme.palette.primary.main,
+                                    }}
+                                  />
+                                </motion.div>
+                              ))}
                             </Box>
-                            <Box component="span" sx={{ opacity: 0.7 }}> in progress...</Box>
-                          </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                              <Box component="span" sx={{ textTransform: 'capitalize' }}>
+                                {currentStepName}
+                              </Box>
+                              <Box component="span" sx={{ opacity: 0.7 }}> in progress...</Box>
+                            </Typography>
+                          </Box>
+                          {/* Show tool calls below the progress indicator */}
+                          {(() => {
+                            // Normalize current step name for matching
+                            const normalizedStepName = currentStepName?.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+
+                            // Collect recent tool calls - prioritize current step's tools
+                            const allToolCalls = messages.filter(m => m.type === 'tool_call' && m.metadata?.tool_name);
+
+                            // First, try to find tools from current step
+                            let recentToolCalls = allToolCalls.filter(m => {
+                              if (!normalizedStepName) return false;
+
+                              const toolAgent = m.metadata?.agent;
+                              if (!toolAgent) return false;
+
+                              // Normalize agent name for comparison
+                              const normalizedToolAgent = typeof toolAgent === 'string'
+                                ? toolAgent.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_')
+                                : '';
+
+                              // Match exact agent name or check if it's part of the current step
+                              return normalizedToolAgent === normalizedStepName ||
+                                     normalizedStepName.includes(normalizedToolAgent) ||
+                                     normalizedToolAgent.includes(normalizedStepName);
+                            });
+
+                            // If no tools from current step, show recent tools from last 20 messages
+                            if (recentToolCalls.length === 0) {
+                              recentToolCalls = allToolCalls.slice(-20);
+                            } else {
+                              // Limit to last 20 even if matched
+                              recentToolCalls = recentToolCalls.slice(-20);
+                            }
+
+                            // Get unique tool names
+                            const toolNames = [...new Set(
+                              recentToolCalls
+                                .map(m => m.metadata?.tool_name)
+                                .filter(Boolean)
+                            )] as string[];
+
+                            if (toolNames.length === 0) return null;
+
+                            return (
+                              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${alpha(theme.palette.divider, 0.2)}` }}>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary, fontSize: '0.7rem', mr: 0.5 }}>
+                                    工具:
+                                  </Typography>
+                                  {toolNames.slice(0, 8).map((toolName, idx) => (
+                                    <Chip
+                                      key={idx}
+                                      label={toolName}
+                                      size="small"
+                                      icon={<CodeIcon sx={{ fontSize: 12 }} />}
+                                      sx={{
+                                        height: 20,
+                                        fontSize: '0.65rem',
+                                        backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+                                        color: theme.palette.secondary.main,
+                                        '& .MuiChip-icon': {
+                                          marginLeft: '4px',
+                                        },
+                                      }}
+                                    />
+                                  ))}
+                                  {toolNames.length > 8 && (
+                                    <Chip
+                                      label={`+${toolNames.length - 8}`}
+                                      size="small"
+                                      sx={{
+                                        height: 20,
+                                        fontSize: '0.65rem',
+                                        backgroundColor: alpha(theme.palette.text.secondary, 0.1),
+                                        color: theme.palette.text.secondary,
+                                      }}
+                                    />
+                                  )}
+                                </Box>
+                              </Box>
+                            );
+                          })()}
                         </Box>
                       </Paper>
                     </Box>
@@ -872,17 +1332,9 @@ const ConversationView: React.FC<ConversationViewProps> = ({ showLogs }) => {
 interface MessageBubbleProps {
   message: Message;
   isStreaming?: boolean;
-  sessionStatus?: Session['status'];
-  completedSteps?: Set<string>;
-
-  showRetry?: boolean;
-  onRetry?: (content: string) => void;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isStreaming,
-  showRetry, onRetry
-}) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isStreaming }) => {
   const theme = useTheme();
   const isUser = message.role === 'user';
   const isError = message.type === 'error';
@@ -891,6 +1343,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isStepStart = message.type === 'step_start';
   const isStepComplete = message.type === 'step_complete';
   const isToolCall = message.type === 'tool_call';
+  const isToolResult = message.type === 'tool_result';
   const isDeploymentUrl = message.type === 'deployment_url';
   const isWaitingInput = message.type === 'waiting_input';
 
@@ -991,8 +1444,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     );
   }
 
-  // Tool call - hide (too verbose)
+  // Tool call - show as compact chip below assistant messages
   if (isToolCall) {
+    // Tool calls are now shown below their corresponding assistant messages
+    // So we hide standalone tool call messages
+    return null;
+  }
+
+  // Tool result - hidden (tools are shown in Loading Indicator instead)
+  if (isToolResult) {
     return null;
   }
 
@@ -1151,6 +1611,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     );
   }
 
+  // Show agent tag for assistant messages if available
+  const agentTag = !isUser && message.metadata?.agent
+    ? (typeof message.metadata.agent === 'string' ? message.metadata.agent : String(message.metadata.agent))
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -1186,20 +1651,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             boxShadow: 'none',
           }}
         >
+          {agentTag && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+              <Chip
+                label={agentTag}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                }}
+              />
+            </Box>
+          )}
           <MessageContent content={message.content} />
-            {showRetry && (
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                  <Tooltip title="Retry">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRetry?.(message.content)}
-                      sx={{ opacity: 0.75, '&:hover': { opacity: 1 } }}
-                    >
-                      <RetryIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
+
           {isStreaming && (
             <Box
               component="span"
@@ -1702,6 +2169,7 @@ const FileTreeView: React.FC<FileTreeViewProps> = ({
 // Separate component for file output with dialog
 const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
   const theme = useTheme();
+  const { currentSession } = useSession();
   const shortName = filename.split('/').pop() || filename;
   const displayName = shortName.startsWith('programmer-') ? shortName.slice('programmer-'.length) : shortName;
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1709,24 +2177,6 @@ const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [fileLang, setFileLang] = useState('text');
-  const { currentSession } = useSession();
-    const [fileUrl, setFileUrl] = useState<string | null>(null);
-    const [fileKind, setFileKind] = useState<'text' | 'image' | 'video'>('text');
-
-    const getFileKind = (fname: string): 'text' | 'image' | 'video' => {
-      const ext = fname.split('.').pop()?.toLowerCase() || '';
-      if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
-      if (['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(ext)) return 'video';
-      return 'text';
-    };
-
-    useEffect(() => {
-      if (!dialogOpen) {
-        setFileContent(null);
-        setFileUrl(null);
-        setFileLang('text');
-      }
-    }, [dialogOpen]);
 
   const getFileIcon = (fname: string) => {
     const ext = fname.split('.').pop()?.toLowerCase();
@@ -1743,46 +2193,60 @@ const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
   };
 
   const handleViewFile = async () => {
-      setDialogOpen(true);
-      setFileLoading(true);
-      setFileError(null);
+    setDialogOpen(true);
+    setFileLoading(true);
+    setFileError(null);
 
-      const kind = getFileKind(filename);
-      setFileKind(kind);
+    try {
+      // Build path variants to try - include project-specific output path
+      const pathVariants = [
+        filename, // Original path
+        `output/${filename}`, // Add output/ prefix
+        filename.replace(/^output\//, ''), // Remove output/ prefix
+        filename.split('/').pop() || filename, // Just filename
+      ];
 
-      try {
-        if (kind === 'text') {
+      // If we have a session with project info, also try project-specific paths
+      if (currentSession?.project_id) {
+        pathVariants.push(`projects/${currentSession.project_id}/output/${filename}`);
+        pathVariants.push(`projects/${currentSession.project_id}/output/${filename.replace(/^output\//, '')}`);
+      }
+
+      let lastError: Error | null = null;
+      let success = false;
+
+      for (const pathVariant of pathVariants) {
+        try {
           const response = await fetch('/api/files/read', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filename, session_id: currentSession?.id }),
+            body: JSON.stringify({ path: pathVariant }),
           });
 
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to load file');
+          if (response.ok) {
+            const data = await response.json();
+            setFileContent(data.content);
+            setFileLang(data.language || 'text');
+            success = true;
+            break; // Success, exit loop
+          } else {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+            lastError = new Error(errorData.detail || `Failed to load file: ${pathVariant}`);
           }
-
-          const data = await response.json();
-          setFileContent(data.content);
-          setFileLang(data.language || 'text');
-          setFileUrl(null);
-          return;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error('Unknown error');
         }
-
-        const sid = currentSession?.id;
-        const streamUrl =
-          `/api/files/stream?path=${encodeURIComponent(filename)}&session_id=${encodeURIComponent(sid || '')}`;
-        setFileUrl(streamUrl);
-        setFileContent(null);
-        setFileLang(kind);
-      } catch (err) {
-        setFileError(err instanceof Error ? err.message : 'Failed to load file');
-      } finally {
-        setFileLoading(false);
       }
-    };
 
+      if (!success && lastError) {
+        throw lastError;
+      }
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Failed to load file');
+    } finally {
+      setFileLoading(false);
+    }
+  };
 
   const handleCopy = () => {
     if (fileContent) {
@@ -1854,7 +2318,7 @@ const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
           </Box>
           <Box>
             <Tooltip title="Copy to clipboard">
-              <IconButton size="small" onClick={handleCopy} disabled={!fileContent || fileKind !== 'text'}>
+              <IconButton size="small" onClick={handleCopy} disabled={!fileContent}>
                 <CopyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -1872,41 +2336,28 @@ const FileOutputChip: React.FC<{ filename: string }> = ({ filename }) => {
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography color="error">{fileError}</Typography>
             </Box>
-          ) : fileKind === 'image' && fileUrl ? (
-              <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}>
-                <Box
-                  component="img"
-                  src={fileUrl}
-                  alt={shortName}
-                  sx={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }}
-                />
-              </Box>
-            ) : fileKind === 'video' && fileUrl ? (
-              <Box sx={{ p: 2 }}>
-                <Box component="video" src={fileUrl} controls sx={{ width: '100%', maxHeight: '60vh' }} />
-              </Box>
-            ) : (
-              <Box
-                component="pre"
-                sx={{
-                  m: 0,
-                  p: 2,
-                  overflow: 'auto',
-                  maxHeight: '60vh',
-                  fontFamily: 'monospace',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.6,
-                  backgroundColor: alpha(theme.palette.background.default, 0.5),
-                  '&::-webkit-scrollbar': { width: 8, height: 8 },
-                  '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.2),
-                    borderRadius: 4,
-                  },
-                }}
-              >
-                <code>{fileContent}</code>
-              </Box>
-            )}
+          ) : (
+            <Box
+              component="pre"
+              sx={{
+                m: 0,
+                p: 2,
+                overflow: 'auto',
+                maxHeight: '60vh',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                lineHeight: 1.6,
+                backgroundColor: alpha(theme.palette.background.default, 0.5),
+                '&::-webkit-scrollbar': { width: 8, height: 8 },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                  borderRadius: 4,
+                },
+              }}
+            >
+              <code>{fileContent}</code>
+            </Box>
+          )}
         </DialogContent>
       </Dialog>
     </>
