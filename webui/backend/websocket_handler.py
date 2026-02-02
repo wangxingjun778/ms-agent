@@ -139,34 +139,59 @@ async def start_agent(session_id: str, data: Dict[str, Any],
         })
         return
 
-    project = project_discovery.get_project(session['project_id'])
-    if not project:
-        print(f"[Agent] ERROR: Project not found: {session['project_id']}")
-        await websocket.send_json({
-            'type': 'error',
-            'message': 'Project not found'
-        })
-        return
+    session_type = session.get('session_type', 'project')
 
-    # Clean up output directory for code_genesis before starting
-    if project['id'] == 'code_genesis':
-        output_dir = os.path.join(project['path'], 'output')
-        if os.path.exists(output_dir):
-            try:
-                import shutil
-                shutil.rmtree(output_dir)
-                print(f'[Agent] Cleaned up output directory: {output_dir}')
-                await connection_manager.send_to_session(
-                    session_id, {
-                        'type': 'log',
-                        'level': 'info',
-                        'message': 'Cleaned up previous output directory',
-                        'timestamp': datetime.now().isoformat()
-                    })
-            except Exception as e:
-                print(
-                    f'[Agent] WARNING: Failed to clean output directory: {e}')
-                # Don't fail if cleanup fails, just log it
+    # For chat mode, use default chat agent config
+    if session_type == 'chat':
+        # Create a virtual project for chat mode using the default agent.yaml
+        import ms_agent
+        from pathlib import Path
+        # Get ms_agent package installation path
+        ms_agent_package_path = Path(ms_agent.__file__).parent
+        chat_config_path = ms_agent_package_path / 'agent' / 'agent.yaml'
+
+        project = {
+            'id': '__chat__',
+            'name': 'Chat Assistant',
+            'display_name': 'Chat Assistant',
+            'description': 'Default chat mode',
+            'type': 'agent',
+            'path': str(ms_agent_package_path / 'agent'),
+            'config_file': str(chat_config_path),
+            'has_readme': False,
+            'supports_workflow_switch': False
+        }
+    else:
+        # For project mode, get the project
+        project = project_discovery.get_project(session['project_id'])
+        if not project:
+            print(f"[Agent] ERROR: Project not found: {session['project_id']}")
+            await websocket.send_json({
+                'type': 'error',
+                'message': 'Project not found'
+            })
+            return
+
+        # Clean up output directory for code_genesis before starting
+        if project['id'] == 'code_genesis':
+            output_dir = os.path.join(project['path'], 'output')
+            if os.path.exists(output_dir):
+                try:
+                    import shutil
+                    shutil.rmtree(output_dir)
+                    print(f'[Agent] Cleaned up output directory: {output_dir}')
+                    await connection_manager.send_to_session(
+                        session_id, {
+                            'type': 'log',
+                            'level': 'info',
+                            'message': 'Cleaned up previous output directory',
+                            'timestamp': datetime.now().isoformat()
+                        })
+                except Exception as e:
+                    print(
+                        f'[Agent] WARNING: Failed to clean output directory: {e}'
+                    )
+                    # Don't fail if cleanup fails, just log it
 
     # Get workflow_type from session (default to 'standard')
     workflow_type = session.get('workflow_type', 'standard')
