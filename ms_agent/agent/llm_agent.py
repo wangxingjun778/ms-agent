@@ -7,7 +7,6 @@ import sys
 import uuid
 from contextlib import contextmanager
 from copy import deepcopy
-from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import json
@@ -118,10 +117,6 @@ class LLMAgent(Agent):
         self._auto_skills_initialized = False
         self._last_skill_result = None
         self._skill_mode_active = False
-
-    # =========================================================================
-    # AutoSkills Integration Methods
-    # =========================================================================
 
     def _get_skills_config(self) -> Optional[DictConfig]:
         """Get skills configuration from agent config."""
@@ -343,84 +338,6 @@ class LLMAgent(Agent):
             messages.append(Message(role='assistant', content=content))
 
         return messages
-
-    async def run_with_skills(
-            self,
-            query: str,
-            auto_execute: bool = True,
-            **kwargs
-    ) -> Union[List[Message], AsyncGenerator[List[Message], Any]]:
-        """
-        Run agent with explicit skill execution.
-
-        Forces skill execution regardless of query analysis.
-
-        Args:
-            query: User's query string.
-            auto_execute: Whether to execute skills after DAG construction.
-            **kwargs: Additional arguments.
-
-        Returns:
-            Message history with skill execution results.
-        """
-        if not self._ensure_auto_skills():
-            logger.warning(
-                'Skills not available, falling back to standard run')
-            return await self.run(query, **kwargs)
-
-        try:
-            # Execute skills
-            if auto_execute:
-                dag_result = await self.execute_skills(query)
-            else:
-                dag_result = await self.get_skill_dag(query)
-
-            if dag_result is None:
-                return await self.run(query, **kwargs)
-
-            # Format result as messages
-            messages = await self.create_messages(query)
-            result_messages = self._format_skill_result_as_messages(dag_result)
-
-            for msg in result_messages:
-                messages.append(msg)
-
-            return messages
-
-        except Exception as e:
-            logger.error(
-                f'Skill execution failed: {e}, falling back to standard run')
-            return await self.run(query, **kwargs)
-
-    def get_last_skill_result(self):
-        """Get the last skill execution result."""
-        return self._last_skill_result
-
-    def get_skill_contexts(self) -> Dict[str, Any]:
-        """Get skill contexts from last execution."""
-        if self._auto_skills:
-            return self._auto_skills.get_all_skill_contexts()
-        return {}
-
-    def get_skill_execution_spec(self) -> Optional[str]:
-        """Get execution spec from skill execution."""
-        if self._auto_skills:
-            return self._auto_skills.get_execution_spec()
-        return None
-
-    def save_skill_execution_spec(self, output_path: Optional[str] = None):
-        """Save skill execution spec to file."""
-        if self._auto_skills:
-            self._auto_skills.save_execution_spec(output_path)
-
-    def cleanup_skills(self, keep_spec: bool = True):
-        """Clean up skill execution resources."""
-        if self._auto_skills:
-            self._auto_skills.cleanup(keep_spec=keep_spec)
-
-    # =========================================================================
-    # Original LLMAgent Methods
-    # =========================================================================
 
     def register_callback(self, callback: Callback):
         """
@@ -666,6 +583,63 @@ class LLMAgent(Agent):
     async def do_rag(self, messages: List[Message]):
         if self.rag is not None:
             messages[1].content = await self.rag.query(messages[1].content)
+
+    async def do_skill(self,
+                       messages: List[Message]) -> Optional[List[Message]]:
+        """
+        Process skill-related query if applicable.
+
+        Analyzes the user query, determines if skills should be used,
+        and executes the skill pipeline if appropriate.
+
+        Args:
+            messages: Normalized message list with system and user messages
+
+        Returns:
+            Updated messages with skill results if successful and should return,
+            None if no skill processing or fallback to standard agent
+        """
+        # Extract user query from normalized messages
+        query = (
+            messages[1].content
+            if len(messages) > 1 and messages[1].role == 'user' else None)
+
+        if not query:
+            return None
+
+        # Check if skills should be used for this query
+        if not await self.should_use_skills(query):
+            return None
+
+        logger.info('Query detected as skill-related, using skill processing.')
+        self._skill_mode_active = True
+
+        try:
+            skills_config = self._get_skills_config()
+            auto_execute = getattr(skills_config, 'auto_execute',
+                                   True) if skills_config else True
+
+            if auto_execute:
+                dag_result = await self.execute_skills(query)
+            else:
+                dag_result = await self.get_skill_dag(query)
+
+            if dag_result:
+                skill_messages = self._format_skill_result_as_messages(
+                    dag_result)
+                for msg in skill_messages:
+                    messages.append(msg)
+                return messages
+
+            # dag_result is None/empty, fallback to standard agent
+            self._skill_mode_active = False
+            return None
+
+        except Exception as e:
+            logger.warning(
+                f'Skill execution failed: {e}, falling back to standard agent')
+            self._skill_mode_active = False
+            return None
 
     async def load_memory(self):
         """Initialize and append memory tool instances based on the configuration provided in the global config.
@@ -986,44 +960,14 @@ class LLMAgent(Agent):
                 # New task: create standardized messages first
                 messages = await self.create_messages(messages)
 
-                # Check for skill-related query after message normalization
-                query = (
-                    messages[1].content if len(messages) > 1
-                    and messages[1].role == 'user' else None)
-
-                if query and await self.should_use_skills(query):
-                    logger.info(
-                        f'Query detected as skill-related, using skill processing.'
-                    )
-                    self._skill_mode_active = True
-
-                    try:
-                        skills_config = self._get_skills_config()
-                        auto_execute = getattr(skills_config, 'auto_execute',
-                                               True) if skills_config else True
-
-                        if auto_execute:
-                            dag_result = await self.execute_skills(query)
-                        else:
-                            dag_result = await self.get_skill_dag(query)
-
-                        if dag_result:
-                            skill_messages = self._format_skill_result_as_messages(
-                                dag_result)
-
-                            for msg in skill_messages:
-                                messages.append(msg)
-
-                            await self.on_task_begin(messages)
-                            yield messages
-                            await self.on_task_end(messages)
-                            await self.cleanup_tools()
-                            return
-                    except Exception as e:
-                        logger.warning(
-                            f'Skill execution failed: {e}, falling back to standard agent'
-                        )
-                        self._skill_mode_active = False
+                # Try skill processing first
+                skill_result = await self.do_skill(messages)
+                if skill_result is not None:
+                    await self.on_task_begin(skill_result)
+                    yield skill_result
+                    await self.on_task_end(skill_result)
+                    await self.cleanup_tools()
+                    return
 
                 # Standard processing continues
                 await self.do_rag(messages)
