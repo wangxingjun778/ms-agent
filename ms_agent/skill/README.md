@@ -122,6 +122,16 @@ async def main():
 asyncio.run(main())
 ```
 
+- Arguments explanation:
+  - `skills.path`: Directory containing skill definitions
+    - Single path or list of paths to skill directories
+    - Single repo_id or list of repo_ids from ModelScope. e.g. skills='ms-agent/claude_skills', refer to `https://modelscope.cn/models/ms-agent/claude_skills`
+  - `skills.auto_execute`: Whether to automatically execute skills
+  - `skills.work_dir`: Workspace for skill execution outputs
+  - `skills.use_sandbox`: Whether to use Docker sandbox for execution, default is True; set to False for local execution with security checks.
+
+
+
 ### Direct AutoSkills Usage
 
 ```python
@@ -159,6 +169,16 @@ async def main():
 
 asyncio.run(main())
 ```
+
+- Arguments explanation:
+  - `skills`: Path to skill directory or list of skill directories
+    - Single path or list of paths to skill directories
+    - Single repo_id or list of repo_ids from ModelScope. e.g. skills='ms-agent/claude_skills', refer to `https://modelscope.cn/models/ms-agent/claude_skills`
+    - Single SkillSchema or list of SkillSchema objects, refer to `ms_agent.skill.schema.SkillSchema`
+  - `llm`: LLM instance for planning and analysis
+  - `work_dir`: Workspace for skill execution outputs
+  - `use_sandbox`: Whether to use Docker sandbox for execution, default is True; set to False for local execution with security checks.
+
 
 ## Architecture
 
