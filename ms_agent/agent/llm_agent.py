@@ -66,7 +66,7 @@ class LLMAgent(Agent):
         config = DictConfig({
             'llm': {...},
             'skills': {
-                'path': '/path/to/ms-agent/projects/agent_skills/skills/claude_skills',
+                'path': '/path/to/skills',
                 'auto_execute': True,
                 'work_dir': '/path/to/workspace'
             }

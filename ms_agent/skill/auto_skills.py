@@ -1089,6 +1089,8 @@ class AutoSkills:
 
         Args:
             skills: Path(s) to skill directories or list of SkillSchema.
+                Alternatively, single repo_id or list of repo_ids from ModelScope.
+                e.g. skills='ms-agent/claude_skills', refer to `https://modelscope.cn/models/ms-agent/claude_skills`
             llm: LLM instance for query analysis and evaluation.
             enable_retrieve: If True, use HybridRetriever for skill search.
                 If False, put all skills into LLM context for direct selection.
