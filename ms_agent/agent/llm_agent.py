@@ -67,7 +67,7 @@ class LLMAgent(Agent):
         config = DictConfig({
             'llm': {...},
             'skills': {
-                'path': '/path/to/skills',
+                'path': '/path/to/ms-agent/projects/agent_skills/skills/claude_skills',
                 'auto_execute': True,
                 'work_dir': '/path/to/workspace'
             }
@@ -319,7 +319,7 @@ class LLMAgent(Agent):
                                 stdout_preview += '...'
                             content += f'**{skill_id} output:**\n{stdout_preview}\n\n'
                         if output.output_files:
-                            content += f'**Generated files:** {list(output.output_files.keys())}\n\n'
+                            content += f'**Generated files:** {list(output.output_files.values())}\n\n'
 
                 content += f'Total execution time: {exec_result.total_duration_ms:.2f}ms'
             else:
@@ -979,52 +979,53 @@ class LLMAgent(Agent):
             if messages is None:
                 messages = self.query
 
-            # Check for skill-related query before standard processing
-            query = messages if isinstance(
-                messages, str) else (messages[1].content if len(messages) > 1
-                                     and messages[1].role == 'user' else None)
-
-            skills_config = self._get_skills_config()
-            auto_execute = getattr(skills_config, 'auto_execute',
-                                   True) if skills_config else True
-
-            if query and await self.should_use_skills(query):
-                logger.info(
-                    f'Query detected as skill-related, using skill processing.'
-                )
-                self._skill_mode_active = True
-
-                try:
-                    if auto_execute:
-                        dag_result = await self.execute_skills(query)
-                    else:
-                        dag_result = await self.get_skill_dag(query)
-
-                    if dag_result:
-                        result_messages = await self.create_messages(messages)
-                        skill_messages = self._format_skill_result_as_messages(
-                            dag_result)
-
-                        for msg in skill_messages:
-                            result_messages.append(msg)
-
-                        await self.on_task_begin(result_messages)
-                        yield result_messages
-                        await self.on_task_end(result_messages)
-                        await self.cleanup_tools()
-                        return
-                except Exception as e:
-                    logger.warning(
-                        f'Skill execution failed: {e}, falling back to standard agent'
-                    )
-                    self._skill_mode_active = False
-
-            # Standard agent processing
+            # Load history and restore state
             self.config, self.runtime, messages = self.read_history(messages)
 
             if self.runtime.round == 0:
-                # 0 means no history
+                # New task: create standardized messages first
                 messages = await self.create_messages(messages)
+
+                # Check for skill-related query after message normalization
+                query = (
+                    messages[1].content if len(messages) > 1
+                    and messages[1].role == 'user' else None)
+
+                if query and await self.should_use_skills(query):
+                    logger.info(
+                        f'Query detected as skill-related, using skill processing.'
+                    )
+                    self._skill_mode_active = True
+
+                    try:
+                        skills_config = self._get_skills_config()
+                        auto_execute = getattr(skills_config, 'auto_execute',
+                                               True) if skills_config else True
+
+                        if auto_execute:
+                            dag_result = await self.execute_skills(query)
+                        else:
+                            dag_result = await self.get_skill_dag(query)
+
+                        if dag_result:
+                            skill_messages = self._format_skill_result_as_messages(
+                                dag_result)
+
+                            for msg in skill_messages:
+                                messages.append(msg)
+
+                            await self.on_task_begin(messages)
+                            yield messages
+                            await self.on_task_end(messages)
+                            await self.cleanup_tools()
+                            return
+                    except Exception as e:
+                        logger.warning(
+                            f'Skill execution failed: {e}, falling back to standard agent'
+                        )
+                        self._skill_mode_active = False
+
+                # Standard processing continues
                 await self.do_rag(messages)
                 await self.on_task_begin(messages)
 
