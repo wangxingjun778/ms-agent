@@ -267,6 +267,42 @@ asyncio.run(main())
 
 </details>
 
+---
+
+### Agent Skills
+
+The **MS-Agent Skill Module** is **Implementation** of [Anthropic-Agent-Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills) Protocol.
+
+#### 🔍 Intelligent Skill Retrieval
+- **Hybrid Search**: Combines FAISS dense retrieval with BM25 sparse retrieval
+- **LLM-based Filtering**: Uses LLM to filter and validate skill relevance
+- **Query Analysis**: Automatically determines if skills are needed for a query
+
+#### 📊 DAG-based Execution
+- **Dependency Management**: Builds execution DAG based on skill dependencies
+- **Parallel Execution**: Runs independent skills concurrently
+- **Input/Output Linking**: Automatically passes outputs between dependent skills
+
+#### 🧠 Progressive Skill Analysis
+- **Two-phase Analysis**: Plan first, then load resources
+- **Incremental Loading**: Only loads required scripts/references/resources
+- **Context Optimization**: Minimizes token usage while maximizing understanding
+- **Auto Bug Fixing**: Analyzes errors and attempts automatic fixes
+
+#### 🔒 Secure Execution Environment
+- **Docker Sandbox**: Isolated execution using [ms-enclave](https://github.com/modelscope/ms-enclave) containers
+- **Local Execution**: Controlled local execution with RCE prevention
+- **Security Checks**: Pattern-based detection of dangerous code
+
+#### 🔄 Self-Reflection & Retry
+- **Error Analysis**: LLM-based analysis of execution failures
+- **Auto-Fix**: Attempts to fix code based on error messages
+- **Configurable Retries**: Up to N retry attempts with fixes
+
+
+For more details, please refer to [**MS-Agent Skills**](ms_agent/skill/README.md).
+
+---
 
 ### Agent Skills
 
@@ -348,6 +384,8 @@ For more details, please refer to [Deep Research](projects/deep_research/README.
 
 <br>
 
+---
+
 ### Doc Research
 
 This project provides a framework for **Doc Research**, enabling agents to autonomously explore and execute complex tasks related to document analysis and research.
@@ -379,6 +417,8 @@ This project provides a framework for **Doc Research**, enabling agents to auton
 For more details, refer to [Doc Research](projects/doc_research/README.md)
 
 <br>
+
+---
 
 ### Code Genesis
 
@@ -416,6 +456,8 @@ The generated code will be output to the `output` folder in the current director
 For more details, refer to [Code Genesis](projects/code_genesis/pr_article.md).
 
 <br>
+
+---
 
 ### FinResearch
 
@@ -482,6 +524,8 @@ aggregator:
 - README: [FinResearch](projects/fin_research/README.md)
 - Documentation: [MS-Agent Documentation](https://ms-agent-en.readthedocs.io/en/latest/Projects/FinResearch.html)
 
+---
+
 ### WebUI
 
 MS-Agent provides a modern web interface for interacting with agents. Built with React frontend and FastAPI backend, featuring real-time WebSocket communication.
@@ -526,6 +570,8 @@ ms-agent ui --production --no-browser
 
 <br>
 
+---
+
 ### Singularity Cinema
 
 Singularity Cinema is an Agent-powered workflow for generating short videos, capable of producing high-quality complex short videos using either a single-sentence prompt or knowledge-based documents.
@@ -566,6 +612,8 @@ OPENAI_API_KEY=xxx-xxx T2I_API_KEY=ms-xxx-xxx MANIM_TEST_API_KEY=xxx-xxx ms-agen
 
 
 <br>
+
+---
 
 ### Interesting works
 
