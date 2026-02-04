@@ -304,7 +304,7 @@ asyncio.run(main())
 * **自动修复**：根据错误信息尝试修正代码逻辑。
 * **可配置重试**：支持带修复逻辑的 N 次重试机制。
 
-欲了解更多详情，请参阅 **[MS-Agent Skills 文档](https://www.google.com/search?q=ms_agent/skill/README.md)**。
+欲了解更多详情，请参阅 **[MS-Agent Skills 文档](ms_agent/skill/README.md)**。
 
 ---
 
