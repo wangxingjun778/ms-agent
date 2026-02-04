@@ -1,6 +1,5 @@
 aiohttp
 dotenv
-dotenv
 edge_tts
 faiss-cpu
 json5
