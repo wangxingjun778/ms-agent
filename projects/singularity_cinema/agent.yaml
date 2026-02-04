@@ -2,21 +2,18 @@ llm:
   service: openai
   model: claude-sonnet-4-5-20250929
   openai_api_key:
-  openai_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  openai_base_url:
 
 mllm:
   mllm_service: openai
   mllm_model: gemini-3-pro-preview
   mllm_openai_api_key:
-  mllm_openai_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  mllm_openai_base_url:
 
 generation_config:
   temperature: 0.3
   top_k: 50
   max_tokens: 64000
-  extra_body:
-    dashscope_extend_params:
-      provider: d
 
 prompt:
   system: |
