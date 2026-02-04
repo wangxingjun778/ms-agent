@@ -9,3 +9,12 @@ omegaconf
 openai
 pillow
 sentence-transformers
+requests
+pyyaml
+dotenv
+typing_extensions
+pandas
+aiohttp
+edge_tts
+moviepy
+matplotlib
