@@ -1,0 +1,89 @@
+generate_script:
+  agent_config: "agent.yaml"
+  agent:
+    kwargs:
+      code_file: generate_script/agent.py
+  next:
+    - parse_images
+
+parse_images:
+  agent:
+    kwargs:
+      code_file: parse_images/agent.py
+  next:
+    - segment
+
+segment:
+  agent:
+    kwargs:
+      code_file: segment/agent.py
+  next:
+    - generate_audio
+
+generate_audio:
+  agent:
+    kwargs:
+      code_file: generate_audio/agent.py
+  next:
+    - generate_illustration_prompts
+
+generate_illustration_prompts:
+  agent:
+    kwargs:
+      code_file: generate_illustration_prompts/agent.py
+  next:
+    - generate_images
+
+generate_images:
+  agent:
+    kwargs:
+      code_file: generate_images/agent.py
+  next:
+    - generate_animation
+
+generate_animation:
+  agent:
+    kwargs:
+      code_file: generate_animation/agent.py
+  next:
+    - render_animation
+
+render_animation:
+  agent:
+    kwargs:
+      code_file: render_animation/agent.py
+  next:
+    - generate_video_prompts
+
+generate_video_prompts:
+  agent:
+    kwargs:
+      code_file: generate_video_prompts/agent.py
+  next:
+    - generate_video
+
+generate_video:
+  agent:
+    kwargs:
+      code_file: generate_video/agent.py
+  next:
+    - generate_subtitle
+
+generate_subtitle:
+  agent:
+    kwargs:
+      code_file: generate_subtitle/agent.py
+  next:
+    - create_background
+
+create_background:
+  agent:
+    kwargs:
+      code_file: create_background/agent.py
+  next:
+    - compose_video
+
+compose_video:
+  agent:
+    kwargs:
+      code_file: compose_video/agent.py

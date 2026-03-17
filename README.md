@@ -17,7 +17,7 @@
     <img src='https://readthedocs.org/projects/ms-agent/badge/?version=latest' alt='Documentation Status' />
 </a>
 <a href="https://github.com/modelscope/ms-agent/actions?query=branch%3Amaster+workflow%3Acitest++"><img src="https://img.shields.io/github/actions/workflow/status/modelscope/ms-agent/citest.yaml?branch=master&logo=github&label=CI"></a>
-<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/ms-agent"></a>
+<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/modelscope-agent"></a>
 <a href="https://github.com/modelscope/ms-agent/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
 <a href="https://pypi.org/project/ms-agent/"><img src="https://badge.fury.io/py/ms-agent.svg"></a>
 <a href="https://pepy.tech/project/ms-agent"><img src="https://static.pepy.tech/badge/ms-agent"></a>
@@ -26,6 +26,9 @@
 <p align="center">
 <a href="https://trendshift.io/repositories/323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/323" alt="modelscope%2Fms-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
+
+
+[**中文**](README_ZH.md)
 
 ## Introduction
 
@@ -36,7 +39,9 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 - **Multi-Agent for general purpose**: Chat with agent with tool-calling capabilities based on MCP.
 - **Deep Research**: To enable advanced capabilities for autonomous exploration and complex task execution.
 - **Code Generation**: Supports code generation tasks with artifacts.
+- **Short Video Generation**：Support video generation of about 5 minutes.
 - **Agent Skills**: Implementation of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
+- **WebUI**: Modern web interface for agent interaction with real-time WebSocket communication.
 - **Lightweight and Extensible**: Easy to extend and customize for various applications.
 
 
@@ -49,13 +54,34 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
 
 ## 🎉 News
 
+* 🚀 Feb 06, 2026: Release MS-Agent v1.6.0rc1, which includes the following updates:
+  - **Agentic Insight v2**: A fully refactored deep-research system with better performance, scalability, and trustworthiness, now available in WebUI. See [Agentic Insight v2](https://github.com/modelscope/ms-agent/tree/main/projects/deep_research/v2).
+
+* 🚀 Feb 04, 2026: Release MS-Agent v1.6.0rc0, which includes the following updates:
+  - **Code Genesis** for complex code generation tasks, refer to [Code Genesis](https://github.com/modelscope/ms-agent/tree/main/projects/code_genesis)
+  - **Singularity Cinema** for animated video generation workflow, refactored version, refer to [Singularity Cinema](https://github.com/modelscope/ms-agent/tree/main/projects/singularity_cinema)
+  - **New framework of Skills**: New design of the skills system to enhance robustness and extensibility. Refer to [MS-Agent Skills](https://github.com/modelscope/ms-agent/tree/main/ms_agent/skill).
+  - **WebUI**: A new WebUI has been added, featuring agentic chatting capabilities, complex code generation and video generation workflow.
+
+
+* 🎬 Nov 13, 2025: Release Singularity Cinema, to support short video generation for complex scenarios, check [here](projects/singularity_cinema/README_EN.md)
+
+* 🚀 Nov 12, 2025: Release MS-Agent v1.5.0, which includes the following updates:
+  - 🔥 We present [FinResearch](projects/fin_research/README.md), a multi-agent workflow tailored for financial research
+  - Support financial data collection via [Akshare](https://github.com/akfamily/akshare) and [Baostock](http://baostock.com/mainContent?file=home.md)
+  - Support DagWorkflow for workflow orchestration
+  - Optimize the DeepResearch workflow for stability and efficiency
+  - FinResearch official documentation: [FinResearch Doc](https://ms-agent-en.readthedocs.io/en/latest/Projects/FinResearch.html)
+  - DEMO: [FinResearchStudio](https://modelscope.cn/studios/ms-agent/FinResearch)
+  - Examples: [FinResearchExamples](https://www.modelscope.cn/models/ms-agent/fin_research_examples)
+
 * 🚀 Nov 07, 2025: Release MS-Agent v1.4.0, which includes the following updates:
   - 🔥 We present [**MS-Agent Skills**](projects/agent_skills/README.md), an **Implementation** of [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) Protocol.
   - 🔥 Add [Docs](https://ms-agent-en.readthedocs.io/en) and [中文文档](https://ms-agent.readthedocs.io/zh-cn)
   - 🔥 Support Sandbox Framework [ms-enclave](https://github.com/modelscope/ms-enclave)
 
 * 🚀 Sep 22, 2025: Release MS-Agent v1.3.0, which includes the following updates:
-  - 🔥 Support [Code Scratch](projects/code_scratch/README.md)
+  - 🔥 Support [Code Scratch](projects/code_genesis/README.md)
   - Support `Memory` for building agents with long-term and short-term memory
   - Enhance the DeepResearch workflow
   - Support RAY for accelerating document information extraction
@@ -66,6 +92,8 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
   - DocResearch now supports exporting the Markdown report to `HTML`、`PDF`、`PPTX` and `DOCX` formats, refer to [Doc Research](projects/doc_research/README.md) for more details.
   - DocResearch now supports `TXT` file processing and file preprocessing, refer to [Doc Research](projects/doc_research/README.md) for more details.
 
+
+<details><summary>Archive</summary>
 * 🚀 July 31, 2025: Release MS-Agent v1.1.0, which includes the following updates:
   - 🔥 Support [Doc Research](projects/doc_research/README.md), demo: [DocResearchStudio](https://modelscope.cn/studios/ms-agent/DocResearch)
   - Add `General Web Search Engine` for Agentic Insight (DeepResearch)
@@ -78,10 +106,6 @@ MS-Agent is a lightweight framework designed to empower agents with autonomous e
   - Support for Deep Research (Agentic Insight), refer to: [Report_Demo](projects/deep_research/examples/task_20250617a/report.md), [Script_Demo](projects/deep_research/run.py)
   - Support for [MCP-Playground](https://modelscope.cn/mcp/playground)
   - Add callback mechanism for Agent chat
-
-
-<details><summary>Archive</summary>
-
 * 🔥🔥🔥Aug 8, 2024: A new graph based code generation tool [CodexGraph](https://arxiv.org/abs/2408.03910) is released by Modelscope-Agent, it has been proved effective and versatile on various code related tasks, please check [example](https://github.com/modelscope/modelscope-agent/tree/master/apps/codexgraph_agent).
 * 🔥🔥Aug 1, 2024: A high efficient and reliable Data Science Assistant is running on Modelscope-Agent, please find detail in [example](https://github.com/modelscope/modelscope-agent/tree/master/apps/datascience_assistant).
 * 🔥July 17, 2024: Parallel tool calling on Modelscope-Agent-Server, please find detail in [doc](https://github.com/modelscope/modelscope-agent/blob/master/modelscope_agent_servers/README.md).
@@ -246,57 +270,42 @@ asyncio.run(main())
 
 </details>
 
+---
 
 ### Agent Skills
 
-**MS-Agent Skills** is an **Implementation** of the [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) protocol, enabling agents to autonomously explore and execute complex tasks by leveraging predefined or custom "skills".
+The **MS-Agent Skill Module** is **Implementation** of [Anthropic-Agent-Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills) Protocol.
+
+#### 🔍 Intelligent Skill Retrieval
+- **Hybrid Search**: Combines FAISS dense retrieval with BM25 sparse retrieval
+- **LLM-based Filtering**: Uses LLM to filter and validate skill relevance
+- **Query Analysis**: Automatically determines if skills are needed for a query
+
+#### 📊 DAG-based Execution
+- **Dependency Management**: Builds execution DAG based on skill dependencies
+- **Parallel Execution**: Runs independent skills concurrently
+- **Input/Output Linking**: Automatically passes outputs between dependent skills
+
+#### 🧠 Progressive Skill Analysis
+- **Two-phase Analysis**: Plan first, then load resources
+- **Incremental Loading**: Only loads required scripts/references/resources
+- **Context Optimization**: Minimizes token usage while maximizing understanding
+- **Auto Bug Fixing**: Analyzes errors and attempts automatic fixes
+
+#### 🔒 Secure Execution Environment
+- **Docker Sandbox**: Isolated execution using [ms-enclave](https://github.com/modelscope/ms-enclave) containers
+- **Local Execution**: Controlled local execution with RCE prevention
+- **Security Checks**: Pattern-based detection of dangerous code
+
+#### 🔄 Self-Reflection & Retry
+- **Error Analysis**: LLM-based analysis of execution failures
+- **Auto-Fix**: Attempts to fix code based on error messages
+- **Configurable Retries**: Up to N retry attempts with fixes
 
 
-#### Key Features
+For more details, please refer to [**MS-Agent Skills**](ms_agent/skill/README.md).
 
-- 📜 **Standard Skill Protocol**: Fully compatible with the [Anthropic Skills](https://github.com/anthropics/skills) protocol
-- 🧠 **Heuristic Context Loading**: Loads only necessary context—such as `References`, `Resources`, and `Scripts` on demand
-- 🤖 **Autonomous Execution**: Agents autonomously analyze, plan, and decide which scripts and resources to execute based on skill definitions
-- 🔍 **Skill Management**: Supports batch loading of skills and can automatically retrieve and discover relevant skills based on user input
-- 🛡️ **Code Execution Environment**: Optional local direct code execution or secure sandboxed execution via [**ms-enclave**](https://github.com/modelscope/ms-enclave), with automatic dependency installation and environment isolation
-- 📁 **Multi-file Type Support**: Supports documentation, scripts, and resource files
-- 🧩 **Extensible Design**: The skill data structure is modularized, with implementations such as `SkillSchema` and `SkillContext` provided for easy extension and customization
-
-
-#### Quick Start
-
-> 💡 Note:
-> 1. Before running the following examples, ensure that you have set the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables to access the required model APIs.
-> 2. Agent Skills requires ms-agent >= 1.4.0
-
-
-**Installation**:
-
-```shell
-pip install ms-agent
-```
-
-**Usage**:
-
-> This example demonstrates how to configure and run an Agent Skill that generates generative art code based on p5.js flow fields.
-
-
-Refer to: [Run Skills](projects/agent_skills/run.py)
-
-
-**Result**:
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">
-  <p><em>Agent-Skills: Flow Field Particles</em></p>
-</div>
-
-
-#### References
-- **README**: [MS-Agent Skills](projects/agent_skills/README.md)
-- **Anthropic Agent Skills Official Docs**: [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
-- **Anthropic Skills GitHub Repo**: [Skills](https://github.com/anthropics/skills)
-
+---
 
 
 ### Agentic Insight
@@ -312,6 +321,16 @@ This project provides a framework for **Deep Research**, enabling agents to auto
 - **Multimodal** - Capable of processing diverse data modalities and generating research reports rich in both text and images.
 
 - **Lightweight & Efficient** - Support "search-then-execute" mode, completing complex research tasks within few minutes, significantly reducing token consumption.
+
+#### 🚀 Agentic Insight v2 (Recommended)
+
+- **Performance**: Multi-model orchestration (a low-cost combo across qwen3-max/plus/flash) achieves **49.94** on DeepResearch Bench.
+- **Deep Agents architecture**: "Researcher + tool-augmented sub-agents (Searcher/Reporter)" for flexible task allocation and efficient concurrency.
+- **File system as context**: Structured artifacts persisted to disk for low-loss context handoff and stable long-horizon runs (resume-friendly).
+- **Evidence-driven writing**: Reports are grounded in an indexed evidence base, improving trustworthiness and traceability.
+- **Deep-research toolchain**: Decoupled modules like todo list / evidence store / report generator for reuse and extensibility.
+
+See [Agentic Insight v2](projects/deep_research/v2/README.md).
 
 
 #### 📺 Demonstration
@@ -345,6 +364,8 @@ For more details, please refer to [Deep Research](projects/deep_research/README.
 
 <br>
 
+---
+
 ### Doc Research
 
 This project provides a framework for **Doc Research**, enabling agents to autonomously explore and execute complex tasks related to document analysis and research.
@@ -377,38 +398,208 @@ For more details, refer to [Doc Research](projects/doc_research/README.md)
 
 <br>
 
-### Code Scratch
+---
 
-This project provides a framework for **Code Scratch**, enabling agents to autonomously generate code projects.
+### Code Genesis
+
+**Code Genesis** is a production-ready multi-agent framework that orchestrates specialized AI agents to autonomously generate complete software projects from natural language requirements.
 
 #### Features
 
-  - 🎯 **Complex Code Generation** - Support for complex code generation tasks, especially React frontend and Node.js backend
-  - 🔧 **Customizable Workflows** - Enable users to freely develop their own code generation workflows tailored to specific scenarios
-  - 🏗️ **Three-Phase Architecture** - Design & Coding Phase followed by Refine Phase for robust code generation and error fixing
-  - 📁 **Intelligent File Grouping** - Automatically groups related code files to minimize dependencies and reduce bugs
-  - 🔄 **Auto Compilation & Fixing** - Automatic npm compilation with intelligent error analysis and iterative fixing
+  - 🎯 **End-to-End Project Generation** - From requirement analysis to deployment-ready artifacts with minimal human intervention
+  - 🔧 **Dual Workflow Modes** - Standard 7-agent pipeline for production systems, or streamlined 4-agent mode for rapid prototyping
+  - 🏗️ **Topology-Aware Code Generation** - Dependency-driven scheduling eliminates hallucinated imports and enables parallel generation
+  - 📁 **LSP-Integrated Validation** - Real-time Language Server Protocol checks ensure syntactic correctness and import resolution
+  - 🔄 **Self-Healing Refinement** - Automated runtime verification and deployment
 
 #### Demo
 
-**AI Workspace Homepage**
+**Homepage**
 
-Generate a complete ai workspace homepage with the following command:
+Generate a complete homepage with the following command:
 
 ```shell
-PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_agent/cli/cli.py run --config projects/code_scratch --query 'Build a comprehensive AI workspace homepage' --trust_remote_code true
+PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_agent/cli/cli.py run --config projects/code_genesis --query 'Build a static site to display skills, projects, and contact info' --trust_remote_code true
 ```
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/841fd06e-3611-4b27-86e0-4881963639bd" img width="2940" height="1670" alt="LocalGradioApplication" width="750">
+  <p><em>Demo: Homepage</em></p>
+</div>
 
 The generated code will be output to the `output` folder in the current directory.
 
 **Architecture Workflow:**
-- **Design Phase**: Analyze requirements → Generate PRD & module design → Create implementation tasks
-- **Coding Phase**: Execute coding tasks in intelligent file groups → Generate complete code structure
-- **Refine Phase**: Auto-compilation → Error analysis → Iterative bug fixing → Human evaluation loop
+- **Standard Pipeline** (7 agents): User Story → Architect → File Design → File Order → Install → Coding → Refine
+- **Simple Pipeline** (4 agents): Orchestrator → Install → Coding → Refine
 
-For more details, refer to [Code Scratch](projects/code_scratch/README.md).
+For more details, refer to [Code Genesis](projects/code_genesis/TECH_REPORT.md).
 
 <br>
+
+---
+
+### FinResearch
+
+The MS-Agent FinResearch project is a multi-agent workflow tailored for financial market research. It combines quantitative financial data analysis with deep research on online news/sentiment to automatically generate professional research reports.
+
+#### Key Features
+
+- 🤖 **Multi-Agent Architecture**: Orchestrates multiple specialized agents to handle task decomposition, data collection, quantitative analysis, sentiment research, and final report generation.
+
+- 📁 **Multi-Dimensional Analysis**: Covers both financial indicators and public sentiment, enabling fusion analysis of structured and unstructured data.
+
+- 💰 **Financial Data Collection**: Supports automatic retrieval of quotes, financial statements, macro indicators, and market data for A-share, Hong Kong, and U.S. markets.
+
+- 🔍 **In-Depth Sentiment Research**: Deep research on multi-source information from news/media/communities.
+
+- 📝 **Professional Report Generation**: Produces multi-chapter, well-structured, image-and-text reports following common methodologies (MECE, SWOT, Pyramid Principle, etc.).
+
+- 🔒 **Secure Code Execution**: Runs data processing and analysis inside an isolated Docker sandbox to ensure security and reproducibility.
+
+#### Quick Start
+
+> 💡 Tips:
+> 1. Before running the examples below, set the `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables to access the required model APIs. To run the full workflow, also configure the search engine variables EXA_API_KEY (https://exa.ai) or SERPAPI_API_KEY (https://serpapi.com).
+> 2. FinResearch requires ms-agent version >= 1.5.0.
+
+**Usage**:
+
+Quickly launch the full FinResearch workflow for testing:
+
+```bash
+# Run at the ms-agent project root
+PYTHONPATH=. python ms_agent/cli/cli.py run --config projects/fin_research --query 'Analyze CATL (300750.SZ) profitability over the past four quarters and compare it with key new-energy competitors (e.g., BYD, Gotion High-Tech, CALB); considering industry policies and lithium price volatility, forecast its performance for the next two quarters.' --trust_remote_code true
+```
+
+You can also run a minimal version without configuring a search engine by adjusting the [workflow configuration](projects/fin_research/workflow.yaml) as follows:
+
+```yaml
+type: DagWorkflow
+
+orchestrator:
+  next:
+    - collector
+  agent_config: orchestrator.yaml
+
+collector:
+  next:
+    - analyst
+  agent_config: collector.yaml
+
+analyst:
+  next:
+    - aggregator
+  agent_config: analyst.yaml
+
+aggregator:
+  agent_config: aggregator.yaml
+```
+
+**Result**:
+
+<https://github.com/user-attachments/assets/a11db8d2-b559-4118-a2c0-2622d46840ef>
+
+**References**:
+- README: [FinResearch](projects/fin_research/README.md)
+- Documentation: [MS-Agent Documentation](https://ms-agent-en.readthedocs.io/en/latest/Projects/FinResearch.html)
+
+---
+
+### WebUI
+
+MS-Agent provides a modern web interface for interacting with agents. Built with React frontend and FastAPI backend, featuring real-time WebSocket communication.
+
+#### Demo
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/62026584-6c96-4a84-a849-05ae49906f48" alt="LocalGradioApplication" width="750">
+  <p><em>Demo: WebUI</em></p>
+</div>
+
+#### Quick Start
+
+**Start WebUI:**
+
+```bash
+ms-agent ui
+```
+
+**Windows tip:** If the console shows garbled text, use the PowerShell helper:
+
+```powershell
+webui/scripts/start-webui.ps1
+```
+
+The browser will automatically open at http://localhost:7860
+
+**Command Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Server host | 0.0.0.0 |
+| `--port` | Server port | 7860 |
+| `--production` | Production mode | False |
+| `--no-browser` | Don't auto-open browser | False |
+| `--reload` | Enable auto-reload (dev) | False |
+
+**Examples:**
+
+```bash
+# Custom port
+ms-agent ui --port 8080
+
+# Production mode without auto browser
+ms-agent ui --production --no-browser
+```
+
+
+<br>
+
+---
+
+### Singularity Cinema
+
+Singularity Cinema is an Agent-powered workflow for generating short videos, capable of producing high-quality complex short videos using either a single-sentence prompt or knowledge-based documents.
+
+#### Core Features
+
+- 🎬 **Supports Both Simple and Complex Requirements**: Can work with a single-sentence description or handle complex information files
+
+- 🎹 **Sophisticated Tables and Formulas**: Can display and interpret formulas and charts within short videos that correspond to the script
+
+- 🎮 **End-to-End**: From requirements to script to storyboard, from voiceover to charts to subtitles, and finally human feedback and video generation—the entire end-to-end process completed with a single command
+
+- 🏁 **High Configurability**: Highly configurable with easy adjustments for voice, style, and materials through simple configuration
+
+- 🚧 **Customizable**: Clear and simple workflow, suitable for secondary development
+
+#### Quick Start
+
+**Usage Example**:
+
+```bash
+OPENAI_API_KEY=xxx-xxx T2I_API_KEY=ms-xxx-xxx MANIM_TEST_API_KEY=xxx-xxx ms-agent run --config "projects/singularity_cinema" --query "Your custom topic" --load_cache true --trust_remote_code true
+```
+
+**Results**:
+
+[![Video Preview](./docs/resources/deepspeed_preview.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/deepspeed-zero.mp4)
+
+**An introduction to Deepspeed ZeRO**
+
+[![Video Preview](./docs/resources/gdp_preview.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/a-history-of-us-gdp.mp4)
+
+**A history of US GDP**
+
+#### References
+
+- [Complete Documentation](./docs/zh/Projects/video-generation)
+
+
+<br>
+
+---
 
 ### Interesting works
 
@@ -421,9 +612,14 @@ We are committed to continuously improving and expanding the MS-Agent framework 
 
 - [x] **Anthropic Agent Skills** - Full support for the [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) protocol, enabling agents to autonomously explore and execute complex tasks using predefined or custom "skills".
 - [ ] **FinResearch** – A financial deep-research agent dedicated to in-depth analysis and research in the finance domain.
+  - [x] Long-term deep financial analysis report generation
+  - [ ] Near real-time event-driven report generation
+- [ ] **Singularity Cinema**
+  - [ ] Support more complex scenarios
+  - [ ] Improve stabilises
 - [ ] **Multimodal Agentic Search** – Supporting large-scale multimodal document retrieval and generation of search results combining text and images.
 - [ ] Enhanced **Agent Skills** – Providing a richer set of predefined skills and tools to expand agent capabilities and enabling multi-skill collaboration for complex task execution.
-- [ ] **Agent-Workstation** - An unified WebUI with one-click local deployment support with combining all agent capabilities of MS-Agent, such as AgentChat, MCP, AgentSkills, DeepResearch, DocResearch, CodeScratch, etc.
+- [ ] **Agent-Workstation** - An unified WebUI with one-click local deployment support with combining all agent capabilities of MS-Agent, such as AgentChat, MCP, AgentSkills, DeepResearch, DocResearch, CodeGenesis, etc.
 
 
 ## License

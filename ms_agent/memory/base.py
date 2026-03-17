@@ -1,8 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from abc import ABC, abstractmethod
 from typing import List
 
 from ms_agent.llm.utils import Message
+from ms_agent.utils.constants import DEFAULT_OUTPUT_DIR
+from omegaconf import DictConfig
 
 
 class Memory(ABC):
@@ -10,6 +12,9 @@ class Memory(ABC):
 
     def __init__(self, config):
         self.config = config
+        self.output_dir = getattr(self.config, 'output_dir',
+                                  DEFAULT_OUTPUT_DIR)
+        self.base_config = None
 
     @abstractmethod
     async def run(self, messages: List[Message]) -> List[Message]:

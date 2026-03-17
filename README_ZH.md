@@ -13,11 +13,11 @@
 
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
-<a href='https://ms-agent-en.readthedocs.io/en/latest/'>
+<a href='https://ms-agent.readthedocs.io/zh-cn/latest/'>
     <img src='https://readthedocs.org/projects/ms-agent/badge/?version=latest' alt='Documentation Status' />
 </a>
 <a href="https://github.com/modelscope/ms-agent/actions?query=branch%3Amaster+workflow%3Acitest++"><img src="https://img.shields.io/github/actions/workflow/status/modelscope/ms-agent/citest.yaml?branch=master&logo=github&label=CI"></a>
-<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/ms-agent"></a>
+<a href="https://github.com/modelscope/ms-agent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/modelscope-agent"></a>
 <a href="https://github.com/modelscope/ms-agent/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
 <a href="https://pypi.org/project/ms-agent/"><img src="https://badge.fury.io/py/ms-agent.svg"></a>
 <a href="https://pepy.tech/project/ms-agent"><img src="https://static.pepy.tech/badge/ms-agent"></a>
@@ -27,6 +27,10 @@
 <a href="https://trendshift.io/repositories/323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/323" alt="modelscope%2Fmodelscope-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
+
+[**README**](README.md)
+
+
 ## 简介
 MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。它提供了灵活且可扩展的架构，允许开发者创建能够执行复杂任务的智能体，如代码生成、数据分析，以及基于MCP（模型调用协议）支持的通用工具调用。
 
@@ -34,7 +38,8 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
 
 - **通用多智能体**：基于MCP的工具调用能力与智能体聊天。
 - **深度研究**：启用自主探索和复杂任务执行的高级能力。
-- **代码生成**：支持带有工件的代码生成任务。
+- **代码生成**：支持复杂项目的代码生成任务。
+- **短视频生成**：支持5分钟左右的短视频生成。
 - **Agent Skills**：兼容Anthropic-Agent-Skills协议，实现智能体技能模块。
 - **轻量级且可扩展**：易于扩展和定制以适应各种应用。
 
@@ -46,13 +51,33 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
 
 ## 🎉 新闻
 
+* 🚀 **2026年2月6日：发布 MS-Agent v1.6.0rc1，主要更新内容如下：**
+  - **Agentic Insight v2**：完整重构的深度研究系统，性能更优、可扩展性更强、可信度更高，支持在webui中使用，详情请参考 [Agentic Insight v2](https://github.com/modelscope/ms-agent/tree/main/projects/deep_research/v2)
+
+* 🚀 **2026年2月4日：发布 MS-Agent v1.6.0rc0，主要更新内容如下：**
+  - **Code Genesis**：针对复杂代码生成任务的专项功能，详情请参考 [Code Genesis](https://github.com/modelscope/ms-agent/tree/main/projects/code_genesis)
+  - **Singularity Cinema**：动画视频生成工作流的重构版本，详情请参考 [Singularity Cinema](https://github.com/modelscope/ms-agent/tree/main/projects/singularity_cinema)
+  - **全新技能框架 (Skills Framework)**：全新设计的技能系统，显著增强了系统的健壮性与可扩展性。详情请参考 [MS-Agent Skills](https://github.com/modelscope/ms-agent/tree/main/ms_agent/skill)
+  - **WebUI**：新增 Web 交互界面，支持智能体对话、复杂代码生成以及视频生成工作流。
+
+* 🎬 2025.11.13: 发布了“奇点放映室”，用于进行知识类文档的复杂场景短视频制作，具体查看[这里](projects/singularity_cinema/README.md)
+
+* 🚀 2025.11.12：发布MS-Agent v1.5.0，包含以下更新：
+  - 🔥 新增 [**FinResearch**](projects/fin_research/README.md)，支持金融领域的深度研究和分析
+  - 支持基于[Akshare](https://github.com/akfamily/akshare)和[Baostock](http://baostock.com/mainContent?file=home.md)的金融数据获取工具
+  - 支持以Dag形式编排工作流
+  - 优化DeepResearch稳定性与效率
+  - 官方文档： [金融深度研究](https://ms-agent.readthedocs.io/zh-cn/latest/Projects/fin-research.html)
+  - 魔搭创空间DEMO: [FinResearchStudio](https://modelscope.cn/studios/ms-agent/FinResearch)
+  - 报告样例: [FinResearchExamples](https://www.modelscope.cn/models/ms-agent/fin_research_examples)
+
 * 🚀 2025.11.07：发布MS-Agent v1.4.0，包含以下更新：
   - 🔥 新增 [**MS-Agent Skills**](projects/agent_skills/README.md), 基于 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议实现.
   - 🔥 新增 [中文文档](https://ms-agent.readthedocs.io/zh-cn)和[英文文档](https://ms-agent-en.readthedocs.io/en)
   - 🔥 支持沙箱框架 [ms-enclave](https://github.com/modelscope/ms-enclave)
 
 * 🚀 2025.9.22：发布MS-Agent v1.3.0，包含以下更新：
-  - 🔥 支持[Code Scratch](projects/code_scratch/README.md)
+  - 🔥 支持[Code Scratch](projects/code_genesis/README.md)
   - 支持`Memory`用于构建具有长期和短期记忆的智能体
   - 增强DeepResearch工作流
   - 支持RAY加速文档信息提取
@@ -62,6 +87,9 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
   - DocResearch现在支持推送到`ModelScope`、`HuggingFace`、`GitHub`以便于分享研究报告。详情请参考[Doc Research](projects/doc_research/README.md)。
   - DocResearch现在支持将Markdown报告导出为`HTML`、`PDF`、`PPTX`和`DOCX`格式，详情请参考[Doc Research](projects/doc_research/README.md)。
   - DocResearch现在支持`TXT`文件处理和文件预处理，详情请参考[Doc Research](projects/doc_research/README.md)。
+
+
+<details><summary>归档</summary>
 
 * 🚀 2025.7.31：发布MS-Agent v1.1.0，包含以下更新：
 - 🔥 支持[文档研究](projects/doc_research/README.md)，演示：[DocResearchStudio](https://modelscope.cn/studios/ms-agent/DocResearch) - 为智能洞察（DeepResearch）添加`通用网络搜索引擎`
@@ -74,9 +102,6 @@ MS-Agent是一个轻量级框架，旨在为智能体提供自主探索能力。
   - 支持深度研究（智能洞察），参考：[报告演示](projects/deep_research/examples/task_20250617a/report.md)，[脚本演示](projects/deep_research/run.py)
   - 支持[MCP-Playground](https://modelscope.cn/mcp/playground)
   - 为Agent聊天添加回调机制
-
-
-<details><summary>归档</summary>
 
 * 🔥🔥🔥2024年8月8日：Modelscope-Agent发布了一个新的基于图的代码生成工具[CodexGraph](https://arxiv.org/abs/2408.03910)，它已被证明在各种代码相关任务上有效且通用，请查看[示例](https://github.com/modelscope/modelscope-agent/tree/master/apps/codexgraph_agent)。
 * 🔥🔥2024年8月1日：一个高效可靠的数据科学助手正在Modelscope-Agent上运行，请在[示例](https://github.com/modelscope/modelscope-agent/tree/master/apps/datascience_assistant)中查看详情。
@@ -245,55 +270,46 @@ asyncio.run(main())
 
 </details>
 
+---
 
-### Agent Skills
+### Agent Skills (智能体技能)
 
-**MS-Agent Skills** 模块是对 [**Anthropic-Agent-Skills**](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议的实现，允许开发者轻松创建、管理和使用智能体技能，提升智能体在复杂任务上的表现。
+**MS-Agent 技能模块** 是对 [Anthropic-Agent-Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills) 协议的**具体实现**。
 
+#### 🔍 智能技能检索
 
-#### 1) 核心特性
+* **混合检索**：结合 FAISS 稠密检索与 BM25 稀疏检索。
+* **基于 LLM 的过滤**：利用大模型对技能相关性进行二次筛选与验证。
+* **查询分析**：自动判断当前查询是否需要调用相关技能。
 
-- 📜 **标准技能协议**：完全兼容 [Anthropic Skills](https://github.com/anthropics/skills) 协议
-- 🧠 **启发式上下文加载**：仅在需要时加载必要的上下文，如`References`、`Resources`和`Scripts`等
-- 🤖 **自主执行**：智能体根据技能定义，自主分析、规划和决策执行哪些脚本和资源
-- 🔍 **技能管理**：支持技能批量加载，可根据用户输入自动检索和发现相关技能
-- 🛡️ **代码执行环境**：可选代码本地直接执行，或使用沙箱环境（[**ms-enclave**](https://github.com/modelscope/ms-enclave)），自动处理依赖项安装和环境隔离
-- 📁 **多文件类型支持**：支持文档、脚本和资源文件
-- 🧩 **可扩展设计**：对「技能」的数据结构进行了模块化设计，提供 `SkillSchema`、`SkillContext`等实现，便于扩展和定制
+#### 📊 基于 DAG 的执行机制
 
-#### 2) 快速开始
+* **依赖管理**：根据技能间的依赖关系构建执行有向无环图 (DAG)。
+* **并行执行**：支持无相互依赖的技能并发运行。
+* **输入/输出级联**：自动在具有依赖关系的技能间传递输出数据。
 
-> 💡 提示：
-> 1. 在运行以下示例之前，请确保设置了 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL` 环境变量，以便访问所需的模型 API
-> 2. Agent Skills 要求 ms-agent 版本 >= 1.4.0
+#### 🧠 渐进式技能分析
 
+* **两阶段分析**：先规划路径，后加载具体资源。
+* **增量加载**：仅加载必要的脚本、参考资料和资源。
+* **上下文优化**：在最大化理解深度的同时，最小化 Token 消耗。
+* **自动修复**：分析执行错误并尝试自动修正。
 
-**安装依赖**：
+#### 🔒 安全执行环境
 
-```shell
-pip install ms-agent
-```
+* **Docker 沙箱**：使用 [ms-enclave](https://github.com/modelscope/ms-enclave) 容器进行隔离执行。
+* **本地执行**：具备 RCE（远程代码执行）防护的受控本地执行环境。
+* **安全检查**：基于模式匹配的危险代码检测。
 
-**使用示例**：
-> 该示例展示了如何配置和运行一个Agent Skill，基于p5.js的流场生成艺术代码。
+#### 🔄 自我反思与重试
 
+* **错误分析**：基于 LLM 对执行失败原因进行深度分析。
+* **自动修复**：根据错误信息尝试修正代码逻辑。
+* **可配置重试**：支持带修复逻辑的 N 次重试机制。
 
-参考代码： [Run Skills](projects/agent_skills/run.py)
+欲了解更多详情，请参阅 **[MS-Agent Skills 文档](ms_agent/skill/README.md)**。
 
-
-**运行结果**：
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/9d5d78bf-c2db-4280-b780-324eab74a41e" alt="FlowFieldParticles" width="750">
-  <p><em>Agent-Skills: Flow Field Particles</em></p>
-</div>
-
-
-
-#### 3) 参考文档
-- **README**：请参考 [MS-Agent Skills](projects/agent_skills/README.md)
-- **Anthropic Agent Skills官方文档**：请参考 [Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)
-- **Anthropic预定义Skills GitHub仓库**：请参考 [Skills](https://github.com/anthropics/skills)
+---
 
 
 ### Agentic Insight
@@ -309,6 +325,16 @@ pip install ms-agent
 - **多模态** - 能够处理多样化的数据模态，生成包含丰富文本和图像的研究报告。
 
 - **轻量级与高效** - 支持"搜索后执行"模式，在几分钟内完成复杂的研究任务，显著减少token消耗。
+
+#### 🚀 Agentic Insight v2（推荐）
+
+- **性能表现** - 基于 qwen3-max/plus/flash 多模型协同（低成本组合），在 DeepResearch Bench 上取得 **49.94** 分，性能位于同类框架一线水平
+- **Deep Agents 架构** - "Researcher + 工具化子 Agent（Searcher/Reporter）"模式，支持任务灵活分配与高效并发
+- **文件系统即上下文** - 中间产物结构化存储到文件系统，实现低损耗上下文传递和长链路任务稳定运行
+- **证据驱动写作** - 自主建立带索引的证据库，报告以证据为唯一事实基础，实现报告高可信度与来源可追溯
+- **深度研究专用工具链** - 提供 todo_list / evidence_store / report_generator 等专用模块，实现核心能力的解耦与高度复用
+
+使用方式请参考 [Agentic Insight v2](projects/deep_research/v2/README.md)。
 
 #### 📺 演示
 
@@ -341,7 +367,9 @@ pip install ms-agent
 
 <br>
 
-### 文档研究
+---
+
+### 文档深度研究
 
 该项目提供了**文档研究**框架，使智能体能够自主探索和执行与文档分析和研究相关的复杂任务。
 
@@ -372,6 +400,8 @@ pip install ms-agent
 
 <br>
 
+---
+
 ### Code Scratch
 
 该项目提供了一个 **Code Scratch** 框架，使智能体能够自主生成代码项目。
@@ -391,7 +421,7 @@ pip install ms-agent
 使用以下命令生成完整的 AI 工作空间主页：
 
 ```shell
-PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_agent/cli/cli.py run --config projects/code_scratch --query 'Build a comprehensive AI workspace homepage' --trust_remote_code true
+PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_agent/cli/cli.py run --config projects/code_genesis --query 'Build a comprehensive AI workspace homepage' --trust_remote_code true
 ```
 
 生成的代码将输出到当前目录的 `output` 文件夹中。
@@ -401,14 +431,178 @@ PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_
 - **编码阶段**：在智能文件组中执行编码任务 → 生成完整的代码结构
 - **完善阶段**：自动编译 → 错误分析 → 迭代错误修复 → 人工评估循环
 
-更多详情，请参考 [Code Scratch](projects/code_scratch/README.md)。
+更多详情，请参考 [Code Scratch](projects/code_genesis/README.md)。
 
 <br>
+
+---
+
+### 金融深度研究
+
+MS-Agent FinResearch项目是一个面向金融市场研究场景的多智能体工作流，融合了金融数据分析能力与互联网舆情/资讯深度研究能力，自动生成专业的金融研究报告。
+
+#### 1) 核心特性
+
+- 🤖 **多智能体架构**：通过多个专用智能体的编排实现工作流，从而完成任务拆解、数据收集、量化分析、舆情研究与最终报告生成。
+
+- 📁 **多维度分析**：涵盖金融数据指标与公众舆情两个维度，实现结构化与非结构化数据的融合分析。
+
+- 💰 **金融数据采集**：支持模型自动获取A股、港股、美股等市场的行情、财报、宏观指标与市场数据。
+
+- 🔍 **舆情深度研究**：新闻/媒体/社区等多源舆情深度分析。
+
+- 📝 **专业报告生成**：按业界常用方法论（MECE、SWOT、金字塔原理等）生成多章节、结构化、图文并茂的专业报告。
+
+- 🔒 **安全代码执行**：在隔离的 Docker 沙箱中执行数据处理与分析，保证环境安全与可复现性。
+
+#### 2) 快速开始
+
+> 💡 提示：
+> 1. 在运行以下示例之前，请确保设置了 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL` 环境变量，以便访问所需的模型 API；如果希望运行完整工作流，请配置相应的搜索引擎环境变量EXA_API_KEY（https://exa.ai）或SERPAPI_API_KEY（https://serpapi.com）。
+> 2. FinResearch 要求 ms-agent 版本 >= 1.5.0。
+
+**使用示例**：
+
+快速启动完整FinResearch工作流进行测试：
+
+```bash
+# 在 ms-agent 根目录执行
+PYTHONPATH=. python ms_agent/cli/cli.py run --config projects/fin_research --query '请分析宁德时代（300750.SZ）近四个季度盈利能力变化，并与新能源领域主要竞争对手（如比亚迪、国轩高科、中创新航）进行对比；结合产业政策与锂价波动，预测其未来两季度业绩趋势。' --trust_remote_code true
+```
+
+不配置搜索引擎也可最小化运行，将[工作流配置](projects/fin_research/workflow.yaml)调整为：
+
+```yaml
+type: DagWorkflow
+
+orchestrator:
+  next:
+    - collector
+  agent_config: orchestrator.yaml
+
+collector:
+  next:
+    - analyst
+  agent_config: collector.yaml
+
+analyst:
+  next:
+    - aggregator
+  agent_config: analyst.yaml
+
+aggregator:
+  agent_config: aggregator.yaml
+```
+
+**运行结果**：
+
+<https://github.com/user-attachments/assets/a11db8d2-b559-4118-a2c0-2622d46840ef>
+
+#### 3) 参考文档
+
+- README：请参考[FinResearch](projects/fin_research/README_zh.md)
+- 说明文档: 请参考[MS-Agent文档](https://ms-agent.readthedocs.io/zh-cn/latest/Projects/%E9%87%91%E8%9E%8D%E6%B7%B1%E5%BA%A6%E7%A0%94%E7%A9%B6.html)
+
+
+---
+
+### 奇点放映室
+
+奇点放映室是一个Agent生成短视频的工作流，可以在使用一句话prompt或者知识类DOC的情况下支持高质量复杂短视频生成。
+
+#### 1) 核心特性
+
+- 🎬 **支持简单需求和复杂需求**：可以一句话描述需求，也可以提供复杂的信息文件
+
+- 🎹 **复杂精美的表格和公式**：可以在短视频内部展示和台本相应的公式和图表解读
+
+- 🎮 **端到端**：从需求到台本到分镜，从旁白音到图表到字幕，最后人工反馈和生成视频，端到端流程一个命令搞定
+
+- 🏁 **可配置性**：可配置性高，声音、风格、素材都可以通过简单配置调节
+
+- 🚧 **定制化**：工作流清晰简单，适合二次开发
+
+#### 2) 快速开始
+
+**使用示例**：
+
+
+```bash
+OPENAI_API_KEY=xxx-xxx T2I_API_KEY=ms-xxx-xxx MANIM_TEST_API_KEY=xxx-xxx ms-agent run --config "projects/singularity_cinema" --query "你的自定义主题" --load_cache true --trust_remote_code true
+```
+
+**运行结果**：
+
+[![Video Preview](./docs/resources/deepspeed_preview.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/deepspeed-zero.mp4)
+
+**An introduction to Deepspeed ZeRO**
+
+[![Video Preview](./docs/resources/gdp_preview.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/a-history-of-us-gdp.mp4)
+
+**A history of US GDP**
+
+#### 3) 参考文档
+
+- [完整文档](./docs/zh/Projects/video-generation)
+
+<br>
+
+---
+
+### WebUI
+
+MS-Agent提供了一个简洁轻量的Web界面，用于与智能体进行交互。该界面由React前端和FastAPI后端构建，支持实时的WebSocket通信。
+
+#### Demo
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/62026584-6c96-4a84-a849-05ae49906f48" alt="LocalGradioApplication" width="750">
+  <p><em>Demo: WebUI</em></p>
+</div>
+
+#### 快速开始
+
+**启动WebUI:**
+
+```bash
+ms-agent ui
+```
+
+**Windows 提示：** 若控制台出现乱码，建议使用 PowerShell 启动脚本：
+
+```powershell
+webui/scripts/start-webui.ps1
+```
+
+浏览器打开： http://localhost:7860
+
+**命令参数**
+
+| 选项             | 描述                       | 默认值     |
+|----------------|--------------------------|---------|
+| `--host`       | Server host              | 0.0.0.0 |
+| `--port`       | Server port              | 7860    |
+| `--production` | Production mode          | False   |
+| `--no-browser` | Don't auto-open browser  | False   |
+| `--reload`     | Enable auto-reload (dev) | False   |
+
+**示例**
+
+```bash
+# Custom port
+ms-agent ui --port 8080
+
+# Production mode without auto browser
+ms-agent ui --production --no-browser
+```
+
+---
 
 ### 有趣的工作
 
 1. 新闻收集智能体 [ms-agent/newspaper](https://www.modelscope.cn/models/ms-agent/newspaper/summary)
 
+---
 
 ## 未来计划
 
@@ -416,9 +610,14 @@ PYTHONPATH=. openai_api_key=your-api-key openai_base_url=your-api-url python ms_
 
 - [x] 支持[Anthropic-Agent-Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) 协议，实现智能体技能模块，提升智能体在复杂任务上的表现。
 - [ ] 金融深度研究智能体 **FinResearch** - 专注于金融领域的深度研究和分析。
+  - [x] 长周期深度金融分析报告生成
+  - [ ] 准实时事件驱动型简报生成
+- [ ] **奇点放映室**
+  - [ ] 支持更复杂的短视频场景
+  - [ ] 提升稳定度
 - [ ] 多模态检索增强生成 **Multimodal Agentic Search** - 支持大规模多模态文档检索和图文检索结果生成。
 - [ ] 增强的 **Agent Skills** - 提供更多预定义的技能和工具，提升智能体技能边界，并支持多技能协作，完成复杂任务执行。
-- [ ] 统一的WebUI **Agent-Workstation**，支持本地一键部署，集成了 MS-Agent 的所有智能体能力，如 AgentChat、MCP、AgentSkills、DeepResearch、DocResearch、CodeScratch 等。
+- [ ] 统一的WebUI **Agent-Workstation**，支持本地一键部署，集成了 MS-Agent 的所有智能体能力，如 AgentChat、MCP、AgentSkills、DeepResearch、DocResearch、CodeGenesis 等。
 
 
 ## 许可证
