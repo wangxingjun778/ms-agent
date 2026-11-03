@@ -1,0 +1,51 @@
+# Lightweight mode default configuration
+# Minimal core: agent loop + API tools + file memory + session persistence
+
+agent:
+  mode: lightweight
+  max_chat_round: 20
+  system_prompt: "You are a helpful assistant."
+
+# Module enable/disable switches
+modules:
+  rag: false
+  knowledge_search: false
+  personalization: false
+  hooks: false
+  callbacks: false
+  plugins: false
+  permission: false
+  sandbox: false
+  workflow: false
+  a2a: false
+  acp: false
+  cron: false
+  agent_hub: false
+  command: false
+
+# Tool configuration
+tools:
+  builtin_enabled: false
+  api_tools_config: "api_tools.yaml"
+
+# Memory configuration (file-based only)
+memory:
+  enabled: true
+  storage_backend: file
+  base_dir: "${DATA_DIR:./data}/memory"
+
+# Session configuration
+session:
+  enabled: true
+  base_dir: "${DATA_DIR:./data}/sessions"
+
+# LLM configuration (override via env or project config)
+llm:
+  model: "${LLM_MODEL:qwen-plus}"
+  api_key: "${LLM_API_KEY:}"
+  base_url: "${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
+
+# Skills configuration (optional)
+skills:
+  enabled: true
+  dirs: []

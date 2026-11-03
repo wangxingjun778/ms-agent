@@ -43,6 +43,7 @@ logger = get_logger()
 
 _FRAMEWORK_DEFAULTS_PATH = (
     Path(__file__).parent.parent / 'agent' / 'agent.yaml')
+_LIGHTWEIGHT_DEFAULTS_PATH = Path(__file__).parent / 'lightweight.yaml'
 
 GLOBAL_SETTINGS_FILE = 'settings.json'
 GLOBAL_MCP_FILE = 'mcp.json'
@@ -149,6 +150,13 @@ class ConfigResolver:
             layers.append(OmegaConf.create(session_overrides))
 
         merged = self._merge_layers(layers, merge_tools=self.defaults is not None)
+
+        # Lightweight mode layer: when agent.mode is 'lightweight', load the
+        # lightweight defaults between framework defaults and user config.
+        # This is applied as a post-merge overlay, but only sets keys the user
+        # config has not already touched (OmegaConf.merge semantics).
+        merged = self._apply_lightweight_layer(merged)
+
         for name in collect_builtin_tool_names(OmegaConf.create(self.defaults or {})):
             if OmegaConf.select(merged, f'tools.{name}.mcp') is not False:
                 raise ValueError(f'tools.{name} is a built-in tool; mcp must be false')
@@ -253,6 +261,29 @@ class ConfigResolver:
         clone = copy.copy(self)
         clone.agent_config = agent_config
         return clone
+
+    # -- lightweight layer --
+
+    @staticmethod
+    def _apply_lightweight_layer(config: DictConfig) -> DictConfig:
+        """If ``agent.mode`` is ``'lightweight'``, merge the lightweight
+        defaults *under* the current config so it fills missing keys
+        without overriding anything the user already set."""
+        try:
+            mode = OmegaConf.select(config, 'agent.mode', default='legacy')
+        except Exception:
+            return config
+        if str(mode or 'legacy') != 'lightweight':
+            return config
+        if not _LIGHTWEIGHT_DEFAULTS_PATH.exists():
+            logger.warning(
+                'Lightweight mode requested but %s not found',
+                _LIGHTWEIGHT_DEFAULTS_PATH)
+            return config
+        lightweight = OmegaConf.load(str(_LIGHTWEIGHT_DEFAULTS_PATH))
+        # Merge lightweight UNDER the user config (lightweight first, user on
+        # top) so user values win.
+        return OmegaConf.merge(lightweight, config)
 
     # -- layer loading --
 

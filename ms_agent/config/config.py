@@ -105,6 +105,52 @@ class Config:
         'workflow.yaml', 'workflow.yml', 'agent.yaml', 'agent.yml'
     ]
 
+    # ------------------------------------------------------------------
+    # Lightweight-mode helpers (backward-compatible: everything defaults
+    # to legacy behaviour when the new keys are absent)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def is_lightweight(config) -> bool:
+        """Return True when *config* selects lightweight mode."""
+        try:
+            mode = OmegaConf.select(config, 'agent.mode', default='legacy')
+        except Exception:
+            mode = getattr(getattr(config, 'agent', None), 'mode', 'legacy')
+        return str(mode or 'legacy') == 'lightweight'
+
+    @staticmethod
+    def is_module_enabled(config, module_name: str) -> bool:
+        """Check if *module_name* is enabled.  Defaults to True for
+        backward compatibility (all modules enabled unless explicitly
+        disabled via the ``modules`` config section)."""
+        try:
+            val = OmegaConf.select(
+                config, f'modules.{module_name}', default=True)
+        except Exception:
+            modules = getattr(config, 'modules', None)
+            if modules is None:
+                return True
+            val = getattr(modules, module_name, True)
+        if val is None:
+            return True
+        return bool(val)
+
+    @staticmethod
+    def builtin_tools_enabled(config) -> bool:
+        """Return the ``tools.builtin_enabled`` flag (default True)."""
+        try:
+            val = OmegaConf.select(
+                config, 'tools.builtin_enabled', default=True)
+        except Exception:
+            tools = getattr(config, 'tools', None)
+            if tools is None:
+                return True
+            val = getattr(tools, 'builtin_enabled', True)
+        if val is None:
+            return True
+        return bool(val)
+
     @classmethod
     def from_task(cls,
                   config_dir_or_id: str,

@@ -157,6 +157,58 @@ class MemoryOrchestrator(Memory):
         }
 
     # ------------------------------------------------------------------
+    # Standalone factory (lightweight mode)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def create_standalone(
+        cls,
+        base_dir: str,
+        config: Optional[Dict[str, Any]] = None,
+        llm_client: Any = None,
+    ) -> 'MemoryOrchestrator':
+        """Create a standalone orchestrator without SharedMemoryManager.
+
+        For use by the lightweight :class:`~ms_agent.memory.service.MemoryService`.
+        Does NOT register in any global singleton registry.
+
+        Args:
+            base_dir: Directory for memory storage.
+            config: Optional memory configuration dict.
+            llm_client: Optional LLM client for extraction / retrieval.
+        """
+        cfg = config or {}
+        mem_config = MemoryConfig(
+            enabled=bool(cfg.get('enabled', True)),
+            storage_backend=str(cfg.get('storage_backend', 'file')),
+            base_dir=str(base_dir),
+            user_id=str(cfg.get('user_id', 'default')),
+            retrieval_strategy=str(
+                cfg.get('retrieval_strategy', 'full_dump')),
+            extraction_strategy=str(
+                cfg.get('extraction_strategy', 'tool_based')),
+            security_scan=bool(cfg.get('security_scan', False)),
+            char_limit=int(cfg.get('char_limit', 1_000_000)),
+        )
+        instance = cls.__new__(cls)
+        # Bypass Memory.__init__ which expects an OmegaConf / agent config.
+        instance.mem_config = mem_config
+        instance._backend = None
+        instance._started = False
+        instance._closed = False
+        instance._pending = set()
+        instance._inflight = set()
+        instance._turns_since_ingest = 0
+        instance._ledger = None
+        instance._ledger_order = []
+        instance._status = {
+            'state': 'idle', 'at': None, 'count': None, 'error': None,
+        }
+        if llm_client is not None:
+            instance.set_llm(llm_client)
+        return instance
+
+    # ------------------------------------------------------------------
     # Lazy backend construction
     # ------------------------------------------------------------------
 

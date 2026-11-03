@@ -2660,6 +2660,19 @@ class LLMAgent(Agent):
         Args:
             messages: Input prompt string or list of Message objects.
         """
+        # --- Lightweight mode delegation ---
+        if self._is_lightweight_mode():
+            try:
+                async for chunk in self._run_lightweight(messages):
+                    yield chunk
+                return
+            except Exception:
+                logger.warning(
+                    'Lightweight mode delegation failed, '
+                    'falling back to legacy run_loop',
+                    exc_info=True)
+                # Fall through to legacy path
+
         # Bound BEFORE the try so the exception handler can always read it:
         # setup (agent/LLM construction, credential resolution) raises well
         # before the round loop, and an unbound local there would turn a clean
@@ -3009,6 +3022,107 @@ class LLMAgent(Agent):
                     f'[{self.tag}] Runtime error, please follow the instructions:\n\n {self.config.help}'
                 )
             raise e
+
+    # ------------------------------------------------------------------
+    # Lightweight mode helpers
+    # ------------------------------------------------------------------
+
+    def _is_lightweight_mode(self) -> bool:
+        """Check if running in lightweight mode."""
+        try:
+            return Config.is_lightweight(self.config)
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _run_lightweight(
+        self,
+        messages: Union[List[Message], str],
+    ) -> AsyncGenerator[Any, Any]:
+        """Delegate to the stateless AgentRunner for lightweight mode.
+
+        Converts the existing config and messages into the lightweight
+        API surface, runs the stateless runner, and yields
+        ``List[Message]`` to match what ``run_loop()`` consumers expect.
+        """
+        from ms_agent.agent.api import AgentService
+        from ms_agent.agent.schema import AgentRequest, MessageInput
+
+        # Build a plain-dict config from the OmegaConf tree
+        config_dict: Dict[str, Any] = {}
+        for section in ('agent', 'tools', 'memory', 'session', 'llm', 'skills'):
+            try:
+                raw = OmegaConf.select(self.config, section, default=None)
+                if raw is not None:
+                    config_dict[section] = OmegaConf.to_container(
+                        raw, resolve=True) if OmegaConf.is_config(raw) else raw
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Convert messages to MessageInput list
+        msg_inputs: List[MessageInput] = []
+        if isinstance(messages, str):
+            msg_inputs.append(MessageInput(role='user', content=messages))
+        elif isinstance(messages, list):
+            for msg in messages:
+                if isinstance(msg, dict):
+                    msg_inputs.append(MessageInput(
+                        role=msg.get('role', 'user'),
+                        content=msg.get('content', ''),
+                    ))
+                elif isinstance(msg, Message):
+                    msg_inputs.append(MessageInput(
+                        role=msg.role or 'user',
+                        content=msg.content or '',
+                    ))
+                else:
+                    msg_inputs.append(MessageInput(
+                        role='user', content=str(msg),
+                    ))
+
+        session_id = ''
+        if hasattr(self, 'runtime') and self.runtime is not None:
+            session_id = getattr(self.runtime, 'session_id', '') or ''
+
+        request = AgentRequest(
+            user_id=getattr(self, 'user_id', DEFAULT_USER),
+            session_id=session_id or AgentRequest.new_session_id(),
+            messages=msg_inputs,
+        )
+
+        # Collect assistant text from stream events and yield as messages
+        accumulated_content = ''
+        async with AgentService(config_dict) as service:
+            async for event in service.run(request):
+                event_type = event.event_type
+                if hasattr(event_type, 'value'):
+                    event_type = event_type.value
+
+                if event_type == 'llm_delta':
+                    delta = event.data.get('content', '')
+                    if delta:
+                        accumulated_content += delta
+                        # Yield partial messages in the same format as
+                        # run_loop: a list with one assistant Message.
+                        yield [Message(
+                            role='assistant',
+                            content=accumulated_content,
+                        )]
+                elif event_type == 'llm_complete':
+                    content = event.data.get('content', '')
+                    if content and not accumulated_content:
+                        accumulated_content = content
+                    yield [Message(
+                        role='assistant',
+                        content=accumulated_content,
+                    )]
+                elif event_type == 'error':
+                    error_msg = event.data.get('error', 'Unknown error')
+                    logger.error(
+                        'Lightweight runner error: %s', error_msg)
+                    yield [Message(
+                        role='assistant',
+                        content=f'Error: {error_msg}',
+                    )]
 
     async def run(
             self, messages: Union[List[Message], str], **kwargs

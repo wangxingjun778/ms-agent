@@ -1,0 +1,132 @@
+# API Tools Configuration for MS-Agent Lightweight Mode
+#
+# Each tool maps to an HTTP API endpoint that the agent can call. The
+# agent exposes `tools[*].name` + `tools[*].parameters` to the LLM via
+# OpenAI function-calling; the `api` / `output_mapping` / `auth` sections
+# stay on the server side and describe how to translate a function call
+# into an HTTP request and the HTTP response back into a tool message.
+#
+# Env-var substitution supports `${VAR}` and `${VAR:default}` syntax.
+
+api_tools:
+  # Base URL applied to every tool's `api.path`. Override via env in prod.
+  base_url: "${API_BASE_URL:http://localhost:8080}"
+
+  # Default auth used by every tool unless the tool overrides it with its
+  # own `auth:` block (e.g. a different token for one specific endpoint).
+  auth:
+    type: bearer
+    token_env: "API_TOKEN"
+
+  tools:
+    # --- Image generation (async task API) -------------------------------
+    # Mirrors the ModelScope API-Inference flow: POST /v1/images/generations
+    # returns a task_id; the agent polls /v1/tasks/{task_id} until
+    # task_status reaches SUCCEED or FAILED, then extracts output_images.
+    - name: image_generation
+      description: "Generate images from text prompts. Supports text-to-image and image editing with reference images."
+      api:
+        method: POST
+        path: /v1/images/generations
+        async_mode: true
+        poll_path: /v1/tasks/{task_id}
+        poll_interval: 5
+        poll_timeout: 600
+        headers:
+          X-ModelScope-Async-Mode: "true"
+          X-ModelScope-Task-Type: "image_generation"
+      parameters:
+        type: object
+        required:
+          - model
+          - prompt
+        properties:
+          model:
+            type: string
+            description: "ModelScope model ID, e.g. Qwen/Qwen-Image-2.1-Turbo"
+          prompt:
+            type: string
+            description: "Image generation prompt, 1-4000 Unicode characters"
+          image_url:
+            type: array
+            items:
+              type: string
+            description: "Reference image URL(s) or base64 data URI(s) for image editing; max 4"
+          negative_prompt:
+            type: string
+            description: "Negative prompt for excluding elements (<=4000 chars)"
+          size:
+            type: string
+            description: "Output size WxH (each dim 64-2048), e.g. 1024x1024"
+          n:
+            type: integer
+            description: "Number of images to generate (1-4)"
+            default: 1
+          seed:
+            type: integer
+            description: "Random seed (-1 to 2147483647, -1 = random)"
+          steps:
+            type: integer
+            description: "Generation steps (1-50)"
+          guidance:
+            type: number
+            description: "Guidance scale (1.0-20.0)"
+      output_mapping:
+        # The image API returns output_images at the top level of the final
+        # task response (not nested under `output`). The task_id/status
+        # paths likewise live at the top level — reflected below.
+        success_path: "output_images"
+        error_path: "errors.message"
+        task_id_path: "task_id"
+        status_path: "task_status"
+        success_statuses: ["SUCCEED"]
+        failure_statuses: ["FAILED", "TIMEOUT"]
+
+    # --- Web search (synchronous) ----------------------------------------
+    - name: web_search
+      description: "Search the internet for information. Returns a list of result snippets with URLs."
+      api:
+        method: POST
+        path: /v1/tools/web_search
+        async_mode: false
+        timeout: 30
+      parameters:
+        type: object
+        required:
+          - query
+        properties:
+          query:
+            type: string
+            description: "Search query"
+          max_results:
+            type: integer
+            description: "Maximum number of results to return"
+            default: 10
+      output_mapping:
+        success_path: "data.results"
+        error_path: "error.message"
+
+    # --- Code execution (synchronous) ------------------------------------
+    - name: code_execution
+      description: "Execute code in a sandboxed environment and return stdout/stderr."
+      api:
+        method: POST
+        path: /v1/tools/code_execution
+        async_mode: false
+        timeout: 60
+      parameters:
+        type: object
+        required:
+          - code
+          - language
+        properties:
+          code:
+            type: string
+            description: "Code to execute"
+          language:
+            type: string
+            description: "Programming language"
+            enum: ["python", "javascript", "bash"]
+      output_mapping:
+        success_path: "data.output"
+        error_path: "data.error"

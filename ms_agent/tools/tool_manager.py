@@ -174,83 +174,97 @@ class ToolManager:
 
         self.extra_tools: List[ToolBase] = []
         self.has_split_task_tool = False
-        if hasattr(config, 'tools') and hasattr(config.tools,
-                                                'image_generator'):
-            self.extra_tools.append(ImageGenerator(config))
-        if hasattr(config, 'tools') and hasattr(config.tools,
-                                                'video_generator'):
-            self.extra_tools.append(VideoGenerator(config))
-        # image_reader is registered ONLY when an auxiliary vision model is
-        # configured: without one the tool can do nothing, and an always-present
-        # tool the model may call and always fail is worse than no tool at all.
-        if _tool_on(config, 'image_reader'):
-            from ms_agent.tools.image_reader_tool import auxiliary_config
 
-            if auxiliary_config(config):
-                self.extra_tools.append(ImageReaderTool(config))
-            else:
-                logger.info(
-                    'tools.image_reader is enabled but '
-                    'llm.vision.auxiliary.model is unset; not registering it')
-        if _tool_on(config, 'file_system'):
-            self.extra_tools.append(
-                FileSystemTool(
-                    config, trust_remote_code=self.trust_remote_code))
-        if _tool_on(config, 'code_executor'):
-            code_exec_cfg = getattr(config.tools, 'code_executor')
-            implementation = getattr(code_exec_cfg, 'implementation',
-                                     'sandbox')
-            if isinstance(implementation,
-                          str) and implementation.lower() == 'python_env':
-                self.extra_tools.append(LocalCodeExecutionTool(config))
-            elif isinstance(implementation,
-                            str) and implementation.lower() == 'sandbox':
-                self.extra_tools.append(CodeExecutionTool(config))
-            else:
-                logger.warning(
-                    f'Unknown code execution implementation: {implementation},'
-                    f'using sandbox instead.')
-                self.extra_tools.append(CodeExecutionTool(config))
-        if hasattr(config, 'tools') and hasattr(config.tools,
-                                                'financial_data_fetcher'):
-            from ms_agent.tools.findata.findata_fetcher import \
-                FinancialDataFetcher
-            self.extra_tools.append(FinancialDataFetcher(config))
-        if hasattr(config,
-                   'tools') and (getattr(config.tools, 'agent_tools', None)
-                                 or hasattr(config.tools, 'split_task')):
-            agent_tool = AgentTool(
-                config, trust_remote_code=self.trust_remote_code)
-            if agent_tool.enabled:
-                self.extra_tools.append(agent_tool)
-        if _tool_on(config, 'todo_list'):
-            self.extra_tools.append(TodoListTool(config))
-        if _tool_on(config, 'web_search'):
-            self.extra_tools.append(WebSearchTool(config))
-        if hasattr(config, 'tools') and hasattr(config.tools, 'cron'):
-            cron_cfg = getattr(config.tools, 'cron', None)
-            if not getattr(cron_cfg, 'mcp', False):
-                from ms_agent.tools.cron_tool import CronTool
-                self.extra_tools.append(CronTool(config))
-        if effective_localsearch_settings(config) is not None:
-            self.extra_tools.append(LocalSearchTool(config))
-        if _tool_on(config, 'task_control'):
-            from ms_agent.tools.task_control_tool import TaskControlTool
-            self.extra_tools.append(TaskControlTool(config))
+        # Check whether built-in tools should be registered at all.
+        # Default True for backward compatibility.
+        _builtin_enabled = True
         try:
-            from ms_agent.tools.acp_agent_tool import ACPAgentTool
-            acp_tool = ACPAgentTool.from_config(config)
-            if acp_tool is not None:
-                self.extra_tools.append(acp_tool)
-        except ImportError:
+            from ms_agent.config.config import Config
+            _builtin_enabled = Config.builtin_tools_enabled(config)
+        except Exception:  # noqa: BLE001
             pass
-        try:
-            from ms_agent.tools.a2a_agent_tool import A2AAgentTool
-            a2a_tool = A2AAgentTool.from_config(config)
-            if a2a_tool is not None:
-                self.extra_tools.append(a2a_tool)
-        except ImportError:
-            pass
+
+        if not _builtin_enabled:
+            logger.info(
+                'Built-in tools disabled (tools.builtin_enabled=false)')
+        else:
+            if hasattr(config, 'tools') and hasattr(config.tools,
+                                                    'image_generator'):
+                self.extra_tools.append(ImageGenerator(config))
+            if hasattr(config, 'tools') and hasattr(config.tools,
+                                                    'video_generator'):
+                self.extra_tools.append(VideoGenerator(config))
+            # image_reader is registered ONLY when an auxiliary vision model is
+            # configured: without one the tool can do nothing, and an always-present
+            # tool the model may call and always fail is worse than no tool at all.
+            if _tool_on(config, 'image_reader'):
+                from ms_agent.tools.image_reader_tool import auxiliary_config
+
+                if auxiliary_config(config):
+                    self.extra_tools.append(ImageReaderTool(config))
+                else:
+                    logger.info(
+                        'tools.image_reader is enabled but '
+                        'llm.vision.auxiliary.model is unset; not registering it')
+            if _tool_on(config, 'file_system'):
+                self.extra_tools.append(
+                    FileSystemTool(
+                        config, trust_remote_code=self.trust_remote_code))
+            if _tool_on(config, 'code_executor'):
+                code_exec_cfg = getattr(config.tools, 'code_executor')
+                implementation = getattr(code_exec_cfg, 'implementation',
+                                         'sandbox')
+                if isinstance(implementation,
+                              str) and implementation.lower() == 'python_env':
+                    self.extra_tools.append(LocalCodeExecutionTool(config))
+                elif isinstance(implementation,
+                                str) and implementation.lower() == 'sandbox':
+                    self.extra_tools.append(CodeExecutionTool(config))
+                else:
+                    logger.warning(
+                        f'Unknown code execution implementation: {implementation},'
+                        f'using sandbox instead.')
+                    self.extra_tools.append(CodeExecutionTool(config))
+            if hasattr(config, 'tools') and hasattr(config.tools,
+                                                    'financial_data_fetcher'):
+                from ms_agent.tools.findata.findata_fetcher import \
+                    FinancialDataFetcher
+                self.extra_tools.append(FinancialDataFetcher(config))
+            if hasattr(config,
+                       'tools') and (getattr(config.tools, 'agent_tools', None)
+                                     or hasattr(config.tools, 'split_task')):
+                agent_tool = AgentTool(
+                    config, trust_remote_code=self.trust_remote_code)
+                if agent_tool.enabled:
+                    self.extra_tools.append(agent_tool)
+            if _tool_on(config, 'todo_list'):
+                self.extra_tools.append(TodoListTool(config))
+            if _tool_on(config, 'web_search'):
+                self.extra_tools.append(WebSearchTool(config))
+            if hasattr(config, 'tools') and hasattr(config.tools, 'cron'):
+                cron_cfg = getattr(config.tools, 'cron', None)
+                if not getattr(cron_cfg, 'mcp', False):
+                    from ms_agent.tools.cron_tool import CronTool
+                    self.extra_tools.append(CronTool(config))
+            if effective_localsearch_settings(config) is not None:
+                self.extra_tools.append(LocalSearchTool(config))
+            if _tool_on(config, 'task_control'):
+                from ms_agent.tools.task_control_tool import TaskControlTool
+                self.extra_tools.append(TaskControlTool(config))
+            try:
+                from ms_agent.tools.acp_agent_tool import ACPAgentTool
+                acp_tool = ACPAgentTool.from_config(config)
+                if acp_tool is not None:
+                    self.extra_tools.append(acp_tool)
+            except ImportError:
+                pass
+            try:
+                from ms_agent.tools.a2a_agent_tool import A2AAgentTool
+                a2a_tool = A2AAgentTool.from_config(config)
+                if a2a_tool is not None:
+                    self.extra_tools.append(a2a_tool)
+            except ImportError:
+                pass
         self.tool_call_timeout = float(
             getattr(config, 'tool_call_timeout', TOOL_CALL_TIMEOUT))
         self.tool_call_timeout_max = float(
