@@ -1,0 +1,6 @@
+# Revisions whose diff is formatting only and should be skipped by `git blame`.
+# Enable once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# chore(lint): replace pre-commit with ruff
+fae09ffe7ded7a3ee0bb99afbdc157e3ef174f63
