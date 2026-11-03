@@ -1,4 +1,5 @@
 """JSON-backed job repository with atomic writes and mtime caching."""
+
 from __future__ import annotations
 
 import json
@@ -75,8 +76,7 @@ class JsonJobRepository:
         for j in data.get('jobs', []):
             try:
                 spec = CronJobSpec.from_dict(j)
-                state = CronJobState.from_dict(
-                    states[spec.id]) if spec.id in states else CronJobState()
+                state = CronJobState.from_dict(states[spec.id]) if spec.id in states else CronJobState()
                 result.append((spec, state))
             except Exception:
                 continue
@@ -104,8 +104,7 @@ class JsonJobRepository:
             states[job_id] = state.to_dict()
             self._atomic_write(data)
 
-    def save_job_and_state(self, job: CronJobSpec,
-                           state: CronJobState) -> None:
+    def save_job_and_state(self, job: CronJobSpec, state: CronJobState) -> None:
         with self._lock:
             data = self._load_unlocked()
             jobs = data.get('jobs', [])
@@ -143,16 +142,14 @@ class JsonJobRepository:
                 return CronJobSpec.from_dict(j)
         return None
 
-    def get_job_with_state(
-            self, job_id: str) -> Optional[Tuple[CronJobSpec, CronJobState]]:
+    def get_job_with_state(self, job_id: str) -> Optional[Tuple[CronJobSpec, CronJobState]]:
         with self._lock:
             data = self._load_unlocked()
         for j in data.get('jobs', []):
             if j.get('id') == job_id:
                 spec = CronJobSpec.from_dict(j)
                 states = data.get('states', {})
-                state = CronJobState.from_dict(
-                    states[job_id]) if job_id in states else CronJobState()
+                state = CronJobState.from_dict(states[job_id]) if job_id in states else CronJobState()
                 return (spec, state)
         return None
 
@@ -166,10 +163,12 @@ class JsonJobRepository:
         for yaml_file in sorted(jobs_dir.glob('*.yaml')):
             try:
                 import yaml
+
                 data = yaml.safe_load(yaml_file.read_text('utf-8'))
                 if not isinstance(data, dict):
                     continue
                 from ms_agent.cron.parser import parse_schedule
+
                 schedule = parse_schedule(data.get('schedule', 'once'))
                 spec = CronJobSpec(
                     id=data.get('id', yaml_file.stem),
@@ -197,6 +196,7 @@ class JsonJobRepository:
             if existing is None:
                 from ms_agent.cron.parser import compute_next_run
                 from ms_agent.cron.types import CronJobState
+
                 state = CronJobState(status='scheduled')
                 state.next_run_at = compute_next_run(spec.schedule)
                 self.save_job_and_state(spec, state)

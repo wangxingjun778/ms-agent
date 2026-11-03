@@ -19,9 +19,7 @@ class CronSchedule:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CronSchedule':
-        return cls(
-            **{k: v
-               for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -37,9 +35,7 @@ class RepeatSpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RepeatSpec':
-        return cls(
-            **{k: v
-               for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -53,9 +49,7 @@ class NotifySpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'NotifySpec':
-        return cls(
-            **{k: v
-               for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -63,8 +57,7 @@ class CronJobSpec:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str = ''
     enabled: bool = True
-    schedule: CronSchedule = field(
-        default_factory=lambda: CronSchedule(kind='once'))
+    schedule: CronSchedule = field(default_factory=lambda: CronSchedule(kind='once'))
     source: Literal['dynamic', 'declarative'] = 'dynamic'
 
     prompt: Optional[str] = None
@@ -83,16 +76,14 @@ class CronJobSpec:
     notify: Optional[NotifySpec] = None
     silent_on_success: bool = True
 
-    created_at: str = field(
-        default_factory=lambda: time.strftime('%Y-%m-%dT%H:%M:%S'))
+    created_at: str = field(default_factory=lambda: time.strftime('%Y-%m-%dT%H:%M:%S'))
 
     def to_dict(self) -> Dict[str, Any]:
         d = {}
         for k, v in asdict(self).items():
             if v is not None:
                 d[k] = v
-            elif k in ('prompt', 'project', 'workflow', 'overrides', 'timeout',
-                       'repeat', 'notify'):
+            elif k in ('prompt', 'project', 'workflow', 'overrides', 'timeout', 'repeat', 'notify'):
                 continue
             else:
                 d[k] = v
@@ -127,15 +118,12 @@ class RunRecord:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RunRecord':
-        return cls(
-            **{k: v
-               for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
 class CronJobState:
-    status: Literal['scheduled', 'running', 'paused', 'completed',
-                    'error'] = 'scheduled'
+    status: Literal['scheduled', 'running', 'paused', 'completed', 'error'] = 'scheduled'
     next_run_at: Optional[str] = None
     last_run_at: Optional[str] = None
     last_status: Optional[Literal['ok', 'error']] = None
@@ -150,7 +138,7 @@ class CronJobState:
     def record_run(self, record: RunRecord) -> None:
         self.run_history.append(record)
         if len(self.run_history) > self.MAX_HISTORY:
-            self.run_history = self.run_history[-self.MAX_HISTORY:]
+            self.run_history = self.run_history[-self.MAX_HISTORY :]
         self.last_run_at = record.run_at
         self.last_duration_ms = record.duration_ms
         self.last_status = record.status
@@ -177,10 +165,7 @@ class CronJobState:
     def from_dict(cls, data: Dict[str, Any]) -> 'CronJobState':
         d = dict(data)
         if 'run_history' in d:
-            d['run_history'] = [
-                RunRecord.from_dict(r) if isinstance(r, dict) else r
-                for r in d['run_history']
-            ]
+            d['run_history'] = [RunRecord.from_dict(r) if isinstance(r, dict) else r for r in d['run_history']]
         valid_fields = set(cls.__dataclass_fields__.keys())
         d = {k: v for k, v in d.items() if k in valid_fields}
         return cls(**d)

@@ -22,11 +22,7 @@ from ms_agent.utils.workspace_context import WorkspaceContext
 
 logger = get_logger()
 
-_FS_TOOL_ALIASES = {
-    'read': 'read_file',
-    'edit': 'edit_file',
-    'write': 'write_file'
-}
+_FS_TOOL_ALIASES = {'read': 'read_file', 'edit': 'edit_file', 'write': 'write_file'}
 
 _TEXT_SUFFIXES = {
     '.py',
@@ -103,20 +99,14 @@ class FileSystemTool(ToolBase):
         super().__init__(config)
         self.exclude_func(getattr(config.tools, 'file_system', None))
         if self.include_functions:
-            self.include_functions = [
-                _FS_TOOL_ALIASES.get(n, n) for n in self.include_functions
-            ]
+            self.include_functions = [_FS_TOOL_ALIASES.get(n, n) for n in self.include_functions]
         if self.exclude_functions:
-            self.exclude_functions = [
-                _FS_TOOL_ALIASES.get(n, n) for n in self.exclude_functions
-            ]
+            self.exclude_functions = [_FS_TOOL_ALIASES.get(n, n) for n in self.exclude_functions]
         self._ws = WorkspaceContext.from_config(config)
         self.output_dir = str(self._ws.root)
         self._config = config
         self.trust_remote_code = kwargs.get('trust_remote_code', False)
-        self.allow_read_all_files = getattr(
-            getattr(config.tools, 'file_system', {}), 'allow_read_all_files',
-            False)
+        self.allow_read_all_files = getattr(getattr(config.tools, 'file_system', {}), 'allow_read_all_files', False)
         if not self.trust_remote_code:
             self.allow_read_all_files = False
         if hasattr(self.config, 'llm'):
@@ -131,28 +121,25 @@ class FileSystemTool(ToolBase):
 
         fs_cfg = getattr(config.tools, 'file_system', None)
         self._grep_timeout = int(getattr(fs_cfg, 'grep_timeout_s', 120) or 120)
-        self._default_grep_head = int(
-            getattr(fs_cfg, 'grep_head_limit', 250) or 250)
-        self._glob_max_files = int(
-            getattr(fs_cfg, 'glob_max_files', 100) or 100)
+        self._default_grep_head = int(getattr(fs_cfg, 'grep_head_limit', 250) or 250)
+        self._glob_max_files = int(getattr(fs_cfg, 'glob_max_files', 100) or 100)
 
         try:
             self._ws.root.mkdir(parents=True, exist_ok=True)
         except OSError:
             pass
 
-        shell_cfg = getattr(
-            getattr(config.tools, 'code_executor', None), 'shell', None)
+        shell_cfg = getattr(getattr(config.tools, 'code_executor', None), 'shell', None)
         max_kb = 256
         if shell_cfg and getattr(shell_cfg, 'max_output_kb', None):
             max_kb = int(shell_cfg.max_output_kb)
-        self._fs_artifacts = ArtifactManager(
-            self._ws.root, max_combined_bytes=max_kb * 1024)
+        self._fs_artifacts = ArtifactManager(self._ws.root, max_combined_bytes=max_kb * 1024)
 
     async def connect(self):
         logger.warning_once(
             '[IMPORTANT]FileSystemTool is not implemented with sandbox, please consider other similar '
-            'tools if you want to run dangerous code.')
+            'tools if you want to run dangerous code.'
+        )
 
     async def _get_tools_inner(self):
         tools = {
@@ -160,193 +147,161 @@ class FileSystemTool(ToolBase):
                 Tool(
                     tool_name='write_file',
                     server_name='file_system',
-                    description=
-                    ('Write content to a file. Creates the file if it does not exist, '
-                     'or overwrites it if it does.\n\n'
-                     'Usage:\n'
-                     '- Prefer `edit_file` for modifying existing files — it only changes the relevant section.\n'
-                     '- Use this tool to create new files or perform a complete rewrite.\n'
-                     '- Parent directories are created automatically if they do not exist.\n\n'
-                     'No prior `read_file` is required; the path is resolved and the given `content` is written as-is.'
-                     ),
+                    description=(
+                        'Write content to a file. Creates the file if it does not exist, '
+                        'or overwrites it if it does.\n\n'
+                        'Usage:\n'
+                        '- Prefer `edit_file` for modifying existing files — it only changes the relevant section.\n'
+                        '- Use this tool to create new files or perform a complete rewrite.\n'
+                        '- Parent directories are created automatically if they do not exist.\n\n'
+                        'No prior `read_file` is required; the path is resolved and the given `content` is written as-is.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                'The relative path of the file to write',
+                                'type': 'string',
+                                'description': 'The relative path of the file to write',
                             },
                             'content': {
-                                'type':
-                                'string',
-                                'description':
-                                'The full content to write into the file',
+                                'type': 'string',
+                                'description': 'The full content to write into the file',
                             },
                         },
                         'required': ['path', 'content'],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='read_file',
                     server_name='file_system',
-                    description=
-                    ('Read the content of one or more files.\n\n'
-                     '- `paths`: list of relative file paths to read (preferred).\n'
-                     '- `path`: single relative file path (alias when the model passes one file).\n'
-                     '- Image files (png/jpg/jpeg/gif/webp) are returned AS IMAGES, attached to\n'
-                     '  the result — look at them directly. They are not readable as text, and\n'
-                     '  `offset`/`limit` do not apply. If you cannot see an attached image, the\n'
-                     '  current model has image understanding disabled.\n'
-                     '- `offset`: line number to start reading from (1-based). '
-                     'Only effective when paths has exactly one element. Omit to read from the beginning.\n'
-                     '- `limit`: number of lines to read. '
-                     'Only effective when paths has exactly one element. Omit to read to the end.\n'
-                     '- Returns raw file content (no line-number prefixes) so snippets can be reused in `edit_file`.\n'
-                     '- `abbreviate`: if true, use an LLM to return a condensed summary of each file '
-                     'instead of the raw content. Cached after first call. '
-                     'Use this for a quick structural overview; read the full file if more detail is needed.'
-                     ),
+                    description=(
+                        'Read the content of one or more files.\n\n'
+                        '- `paths`: list of relative file paths to read (preferred).\n'
+                        '- `path`: single relative file path (alias when the model passes one file).\n'
+                        '- Image files (png/jpg/jpeg/gif/webp) are returned AS IMAGES, attached to\n'
+                        '  the result — look at them directly. They are not readable as text, and\n'
+                        '  `offset`/`limit` do not apply. If you cannot see an attached image, the\n'
+                        '  current model has image understanding disabled.\n'
+                        '- `offset`: line number to start reading from (1-based). '
+                        'Only effective when paths has exactly one element. Omit to read from the beginning.\n'
+                        '- `limit`: number of lines to read. '
+                        'Only effective when paths has exactly one element. Omit to read to the end.\n'
+                        '- Returns raw file content (no line-number prefixes) so snippets can be reused in `edit_file`.\n'
+                        '- `abbreviate`: if true, use an LLM to return a condensed summary of each file '
+                        'instead of the raw content. Cached after first call. '
+                        'Use this for a quick structural overview; read the full file if more detail is needed.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'paths': {
-                                'type':
-                                'array',
-                                'items': {
-                                    'type': 'string'
-                                },
-                                'description':
-                                'List of relative file path(s) to read. '
+                                'type': 'array',
+                                'items': {'type': 'string'},
+                                'description': 'List of relative file path(s) to read. '
                                 'Use this OR `path` (single file).',
                             },
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                'Single relative file path to read (alias for `paths` of length 1).',
+                                'type': 'string',
+                                'description': 'Single relative file path to read (alias for `paths` of length 1).',
                             },
                             'offset': {
-                                'type':
-                                'integer',
-                                'description':
-                                'Line number to start reading from (1-based). '
+                                'type': 'integer',
+                                'description': 'Line number to start reading from (1-based). '
                                 'Only provide if the file is too large to read at once.',
                             },
                             'limit': {
-                                'type':
-                                'integer',
-                                'description':
-                                'Number of lines to read. '
+                                'type': 'integer',
+                                'description': 'Number of lines to read. '
                                 'Only provide if the file is too large to read at once.',
                             },
                             'abbreviate': {
-                                'type':
-                                'boolean',
-                                'description':
-                                'If true, return an LLM-generated summary instead of raw content. '
+                                'type': 'boolean',
+                                'description': 'If true, return an LLM-generated summary instead of raw content. '
                                 'Useful for large files or quick structural overview.',
                             },
                         },
                         'required': [],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='edit_file',
                     server_name='file_system',
-                    description=
-                    ('Edit an existing file by replacing an exact string with new content.\n\n'
-                     'The tool reads the file from disk and checks that `old_string` appears in the current '
-                     'contents before applying the edit — you do not need a prior `read_file` call for '
-                     'staleness. Still use `read_file` or `grep` when you need the exact snippet in the '
-                     'conversation so you can form a correct `old_string`.\n\n'
-                     'You must provide the exact text to find (`old_string`) and the replacement (`new_string`).\n'
-                     '`old_string` must match the file content EXACTLY — including whitespace and line breaks.\n'
-                     'If `old_string` appears multiple times and `replace_all` is false, the call will fail '
-                     'with the match count so you can add more context to make it unique.\n\n'
-                     'Special case — `old_string=""`:\n'
-                     '- File does not exist: creates the file with `new_string` as its content.\n'
-                     '- File exists and is empty: fills it with `new_string`.\n'
-                     '- File exists and has content: returns an error. Use `write_file` for a full rewrite.'
-                     ),
+                    description=(
+                        'Edit an existing file by replacing an exact string with new content.\n\n'
+                        'The tool reads the file from disk and checks that `old_string` appears in the current '
+                        'contents before applying the edit — you do not need a prior `read_file` call for '
+                        'staleness. Still use `read_file` or `grep` when you need the exact snippet in the '
+                        'conversation so you can form a correct `old_string`.\n\n'
+                        'You must provide the exact text to find (`old_string`) and the replacement (`new_string`).\n'
+                        '`old_string` must match the file content EXACTLY — including whitespace and line breaks.\n'
+                        'If `old_string` appears multiple times and `replace_all` is false, the call will fail '
+                        'with the match count so you can add more context to make it unique.\n\n'
+                        'Special case — `old_string=""`:\n'
+                        '- File does not exist: creates the file with `new_string` as its content.\n'
+                        '- File exists and is empty: fills it with `new_string`.\n'
+                        '- File exists and has content: returns an error. Use `write_file` for a full rewrite.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                'The relative path of the file to edit.',
+                                'type': 'string',
+                                'description': 'The relative path of the file to edit.',
                             },
                             'old_string': {
-                                'type':
-                                'string',
-                                'description':
-                                'The exact string to find and replace.',
+                                'type': 'string',
+                                'description': 'The exact string to find and replace.',
                             },
                             'new_string': {
                                 'type': 'string',
-                                'description':
-                                'The string to replace it with.',
+                                'description': 'The string to replace it with.',
                             },
                             'replace_all': {
-                                'type':
-                                'boolean',
-                                'description':
-                                'If true, replace all occurrences. Default is false (replace only the first).',
+                                'type': 'boolean',
+                                'description': 'If true, replace all occurrences. Default is false (replace only the first).',
                             },
                         },
                         'required': ['path', 'old_string', 'new_string'],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='grep',
                     server_name='file_system',
-                    description=
-                    ('Search file contents under the workspace using ripgrep when available, '
-                     'otherwise a safe Python scan. Paths must stay under the configured output/workspace roots. '
-                     'Read-only.'),
+                    description=(
+                        'Search file contents under the workspace using ripgrep when available, '
+                        'otherwise a safe Python scan. Paths must stay under the configured output/workspace roots. '
+                        'Read-only.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'pattern': {
-                                'type':
-                                'string',
-                                'description':
-                                'Regular expression (Rust regex if rg is used).',
+                                'type': 'string',
+                                'description': 'Regular expression (Rust regex if rg is used).',
                             },
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                'Directory or file to search (relative to output_dir if not absolute). Default ".".',
+                                'type': 'string',
+                                'description': 'Directory or file to search (relative to output_dir if not absolute). Default ".".',
                             },
                             'glob': {
-                                'type':
-                                'string',
-                                'description':
-                                'Optional glob filter for files, e.g. "*.py"',
+                                'type': 'string',
+                                'description': 'Optional glob filter for files, e.g. "*.py"',
                             },
                             'output_mode': {
-                                'type':
-                                'string',
-                                'enum':
-                                ['content', 'files_with_matches', 'count'],
-                                'description':
-                                'content: matching lines; files_with_matches: paths only; count: per-file counts',
+                                'type': 'string',
+                                'enum': ['content', 'files_with_matches', 'count'],
+                                'description': 'content: matching lines; files_with_matches: paths only; count: per-file counts',
                             },
                             'head_limit': {
-                                'type':
-                                'integer',
-                                'description':
-                                'Max lines (content) or paths/count entries to return',
+                                'type': 'integer',
+                                'description': 'Max lines (content) or paths/count entries to return',
                             },
                             'offset': {
-                                'type':
-                                'integer',
-                                'description':
-                                'Skip first N lines/entries after collect',
+                                'type': 'integer',
+                                'description': 'Skip first N lines/entries after collect',
                             },
                             'case_insensitive': {
                                 'type': 'boolean',
@@ -360,10 +315,10 @@ class FileSystemTool(ToolBase):
                 Tool(
                     tool_name='glob',
                     server_name='file_system',
-                    description=
-                    ('List files under a workspace directory matching a glob pattern '
-                     '(e.g. "**/*.py", "*.md"). Read-only; results are capped.'
-                     ),
+                    description=(
+                        'List files under a workspace directory matching a glob pattern '
+                        '(e.g. "**/*.py", "*.md"). Read-only; results are capped.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
@@ -372,10 +327,8 @@ class FileSystemTool(ToolBase):
                                 'description': 'Glob pattern relative to path',
                             },
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                'Base directory (relative to output_dir if not absolute).',
+                                'type': 'string',
+                                'description': 'Base directory (relative to output_dir if not absolute).',
                             },
                         },
                         'required': ['pattern'],
@@ -386,8 +339,7 @@ class FileSystemTool(ToolBase):
         }
         return tools
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         return await getattr(self, tool_name)(**tool_args)
 
     async def grep(
@@ -401,16 +353,13 @@ class FileSystemTool(ToolBase):
         case_insensitive: bool = False,
     ) -> str:
         call_id = f'grep-{pattern[:40]}'
-        head_limit = (
-            head_limit if head_limit is not None else self._default_grep_head)
+        head_limit = head_limit if head_limit is not None else self._default_grep_head
         offset = offset or 0
         path = path or '.'
         raw = Path(path).expanduser()
-        root = raw.resolve() if raw.is_absolute() else (self._ws.root
-                                                        / raw).resolve()
+        root = raw.resolve() if raw.is_absolute() else (self._ws.root / raw).resolve()
 
-        if pattern is None or (isinstance(pattern, str)
-                               and not pattern.strip()):
+        if pattern is None or (isinstance(pattern, str) and not pattern.strip()):
             return json.dumps(
                 {
                     'success': False,
@@ -421,13 +370,13 @@ class FileSystemTool(ToolBase):
         if isinstance(pattern, str) and ('\n' in pattern or '\r' in pattern):
             return json.dumps(
                 {
-                    'success':
-                    False,
-                    'error':
-                    ('grep pattern must not contain raw newline characters; '
-                     'ripgrep rejects them unless multiline mode is enabled server-side. '
-                     'Use several single-line patterns, escape newlines as needed, '
-                     'or search with read_file for fixed multi-line text.'),
+                    'success': False,
+                    'error': (
+                        'grep pattern must not contain raw newline characters; '
+                        'ripgrep rejects them unless multiline mode is enabled server-side. '
+                        'Use several single-line patterns, escape newlines as needed, '
+                        'or search with read_file for fixed multi-line text.'
+                    ),
                 },
                 indent=2,
             )
@@ -436,13 +385,13 @@ class FileSystemTool(ToolBase):
         try:
             rg = shutil.which('rg')
             if rg and root.is_file():
-                lines = await self._grep_rg_file(rg, pattern, root,
-                                                 case_insensitive, output_mode,
-                                                 head_limit, offset, glob)
+                lines = await self._grep_rg_file(
+                    rg, pattern, root, case_insensitive, output_mode, head_limit, offset, glob
+                )
             elif rg and root.is_dir():
-                lines = await self._grep_rg_dir(rg, pattern, root,
-                                                case_insensitive, output_mode,
-                                                head_limit, offset, glob)
+                lines = await self._grep_rg_dir(
+                    rg, pattern, root, case_insensitive, output_mode, head_limit, offset, glob
+                )
             else:
                 lines = self._grep_python(
                     pattern,
@@ -456,8 +405,7 @@ class FileSystemTool(ToolBase):
         except Exception as e:
             err = str(e)
             # Expected user/tooling failures (bad regex, rg rules) — log without traceback noise.
-            _quiet = ('rg:' in err or 'exited' in err.lower()
-                      or 'regex' in err.lower() or 'pattern' in err.lower())
+            _quiet = 'rg:' in err or 'exited' in err.lower() or 'regex' in err.lower() or 'pattern' in err.lower()
             logger.warning('grep failed: %s', e, exc_info=not _quiet)
             return json.dumps({'success': False, 'error': str(e)}, indent=2)
 
@@ -503,8 +451,7 @@ class FileSystemTool(ToolBase):
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self._ws.root),
         )
-        out_b, err_b = await asyncio.wait_for(
-            proc.communicate(), timeout=self._grep_timeout)
+        out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=self._grep_timeout)
         out = (out_b or b'').decode('utf-8', errors='replace').strip('\n')
         err = (err_b or b'').decode('utf-8', errors='replace').strip('\n')
         if proc.returncode not in (0, 1):
@@ -540,8 +487,7 @@ class FileSystemTool(ToolBase):
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self._ws.root),
         )
-        out_b, err_b = await asyncio.wait_for(
-            proc.communicate(), timeout=self._grep_timeout)
+        out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=self._grep_timeout)
         out = (out_b or b'').decode('utf-8', errors='replace').strip('\n')
         err = (err_b or b'').decode('utf-8', errors='replace').strip('\n')
         if proc.returncode not in (0, 1):
@@ -570,9 +516,7 @@ class FileSystemTool(ToolBase):
         def consider_file(fp: Path) -> bool:
             if glob_pat:
                 rel = str(fp.relative_to(root)) if root.is_dir() else fp.name
-                if not fnmatch.fnmatch(fp.name,
-                                       glob_pat) and not fnmatch.fnmatch(
-                                           rel, glob_pat):
+                if not fnmatch.fnmatch(fp.name, glob_pat) and not fnmatch.fnmatch(rel, glob_pat):
                     return False
             suf = fp.suffix.lower()
             if suf not in _TEXT_SUFFIXES and fp.suffix == '':
@@ -589,8 +533,7 @@ class FileSystemTool(ToolBase):
                     files.append(fp)
 
         for fp in files:
-            rel = str(fp.relative_to(self._ws.root)) if _is_relative(
-                fp, self._ws.root) else str(fp)
+            rel = str(fp.relative_to(self._ws.root)) if _is_relative(fp, self._ws.root) else str(fp)
             try:
                 if output_mode == 'files_with_matches':
                     with fp.open(encoding='utf-8', errors='replace') as f:
@@ -613,8 +556,7 @@ class FileSystemTool(ToolBase):
                                 break
             except OSError:
                 continue
-            if output_mode != 'count' and len(
-                    lines_out) >= head_limit + offset + 5000:
+            if output_mode != 'count' and len(lines_out) >= head_limit + offset + 5000:
                 break
 
         if output_mode == 'count':
@@ -624,8 +566,7 @@ class FileSystemTool(ToolBase):
     async def glob(self, pattern: str, path: str = '') -> str:
         call_id = f'glob-{pattern[:40]}'
         raw = Path(path or '.').expanduser()
-        base = raw.resolve() if raw.is_absolute() else (self._ws.root
-                                                        / raw).resolve()
+        base = raw.resolve() if raw.is_absolute() else (self._ws.root / raw).resolve()
 
         if not base.is_dir():
             return json.dumps(
@@ -647,8 +588,7 @@ class FileSystemTool(ToolBase):
                 rp = p.resolve()
                 if _is_denied_path(rp, base, deny):
                     continue
-                rel = str(p.relative_to(self._ws.root)) if _is_relative(
-                    p, self._ws.root) else str(p)
+                rel = str(p.relative_to(self._ws.root)) if _is_relative(p, self._ws.root) else str(p)
                 matches.append(rel)
                 if len(matches) >= self._glob_max_files:
                     truncated = True
@@ -686,8 +626,7 @@ class FileSystemTool(ToolBase):
             s = s.replace(curly, straight)
         return s
 
-    def _preserve_quote_style(self, old_string: str, actual_old: str,
-                              new_string: str) -> str:
+    def _preserve_quote_style(self, old_string: str, actual_old: str, new_string: str) -> str:
         """If old_string matched via quote normalization, apply the same curly quotes to new_string."""
         if old_string == actual_old:
             return new_string
@@ -755,21 +694,17 @@ class FileSystemTool(ToolBase):
         # Check if path is absolute or already starts with output_dir
         if os.path.isabs(path):
             target_path = path
-        elif path.startswith(self.output_dir + os.sep) or path.startswith(
-                self.output_dir):
+        elif path.startswith(self.output_dir + os.sep) or path.startswith(self.output_dir):
             # Path already includes output_dir as prefix
             target_path = path
         else:
             target_path = os.path.join(self.output_dir, path)
         target_path_real = os.path.realpath(target_path)
         output_dir_real = os.path.realpath(self.output_dir)
-        is_in_output_dir = target_path_real.startswith(
-            output_dir_real + os.sep) or target_path_real == output_dir_real
+        is_in_output_dir = target_path_real.startswith(output_dir_real + os.sep) or target_path_real == output_dir_real
 
         if not is_in_output_dir and not self.allow_read_all_files:
-            logger.warning(
-                f'Attempt to read file outside output directory blocked: {path} -> {target_path_real}'
-            )
+            logger.warning(f'Attempt to read file outside output directory blocked: {path} -> {target_path_real}')
             return None
         else:
             return target_path_real
@@ -781,12 +716,8 @@ class FileSystemTool(ToolBase):
             if isinstance(paths, str) and paths.strip():
                 out = [paths.strip()]
             elif isinstance(paths, list):
-                out = [
-                    p.strip() for p in paths
-                    if isinstance(p, str) and p.strip()
-                ]
-        if not out and path is not None and isinstance(path,
-                                                       str) and path.strip():
+                out = [p.strip() for p in paths if isinstance(p, str) and p.strip()]
+        if not out and path is not None and isinstance(path, str) and path.strip():
             out = [path.strip()]
         return out
 
@@ -809,18 +740,21 @@ class FileSystemTool(ToolBase):
         if llm is None:
             return False
         from ms_agent.llm.vision import _as_bool
+
         for name in ('supports_vision', 'vision_supported'):
             value = getattr(llm, name, None)
             if value is not None:
                 return _as_bool(value)
         return False
 
-    async def read_file(self,
-                        paths: Optional[List[str]] = None,
-                        path: Optional[str] = None,
-                        offset: int = None,
-                        limit: int = None,
-                        abbreviate: bool = False):
+    async def read_file(
+        self,
+        paths: Optional[List[str]] = None,
+        path: Optional[str] = None,
+        offset: int = None,
+        limit: int = None,
+        abbreviate: bool = False,
+    ):
         """Read the content of file(s).
 
         Args:
@@ -837,11 +771,11 @@ class FileSystemTool(ToolBase):
         if not paths:
             return json.dumps(
                 {
-                    'success':
-                    False,
-                    'error':
-                    ('read_file requires `paths` (list of strings) or `path` (single string). '
-                     'Example: {"paths": ["a.md"]} or {"path": "a.md"}.'),
+                    'success': False,
+                    'error': (
+                        'read_file requires `paths` (list of strings) or `path` (single string). '
+                        'Example: {"paths": ["a.md"]} or {"path": "a.md"}.'
+                    ),
                 },
                 indent=2,
             )
@@ -853,8 +787,7 @@ class FileSystemTool(ToolBase):
         # alongside the text so the transports can put the pixels in the image
         # channel instead of stringifying them into the text one.
         image_refs: list = []
-        use_line_range = len(paths) == 1 and (offset is not None
-                                              or limit is not None)
+        use_line_range = len(paths) == 1 and (offset is not None or limit is not None)
 
         for path in paths:
             try:
@@ -862,7 +795,8 @@ class FileSystemTool(ToolBase):
                 if target_path_real is None:
                     results[path] = (
                         f'Access denied: Reading file <{path}> outside output directory is not allowed. '
-                        f'Set allow_read_all_files=true in config to enable.')
+                        f'Set allow_read_all_files=true in config to enable.'
+                    )
                     continue
 
                 ext = os.path.splitext(path)[1].lstrip('.').lower()
@@ -884,21 +818,24 @@ class FileSystemTool(ToolBase):
                     media_type = f'image/{ext}' if ext != 'jpg' else 'image/jpeg'
                     size = os.path.getsize(target_path_real)
                     if self._images_reach_the_model():
-                        image_refs.append({
-                            'type': 'image',
-                            'path': path,
-                            'media_type': media_type,
-                            'label': f'Image: {os.path.basename(path)}',
-                        })
+                        image_refs.append(
+                            {
+                                'type': 'image',
+                                'path': path,
+                                'media_type': media_type,
+                                'label': f'Image: {os.path.basename(path)}',
+                            }
+                        )
                         results[path] = {
                             'type': 'image',
                             'media_type': media_type,
                             'bytes': size,
                             'shown_as_image': True,
-                            'message':
-                            (f'This {media_type} image ({size} bytes) is '
-                             'attached below as an image. Read it from the '
-                             'image, not from this text.'),
+                            'message': (
+                                f'This {media_type} image ({size} bytes) is '
+                                'attached below as an image. Read it from the '
+                                'image, not from this text.'
+                            ),
                         }
                     else:
                         # The switch decides, and the tool has to agree with it.
@@ -911,12 +848,13 @@ class FileSystemTool(ToolBase):
                             'media_type': media_type,
                             'bytes': size,
                             'shown_as_image': False,
-                            'message':
-                            ('Image understanding is off for the current '
-                             'model, so this file cannot enter the '
-                             'conversation as an image and cannot be read as '
-                             'text either. Do not guess or infer its '
-                             'contents.'),
+                            'message': (
+                                'Image understanding is off for the current '
+                                'model, so this file cannot enter the '
+                                'conversation as an image and cannot be read as '
+                                'text either. Do not guess or infer its '
+                                'contents.'
+                            ),
                         }
                     continue
 
@@ -925,7 +863,8 @@ class FileSystemTool(ToolBase):
                 if file_size > self.MAX_READ_BYTES and not use_line_range:
                     results[path] = (
                         f'Error: File <{path}> is too large ({file_size} bytes). '
-                        f'Use offset and limit to read specific portions.')
+                        f'Use offset and limit to read specific portions.'
+                    )
                     continue
 
                 # Whether this path was read before, and looks the same. Used
@@ -942,9 +881,9 @@ class FileSystemTool(ToolBase):
                 # so this could withhold content that HAD changed.
                 mtime = os.path.getmtime(target_path_real)
                 cached = self._read_cache.get(target_path_real)
-                unchanged = bool(cached and cached['mtime'] == mtime
-                                 and cached['offset'] == offset
-                                 and cached['limit'] == limit)
+                unchanged = bool(
+                    cached and cached['mtime'] == mtime and cached['offset'] == offset and cached['limit'] == limit
+                )
 
                 with open(target_path_real, 'rb') as f:
                     raw_bytes = f.read()
@@ -953,8 +892,8 @@ class FileSystemTool(ToolBase):
                     content = raw_bytes.decode('utf-8')
                 except UnicodeDecodeError:
                     results[path] = (
-                        f'Error: File <{path}> appears to be binary. '
-                        f'Only text and image files are supported.')
+                        f'Error: File <{path}> appears to be binary. Only text and image files are supported.'
+                    )
                     continue
 
                 # Normalize line endings
@@ -964,15 +903,12 @@ class FileSystemTool(ToolBase):
 
                 if use_line_range:
                     actual_start = max(1, offset) if offset is not None else 1
-                    actual_end = min(
-                        actual_start + limit
-                        - 1, total_lines) if limit is not None else total_lines
+                    actual_end = min(actual_start + limit - 1, total_lines) if limit is not None else total_lines
 
                     if actual_start > total_lines:
-                        results[
-                            path] = f'Error: offset {offset} exceeds file length ({total_lines} lines)'
+                        results[path] = f'Error: offset {offset} exceeds file length ({total_lines} lines)'
                         continue
-                    selected = lines[actual_start - 1:actual_end]
+                    selected = lines[actual_start - 1 : actual_end]
                 else:
                     selected = lines
 
@@ -981,8 +917,7 @@ class FileSystemTool(ToolBase):
                     # Says the same thing the old stub said, without taking the
                     # content away to say it. The model can now decide for
                     # itself whether it still had this in context.
-                    body = ('[note: unchanged since your last read of this '
-                            'file]\n' + body)
+                    body = '[note: unchanged since your last read of this file]\n' + body
                 results[path] = body
 
                 # Update dedup cache
@@ -1026,10 +961,7 @@ class FileSystemTool(ToolBase):
 
                 messages = [
                     Message(role='system', content=self.system),
-                    Message(
-                        role='user',
-                        content='The content to be abbreviated:\n\n'
-                        + content),
+                    Message(role='user', content='The content to be abbreviated:\n\n' + content),
                 ]
                 response = self.llm.generate(messages=messages, stream=False)
                 os.makedirs(os.path.dirname(index_file), exist_ok=True)
@@ -1042,21 +974,16 @@ class FileSystemTool(ToolBase):
                 return path, f'Process file <{path}> failed, error: ' + str(e)
 
         with ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_path = {
-                executor.submit(process_file, p): p
-                for p in paths
-            }
+            future_to_path = {executor.submit(process_file, p): p for p in paths}
             for future in as_completed(future_to_path):
                 path, result = future.result()
                 results[path] = result
 
         return json.dumps(results, indent=2, ensure_ascii=False)
 
-    async def edit_file(self,
-                        path: str = None,
-                        old_string: str = None,
-                        new_string: str = None,
-                        replace_all: bool = False):
+    async def edit_file(
+        self, path: str = None, old_string: str = None, new_string: str = None, replace_all: bool = False
+    ):
         """Edit a file by replacing an exact string with new content.
 
         Args:
@@ -1084,8 +1011,7 @@ class FileSystemTool(ToolBase):
             if old_string == '':
                 if not os.path.exists(target_path_real):
                     # Create new file
-                    os.makedirs(
-                        os.path.dirname(target_path_real), exist_ok=True)
+                    os.makedirs(os.path.dirname(target_path_real), exist_ok=True)
                     with open(target_path_real, 'w', encoding='utf-8') as f:
                         f.write(new_string)
                     return f'Created file <{path}> successfully.'
@@ -1127,7 +1053,7 @@ class FileSystemTool(ToolBase):
                 norm_content = self._normalize_quotes(content)
                 idx = norm_content.find(norm_old)
                 if idx != -1:
-                    actual_old = content[idx:idx + len(old_string)]
+                    actual_old = content[idx : idx + len(old_string)]
 
             if actual_old is None:
                 return (
@@ -1143,12 +1069,10 @@ class FileSystemTool(ToolBase):
                 )
 
             # Apply quote style preservation to new_string
-            actual_new = self._preserve_quote_style(old_string, actual_old,
-                                                    new_string)
+            actual_new = self._preserve_quote_style(old_string, actual_old, new_string)
 
             # --- Fallback 3: smart delete — strip trailing newline when deleting ---
-            if actual_new == '' and not actual_old.endswith(
-                    '\n') and actual_old + '\n' in content:
+            if actual_new == '' and not actual_old.endswith('\n') and actual_old + '\n' in content:
                 actual_old = actual_old + '\n'
 
             # Strip trailing whitespace from new_string (skip markdown files)
@@ -1170,8 +1094,7 @@ class FileSystemTool(ToolBase):
             return f'Edit file <{path}> failed, error: ' + str(e)
 
 
-def _apply_offset_limit(lines: List[str], offset: int,
-                        head_limit: int) -> List[str]:
+def _apply_offset_limit(lines: List[str], offset: int, head_limit: int) -> List[str]:
     if offset:
         lines = lines[offset:]
     if head_limit and head_limit > 0:
@@ -1200,11 +1123,9 @@ def _is_denied_path(path: Path, root: Path, deny: tuple[str, ...]) -> bool:
     return False
 
 
-def _walk_files_limited(root: Path, deny: tuple[str, ...],
-                        max_files: int) -> List[Path]:
+def _walk_files_limited(root: Path, deny: tuple[str, ...], max_files: int) -> List[Path]:
     out: List[Path] = []
-    for dirpath, dirnames, filenames in os.walk(
-            root, topdown=True, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
         dp = Path(dirpath)
         pruned = []
         for d in list(dirnames):

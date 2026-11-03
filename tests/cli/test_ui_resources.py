@@ -91,19 +91,20 @@ def test_parallel_starts_prepare_node_dependencies_once(bundle, tmp_path, monkey
         (frontend / 'node_modules').mkdir()
 
     def prepare():
-        return resources.prepare_installed(root, common, (22, 23, 2),
-                                           skip_install=False, install_node=install)
+        return resources.prepare_installed(root, common, (22, 23, 2), skip_install=False, install_node=install)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         prepared = list(pool.map(lambda _: prepare(), range(2)))
     assert prepared[0] == prepared[1]
     assert len(calls) == 1
-    reused = resources.prepare_installed(root, common, (22, 23, 2), skip_install=True,
-                                         install_node=lambda *a, **kw: pytest.fail('must not install'))
+    reused = resources.prepare_installed(
+        root, common, (22, 23, 2), skip_install=True, install_node=lambda *a, **kw: pytest.fail('must not install')
+    )
     assert reused == prepared[0]
     with pytest.raises(resources.UIError, match='need preparation'):
-        resources.prepare_installed(root, common, (22, 24, 0), skip_install=True,
-                                    install_node=lambda *a, **kw: pytest.fail('must not install'))
+        resources.prepare_installed(
+            root, common, (22, 24, 0), skip_install=True, install_node=lambda *a, **kw: pytest.fail('must not install')
+        )
 
 
 def test_missing_backend_dependencies_names_matching_extra(monkeypatch):
@@ -114,11 +115,15 @@ def test_missing_backend_dependencies_names_matching_extra(monkeypatch):
 
 def test_backend_starts_without_optional_tool_and_embedding_packages(monkeypatch):
     optional = {
-        'ipykernel', 'jupyter_client', 'pyarrow', 'sklearn', 'seaborn',
-        'fastembed', 'loguru',
+        'ipykernel',
+        'jupyter_client',
+        'pyarrow',
+        'sklearn',
+        'seaborn',
+        'fastembed',
+        'loguru',
     }
-    monkeypatch.setattr(resources.importlib.util, 'find_spec',
-                        lambda name: None if name in optional else object())
+    monkeypatch.setattr(resources.importlib.util, 'find_spec', lambda name: None if name in optional else object())
     resources.check_backend_dependencies()
 
 
@@ -128,26 +133,34 @@ def test_source_wheel_builds_in_cache_once_and_recovers_failed_build(bundle, tmp
     (root / 'RESOURCE-MANIFEST.json').write_text(json.dumps(manifest))
     monkeypatch.setenv('MS_AGENT_WEBUI_CACHE', str(tmp_path / 'runtime'))
     monkeypatch.setattr(resources, 'check_backend_dependencies', lambda: None)
+
     class BuildError(RuntimeError):
         pass
+
     def validate(frontend):
         if not (frontend / 'build/ready').is_file():
             raise BuildError('missing build')
+
     common = SimpleNamespace(validate_build=validate, BuildError=BuildError)
     installs, builds = [], []
+
     def install(frontend, production):
         assert production is False
         installs.append(frontend)
         (frontend / 'node_modules').mkdir()
+
     def build(frontend):
         builds.append(frontend)
         if len(builds) == 1:
             raise BuildError('interrupted build')
         (frontend / 'build').mkdir()
         (frontend / 'build/ready').write_text('validated')
+
     def prepare(skip=False):
-        return resources.prepare_installed(root, common, (22, 23, 2),
-                                           skip_install=skip, install_node=install, build_frontend=build)
+        return resources.prepare_installed(
+            root, common, (22, 23, 2), skip_install=skip, install_node=install, build_frontend=build
+        )
+
     with pytest.raises(resources.UIError, match='need preparation'):
         prepare(skip=True)
     with pytest.raises(BuildError, match='interrupted'):
@@ -165,13 +178,20 @@ def test_invalid_prebuilt_wheel_is_not_silently_rebuilt(bundle, tmp_path, monkey
     root, _ = bundle
     monkeypatch.setenv('MS_AGENT_WEBUI_CACHE', str(tmp_path / 'runtime'))
     monkeypatch.setattr(resources, 'check_backend_dependencies', lambda: None)
+
     def fail(frontend):
         raise RuntimeError('corrupt release build')
+
     common = SimpleNamespace(validate_build=fail)
     with pytest.raises(RuntimeError, match='corrupt release'):
-        resources.prepare_installed(root, common, (22, 23, 2), skip_install=False,
-                                    install_node=lambda *a, **kw: pytest.fail('must not install'),
-                                    build_frontend=lambda *a: pytest.fail('must not rebuild'))
+        resources.prepare_installed(
+            root,
+            common,
+            (22, 23, 2),
+            skip_install=False,
+            install_node=lambda *a, **kw: pytest.fail('must not install'),
+            build_frontend=lambda *a: pytest.fail('must not rebuild'),
+        )
 
 
 @pytest.fixture
@@ -181,9 +201,8 @@ def traced(bundle, tmp_path, monkeypatch):
     monkeypatch.setenv('MS_AGENT_WEBUI_CACHE', str(tmp_path / 'runtime'))
     monkeypatch.setattr(resources, 'check_backend_dependencies', lambda: None)
     return SimpleNamespace(
-        bundled=root,
-        common=SimpleNamespace(validate_build=lambda directory: None),
-        cache=tmp_path / 'runtime')
+        bundled=root, common=SimpleNamespace(validate_build=lambda directory: None), cache=tmp_path / 'runtime'
+    )
 
 
 def _install_everything(frontend, production):
@@ -213,9 +232,9 @@ def test_tracing_replaces_the_installed_tree_with_its_closure(traced):
         installs.append(frontend)
         _install_everything(frontend, production)
 
-    prepared = resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                           skip_install=False, install_node=install,
-                                           trace_runtime=_fake_trace)
+    prepared = resources.prepare_installed(
+        traced.bundled, traced.common, (22, 23, 2), skip_install=False, install_node=install, trace_runtime=_fake_trace
+    )
     modules = prepared / 'frontend/node_modules'
     assert len(installs) == 1
     assert not (modules / 'unreachable.js').exists()
@@ -226,28 +245,42 @@ def test_tracing_replaces_the_installed_tree_with_its_closure(traced):
 
 
 def test_traced_cache_is_reused_by_a_plain_start(traced):
-    prepared = resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                           skip_install=False, install_node=_install_everything,
-                                           trace_runtime=_fake_trace)
+    prepared = resources.prepare_installed(
+        traced.bundled,
+        traced.common,
+        (22, 23, 2),
+        skip_install=False,
+        install_node=_install_everything,
+        trace_runtime=_fake_trace,
+    )
     # Exactly what the container does: CMD carries --skip-install and no tracing
     # request, because tracing already happened while the image was built. This
     # start must accept the tree it was shipped, not reject it as unprepared.
-    reused = resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                         skip_install=True,
-                                         install_node=lambda *a, **kw: pytest.fail('must not install'))
+    reused = resources.prepare_installed(
+        traced.bundled,
+        traced.common,
+        (22, 23, 2),
+        skip_install=True,
+        install_node=lambda *a, **kw: pytest.fail('must not install'),
+    )
     assert reused == prepared
 
 
 def test_untraced_cache_is_re_prepared_when_tracing_is_requested(traced):
-    resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                skip_install=False, install_node=_install_everything)
+    resources.prepare_installed(
+        traced.bundled, traced.common, (22, 23, 2), skip_install=False, install_node=_install_everything
+    )
     # The reverse of the case above must NOT hold: accepting the full tree here
     # is how the image would quietly go back to shipping 430 MB.
     with pytest.raises(resources.UIError, match='need preparation'):
-        resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                    skip_install=True,
-                                    install_node=lambda *a, **kw: pytest.fail('must not install'),
-                                    trace_runtime=lambda frontend: pytest.fail('must not trace'))
+        resources.prepare_installed(
+            traced.bundled,
+            traced.common,
+            (22, 23, 2),
+            skip_install=True,
+            install_node=lambda *a, **kw: pytest.fail('must not install'),
+            trace_runtime=lambda frontend: pytest.fail('must not trace'),
+        )
 
 
 def test_tracing_that_produced_no_closure_keeps_the_installed_tree(traced):
@@ -255,9 +288,14 @@ def test_tracing_that_produced_no_closure_keeps_the_installed_tree(traced):
         (frontend / 'build-runtime').mkdir()
 
     with pytest.raises(resources.UIError, match='no dependency closure'):
-        resources.prepare_installed(traced.bundled, traced.common, (22, 23, 2),
-                                    skip_install=False, install_node=_install_everything,
-                                    trace_runtime=trace_without_closure)
+        resources.prepare_installed(
+            traced.bundled,
+            traced.common,
+            (22, 23, 2),
+            skip_install=False,
+            install_node=_install_everything,
+            trace_runtime=trace_without_closure,
+        )
     frontend = next(traced.cache.glob('*/frontend'))
     # Nothing half-pruned, and no stamp claiming this tree is a closure: the next
     # attempt has to find it unprepared rather than serve an incomplete tree.

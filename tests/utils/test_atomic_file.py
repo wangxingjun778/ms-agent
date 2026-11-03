@@ -1,9 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Atomic whole-file writes: no torn content, no lost rename, no leftovers."""
+
 import json
 import threading
 
 import pytest
+
 from ms_agent.utils.atomic_file import atomic_write_json, atomic_write_text
 
 
@@ -46,8 +48,7 @@ def test_concurrent_writers_neither_fail_nor_corrupt(tmp_path):
     # Payloads are large so a torn write would span many buffer writes.
     path = tmp_path / 'shared.json'
     writers = 6
-    payloads = {i: {'id': f'w{i}', 'pad': str(i) * 100000}
-                for i in range(writers)}
+    payloads = {i: {'id': f'w{i}', 'pad': str(i) * 100000} for i in range(writers)}
     failures: list[BaseException] = []
     reads = 0
     lock = threading.Lock()
@@ -66,8 +67,7 @@ def test_concurrent_writers_neither_fail_nor_corrupt(tmp_path):
             except BaseException as exc:  # noqa: B902 - reported verbatim
                 failures.append(exc)
 
-    threads = [threading.Thread(target=hammer, args=(i,))
-               for i in range(writers)]
+    threads = [threading.Thread(target=hammer, args=(i,)) for i in range(writers)]
     for t in threads:
         t.start()
     for t in threads:

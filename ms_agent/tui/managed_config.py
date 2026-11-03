@@ -14,26 +14,30 @@ Semantics (respecting the runtime's existing same-name-replace merge):
   * Skill — managed sources appended to ``config.skills.sources`` (catalog dedups
             by skill_id), managed ``disabled`` unioned into ``config.skills.disabled``.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import re
-from omegaconf import OmegaConf
 from typing import Any, Dict, Optional
+
+from omegaconf import OmegaConf
 
 # UI/meta fields on a managed MCP entry that must not reach the runtime server
 # config (the runtime just connects whatever is in mcpServers).
-_MCP_META = frozenset({
-    'enabled',
-    'meta',
-    'source',
-    '_scope',
-    'mcp',
-    'implementation',
-    'trust_remote_code',
-    '_removed',
-})
+_MCP_META = frozenset(
+    {
+        'enabled',
+        'meta',
+        'source',
+        '_scope',
+        'mcp',
+        'implementation',
+        'trust_remote_code',
+        '_removed',
+    }
+)
 
 #: ``${NAME}`` placeholders in managed MCP entries (headers, args, url, env
 #: values). Deliberately braces-only — a bare ``$VAR`` in an arg stays what
@@ -50,8 +54,7 @@ def expand_env_placeholders(value: Any) -> Any:
     error instead of silently becoming an empty string.
     """
     if isinstance(value, str):
-        return _ENV_PLACEHOLDER_RE.sub(
-            lambda m: os.environ.get(m.group(1), m.group(0)), value)
+        return _ENV_PLACEHOLDER_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
     if isinstance(value, dict):
         return {k: expand_env_placeholders(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -70,6 +73,7 @@ def resolve_mcp_config(
     servers: Dict[str, Any] = {}
     try:
         from ms_agent.config import MCPConfigManager
+
         mm = MCPConfigManager(global_root=global_home, project_root=work_dir)
         # 'merged' requires a project_root; fall back to 'global' without one.
         scope = 'merged' if work_dir else 'global'
@@ -77,10 +81,7 @@ def resolve_mcp_config(
             entry = dict(entry)
             if entry.get('enabled', True) is False:
                 continue  # UI-disabled → do not connect
-            servers[name] = {
-                k: v
-                for k, v in entry.items() if k not in _MCP_META
-            }
+            servers[name] = {k: v for k, v in entry.items() if k not in _MCP_META}
     except Exception:
         # Everything above is one try, so a single malformed mcp.json silently
         # became "this agent has no MCP servers at all" — indistinguishable
@@ -88,19 +89,20 @@ def resolve_mcp_config(
         # from the outside. Still non-fatal (a broken file must not stop the
         # agent), but no longer invisible.
         from ms_agent.utils import get_logger
+
         get_logger().warning(
             'could not read the managed MCP configuration (global=%s, '
             'project=%s); continuing with no MCP servers from it',
             global_home,
             work_dir,
-            exc_info=True)
+            exc_info=True,
+        )
     # Explicit --mcp-server-file wins last (same-name replace).
     if explicit_file and os.path.isfile(explicit_file):
         try:
             with open(explicit_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            src = data.get('mcpServers', data) if isinstance(data,
-                                                             dict) else {}
+            src = data.get('mcpServers', data) if isinstance(data, dict) else {}
             if isinstance(src, dict):
                 servers.update(src)
         except Exception:
@@ -113,8 +115,7 @@ def resolve_mcp_config(
     return {'mcpServers': expand_env_placeholders(servers)}
 
 
-def merge_skills_into_config(config, global_home: str,
-                             work_dir: Optional[str]):
+def merge_skills_into_config(config, global_home: str, work_dir: Optional[str]):
     """Merge managed skill sources + disabled from skills.json into
     ``config.skills`` (in place, returns config). Catalog dedups by skill_id.
 
@@ -127,8 +128,8 @@ def merge_skills_into_config(config, global_home: str,
     """
     try:
         from ms_agent.config.skills_manager import SkillsConfigManager
-        merged = SkillsConfigManager(
-            global_dir=global_home).load_merged(work_dir)
+
+        merged = SkillsConfigManager(global_dir=global_home).load_merged(work_dir)
     except Exception:
         return config
     src_strings = merged.get('sources') or []
@@ -148,33 +149,24 @@ def merge_skills_into_config(config, global_home: str,
         yaml_disabled = list(stashed)
     else:
         # First merge: whatever disabled the config carries is the yaml layer.
-        yaml_disabled = list(getattr(skills, 'disabled', []) or []) \
-            if skills is not None else []
+        yaml_disabled = list(getattr(skills, 'disabled', []) or []) if skills is not None else []
 
-    base_sources = [
-        e for e in existing_sources
-        if not (isinstance(e, dict) and e.get('origin') == 'managed')
-    ]
+    base_sources = [e for e in existing_sources if not (isinstance(e, dict) and e.get('origin') == 'managed')]
 
     # Untouched only when nothing is managed NOW and nothing managed was
     # merged BEFORE (no stash, no managed-tagged entries) — a replay with an
     # emptied managed layer must still strip the previous contribution.
-    previously_merged = stashed is not None \
-        or len(base_sources) != len(existing_sources)
-    if not src_strings and not disabled and not previously_merged \
-            and not base_sources and not yaml_disabled:
+    previously_merged = stashed is not None or len(base_sources) != len(existing_sources)
+    if not src_strings and not disabled and not previously_merged and not base_sources and not yaml_disabled:
         return config
 
     combined_sources = base_sources + new_sources
     combined_disabled = list(dict.fromkeys(yaml_disabled + list(disabled)))
-    OmegaConf.update(
-        config, 'skills._yaml_disabled', yaml_disabled, merge=False)
+    OmegaConf.update(config, 'skills._yaml_disabled', yaml_disabled, merge=False)
     if combined_sources or existing_sources:
-        OmegaConf.update(
-            config, 'skills.sources', combined_sources, merge=False)
+        OmegaConf.update(config, 'skills.sources', combined_sources, merge=False)
     if combined_disabled or getattr(skills, 'disabled', None):
-        OmegaConf.update(
-            config, 'skills.disabled', combined_disabled, merge=False)
+        OmegaConf.update(config, 'skills.disabled', combined_disabled, merge=False)
     return config
 
 

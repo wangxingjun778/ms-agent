@@ -18,8 +18,7 @@ class BackgroundTask:
     tool_name: str  # which tool spawned this
     description: str
     status: str = 'running'  # 'running' | 'completed' | 'failed' | 'killed'
-    proc: Optional[Any] = field(
-        default=None, repr=False)  # mp.Process or asyncio.Task
+    proc: Optional[Any] = field(default=None, repr=False)  # mp.Process or asyncio.Task
     result: Optional[str] = None
     error: Optional[str] = None
     started_at: float = field(default_factory=time.monotonic)
@@ -55,9 +54,7 @@ class TaskManager:
             proc=proc,
         )
         self._tasks[task_id] = task
-        logger.info(
-            f'[TaskManager] registered {task_type} task {task_id}: {description}'
-        )
+        logger.info(f'[TaskManager] registered {task_type} task {task_id}: {description}')
         return task_id
 
     async def complete(self, task_id: str, result: str) -> None:
@@ -88,8 +85,7 @@ class TaskManager:
             try:
                 if isinstance(task.proc, mp.Process):
                     task.proc.terminate()
-                elif asyncio.isfuture(task.proc) or asyncio.iscoroutine(
-                        task.proc):
+                elif asyncio.isfuture(task.proc) or asyncio.iscoroutine(task.proc):
                     task.proc.cancel()
             except Exception as e:
                 logger.warning(f'[TaskManager] kill {task_id} failed: {e}')
@@ -124,11 +120,13 @@ class TaskManager:
         duration = ''
         if task.ended_at:
             duration = f'\n<duration_s>{task.ended_at - task.started_at:.1f}</duration_s>'
-        return (f'<task-notification>\n'
-                f'<task-id>{task.task_id}</task-id>\n'
-                f'<task-type>{task.task_type}</task-type>\n'
-                f'<tool-name>{task.tool_name}</tool-name>\n'
-                f'<description>{task.description}</description>\n'
-                f'<status>{task.status}</status>'
-                f'{result_line}{error_line}{duration}\n'
-                f'</task-notification>')
+        return (
+            f'<task-notification>\n'
+            f'<task-id>{task.task_id}</task-id>\n'
+            f'<task-type>{task.task_type}</task-type>\n'
+            f'<tool-name>{task.tool_name}</tool-name>\n'
+            f'<description>{task.description}</description>\n'
+            f'<status>{task.status}</status>'
+            f'{result_line}{error_line}{duration}\n'
+            f'</task-notification>'
+        )

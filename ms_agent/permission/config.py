@@ -7,8 +7,8 @@ dataclasses consumed by SafetyGuard and PermissionEnforcer.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 # Default safety rules baked into SafetyConfig when none are configured.
@@ -96,6 +96,7 @@ def default_temp_directories() -> tuple[str, ...]:
 @dataclass(frozen=True)
 class SafetyConfig:
     """Inner-layer safety configuration (non-bypassable)."""
+
     patterns: tuple[str, ...] = _DEFAULT_SAFETY_PATTERNS
     sensitive_paths: tuple[str, ...] = _DEFAULT_SENSITIVE_PATHS
     sensitive_read_paths: tuple[str, ...] = _DEFAULT_SENSITIVE_READ_PATHS
@@ -107,15 +108,11 @@ class SafetyConfig:
     allow_temp_dir: bool = True
 
     @classmethod
-    def from_dict(cls,
-                  d: dict[str, Any],
-                  project_root: str | None = None) -> SafetyConfig:
+    def from_dict(cls, d: dict[str, Any], project_root: str | None = None) -> SafetyConfig:
         patterns = tuple(d.get('patterns', _DEFAULT_SAFETY_PATTERNS))
         sensitive = tuple(d.get('sensitive_paths', _DEFAULT_SENSITIVE_PATHS))
-        sensitive_read = tuple(
-            d.get('sensitive_read_paths', _DEFAULT_SENSITIVE_READ_PATHS))
-        dangerous = tuple(
-            d.get('dangerous_removal_paths', _DEFAULT_DANGEROUS_REMOVAL))
+        sensitive_read = tuple(d.get('sensitive_read_paths', _DEFAULT_SENSITIVE_READ_PATHS))
+        dangerous = tuple(d.get('dangerous_removal_paths', _DEFAULT_DANGEROUS_REMOVAL))
 
         path_validation = d.get('path_validation', {})
         read_policy = path_validation.get('read_policy', 'loose')
@@ -145,8 +142,7 @@ class SafetyConfig:
             allow_temp_dir=bool(d.get('allow_temp_dir', True)),
         )
 
-    def effective_allowed_directories(
-            self, workspace_root: str) -> tuple[str, ...]:
+    def effective_allowed_directories(self, workspace_root: str) -> tuple[str, ...]:
         """Every directory writes are permitted in, workspace root first."""
         out = [workspace_root]
         for directory in self.allowed_directories:
@@ -184,6 +180,7 @@ _DEFAULT_ASK_RULES: tuple[str, ...] = (
 @dataclass(frozen=True)
 class PermissionConfig:
     """Top-level permission configuration from agent YAML."""
+
     mode: Literal['auto', 'strict', 'interactive'] = 'auto'
     whitelist: tuple[str, ...] = ()
     blacklist: tuple[str, ...] = _DEFAULT_BLACKLIST
@@ -194,9 +191,7 @@ class PermissionConfig:
     safety: SafetyConfig = SafetyConfig()
 
     @classmethod
-    def from_dict(cls,
-                  d: dict[str, Any],
-                  project_root: str | None = None) -> PermissionConfig:
+    def from_dict(cls, d: dict[str, Any], project_root: str | None = None) -> PermissionConfig:
         if not d:
             return cls()
 
@@ -209,14 +204,10 @@ class PermissionConfig:
         # Network-egress shell commands (curl/wget/ssh/...) are confirmed, not
         # refused. ``allow_network: true`` (or legacy ``no_default_blacklist``)
         # opts out of that confirmation; the user's own rules still apply.
-        allow_network = bool(
-            d.get('allow_network', False)
-            or d.get('no_default_blacklist', False))
+        allow_network = bool(d.get('allow_network', False) or d.get('no_default_blacklist', False))
         base_ask = () if allow_network else _DEFAULT_ASK_RULES
-        ask_rules = base_ask + tuple(
-            p for p in user_ask_rules if p not in base_ask)
-        blacklist = _DEFAULT_BLACKLIST + tuple(
-            p for p in user_blacklist if p not in _DEFAULT_BLACKLIST)
+        ask_rules = base_ask + tuple(p for p in user_ask_rules if p not in base_ask)
+        blacklist = _DEFAULT_BLACKLIST + tuple(p for p in user_blacklist if p not in _DEFAULT_BLACKLIST)
 
         safety_raw = d.get('safety_rules', {})
         # Merge directory configs from top level into safety config

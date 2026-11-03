@@ -17,12 +17,9 @@ def run_cmd():
 
     This cmd imports all other sub commands, for example, `run` and `app`.
     """
-    parser = argparse.ArgumentParser(
-        'ModelScope-agent Command Line tool',
-        usage='ms-agent <command> [<args>]')
+    parser = argparse.ArgumentParser('ModelScope-agent Command Line tool', usage='ms-agent <command> [<args>]')
 
-    subparsers = parser.add_subparsers(
-        help='ModelScope-agent commands helpers')
+    subparsers = parser.add_subparsers(help='ModelScope-agent commands helpers')
 
     A2ACmd.define_args(subparsers)
     A2ARegistryCmd.define_args(subparsers)
@@ -55,7 +52,8 @@ def run_cmd():
             parser.error(
                 f'unrecognized arguments: {" ".join(unknown)} '
                 '(`ms-agent agent` takes no positional arguments; '
-                'use --local-dir to specify a local directory)')
+                'use --local-dir to specify a local directory)'
+            )
         parser.error(f'unrecognized arguments: {" ".join(unknown)}')
     cmd.execute()
 

@@ -24,6 +24,7 @@ bytes); deterministic and idempotent (the watcher baselines the sanitized sha);
 outbound only (``sanitize_inbound_file`` also serves local ``convert`` writes,
 where redaction would strip the user's own keys from the converted agent).
 """
+
 from __future__ import annotations
 
 import base64
@@ -36,8 +37,8 @@ from collections import Counter, OrderedDict
 from typing import NamedTuple
 
 from ms_agent.utils.logger import get_logger
-from ._workspace import (scrub_json_secrets, scrub_toml_secrets,
-                         scrub_yaml_secrets)
+
+from ._workspace import scrub_json_secrets, scrub_toml_secrets, scrub_yaml_secrets
 
 logger = get_logger()
 
@@ -50,6 +51,7 @@ class Finding(NamedTuple):
     ``line`` is 1-based, or 0 for a Tier A structural scrub, which has no
     single location.
     """
+
     rel: str
     kind: str
     line: int
@@ -76,43 +78,55 @@ _VENDOR_TOKEN_RE = re.compile(
     r'|hf_[A-Za-z0-9]{20,}'  # HuggingFace
     r'|npm_[A-Za-z0-9]{20,}'  # npm
     r'|shpat_[A-Za-z0-9]{20,}'  # Shopify
-    r')')
+    r')'
+)
 
-_JWT_RE = re.compile(r'(?<![A-Za-z0-9_.\-])'
-                     r'eyJ[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}'
-                     r'\.[A-Za-z0-9_\-]{6,}')
+_JWT_RE = re.compile(
+    r'(?<![A-Za-z0-9_.\-])'
+    r'eyJ[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}'
+    r'\.[A-Za-z0-9_\-]{6,}'
+)
 
 # Case-SENSITIVE on purpose: lowercase "bearer" appears in prose
 # ("bearer credentials", "a bearer endpoint") and must not trigger a scan of
 # the following word.
-_BEARER_RE = re.compile(r'(?<![A-Za-z])Bearer[ \t]+'
-                        r'(?P<token>[A-Za-z0-9._~+/=\-]{8,})')
+_BEARER_RE = re.compile(
+    r'(?<![A-Za-z])Bearer[ \t]+'
+    r'(?P<token>[A-Za-z0-9._~+/=\-]{8,})'
+)
 
 # ``NAME: VALUE`` / ``NAME=VALUE`` with optional quoting on either side, so it
 # covers JSON, YAML, shell exports, Python assignments and markdown lists.
-_ASSIGN_RE = re.compile(r'(?P<vq1>["\']?)'
-                        r'(?P<name>[A-Za-z0-9_][A-Za-z0-9_.\-]{1,62})'
-                        r'(?P<vq2>["\']?)'
-                        r'(?P<sep>[ \t]*[:=][ \t]*)'
-                        r'(?P<vq3>["\']?)'
-                        r'(?P<val>[^\s"\'`,;)\]}>]+)')
+_ASSIGN_RE = re.compile(
+    r'(?P<vq1>["\']?)'
+    r'(?P<name>[A-Za-z0-9_][A-Za-z0-9_.\-]{1,62})'
+    r'(?P<vq2>["\']?)'
+    r'(?P<sep>[ \t]*[:=][ \t]*)'
+    r'(?P<vq3>["\']?)'
+    r'(?P<val>[^\s"\'`,;)\]}>]+)'
+)
 
 _FLAG_RE = re.compile(
     r'(?<![\w\-])-{1,2}(?P<name>[A-Za-z][A-Za-z0-9_.\-]{1,62})'
     r'(?:[= \t]+(?P<vq>["\']?)'
-    r'(?P<val>[^\s"\'`,;)\]}>]+))?')
+    r'(?P<val>[^\s"\'`,;)\]}>]+))?'
+)
 
 # Absolute URLs in free text. The charset stops at markdown/link punctuation
 # so `[doc](https://h/p)` and trailing ``.,;:`` are not swallowed.
-_FREE_URL_RE = re.compile(r'(?<![A-Za-z0-9_])'
-                          r'(?P<scheme>[A-Za-z][A-Za-z0-9+.\-]*://)'
-                          r'(?P<rest>[^\s`"\'<>()\[\]{},;|\\^]+)')
+_FREE_URL_RE = re.compile(
+    r'(?<![A-Za-z0-9_])'
+    r'(?P<scheme>[A-Za-z][A-Za-z0-9+.\-]*://)'
+    r'(?P<rest>[^\s`"\'<>()\[\]{},;|\\^]+)'
+)
 
 # A base64 payload that decodes to a secret ("decode this at runtime" persona
 # instructions). Bounded length keeps data URIs and minified bundles out.
-_BASE64_RE = re.compile(r'(?<![A-Za-z0-9+/=_\-])'
-                        r'(?P<blob>[A-Za-z0-9+/]{20,512}={0,2})'
-                        r'(?![A-Za-z0-9+/=])')
+_BASE64_RE = re.compile(
+    r'(?<![A-Za-z0-9+/=_\-])'
+    r'(?P<blob>[A-Za-z0-9+/]{20,512}={0,2})'
+    r'(?![A-Za-z0-9+/=])'
+)
 _BASE64_MAX_ATTEMPTS = 400
 
 # Documentation placeholders rather than credentials. Short common words
@@ -122,7 +136,9 @@ _BASE64_MAX_ATTEMPTS = 400
 _PLACEHOLDER_RE = re.compile(
     r'(?:your|yours|xxx+|yyy+|zzz+|example|dummy|fake|sample|placeholder|'
     r'changeme|change_me|redacted|todo|fixme|localhost|something|whatever|'
-    r'unknown|mysecret|secretvalue|000000|123456)', re.IGNORECASE)
+    r'unknown|mysecret|secretvalue|000000|123456)',
+    re.IGNORECASE,
+)
 
 # Characters marking a value as an expression, path or reference rather than a
 # credential (``keyvaultref:$SECRET_URI``, ``${API_KEY}``, ``/etc/keys/a.pem``).
@@ -145,7 +161,8 @@ _STRONG_NAME_RE = re.compile(
     r'id[_-]?tokens?|refresh[_-]?tokens?|token[_-]?file|'
     r'authorization|passphrases?|private[_-]?keys?|'
     r'auth[_-]?key|secret[_-]?key|master[_-]?key|signing[_-]?key)$',
-    re.IGNORECASE)
+    re.IGNORECASE,
+)
 
 # WEAK names are BARE singulars: they hold credentials in a memory note
 # ("gateway token: ...") but are also ordinary data fields
@@ -153,51 +170,57 @@ _STRONG_NAME_RE = re.compile(
 # word with a qualifier (``github_token``, ``db_password``) counts as strong.
 _WEAK_NAME_RE = re.compile(
     r'(?:^|[_\-.])(?:keys?|tokens?|secrets?|passwords?|passwd|'
-    r'credentials?|cookies?|bearer)$', re.IGNORECASE)
+    r'credentials?|cookies?|bearer)$',
+    re.IGNORECASE,
+)
 
-_WEAK_BARE_STEMS = frozenset((
-    'key',
-    'token',
-    'secret',
-    'password',
-    'passwd',
-    'credential',
-    'cookie',
-    'bearer',
-))
+_WEAK_BARE_STEMS = frozenset(
+    (
+        'key',
+        'token',
+        'secret',
+        'password',
+        'passwd',
+        'credential',
+        'cookie',
+        'bearer',
+    )
+)
 
 # Names that are never a trigger. The metadata spellings describe a secret
 # without being one.
-_NAME_DENY = frozenset((
-    # pagination / telemetry cursors
-    'page_token',
-    'next_token',
-    'next_page_token',
-    'continuation_token',
-    'cursor',
-    'page_cursor',
-    'session_id',
-    'request_id',
-    'trace_id',
-    'span_id',
-    'correlation_id',
-    # plural data fields
-    'tokens',
-    'keys',
-    'secrets',
-    'credentials',
-    'cookies',
-    # credential metadata
-    'key_id',
-    'key_name',
-    'key_type',
-    'key_path',
-    'key_alias',
-    'token_type',
-    'token_name',
-    'secret_name',
-    'secret_id',
-))
+_NAME_DENY = frozenset(
+    (
+        # pagination / telemetry cursors
+        'page_token',
+        'next_token',
+        'next_page_token',
+        'continuation_token',
+        'cursor',
+        'page_cursor',
+        'session_id',
+        'request_id',
+        'trace_id',
+        'span_id',
+        'correlation_id',
+        # plural data fields
+        'tokens',
+        'keys',
+        'secrets',
+        'credentials',
+        'cookies',
+        # credential metadata
+        'key_id',
+        'key_name',
+        'key_type',
+        'key_path',
+        'key_alias',
+        'token_type',
+        'token_name',
+        'secret_name',
+        'secret_id',
+    )
+)
 
 _DENY, WEAK, STRONG = 0, 1, 2
 
@@ -230,8 +253,7 @@ def _shannon_entropy(value: str) -> float:
     if not value:
         return 0.0
     total = len(value)
-    return -sum(
-        (c / total) * math.log2(c / total) for c in Counter(value).values())
+    return -sum((c / total) * math.log2(c / total) for c in Counter(value).values())
 
 
 # Lowercase snake_case / kebab-case is how a data value or a doc placeholder
@@ -353,17 +375,14 @@ def _redact_urls(text: str, hits: list) -> str:
             userinfo = authority[:at]
             user, colon, password = userinfo.partition(':')
             if colon and password and _looks_real(password, quoted=False):
-                authority = (f'{user}:{_marker("password")}@'
-                             + authority[at + 1:])
+                authority = f'{user}:{_marker("password")}@' + authority[at + 1 :]
                 changed = True
-                hits.append(('password', _line_of(text,
-                                                  m.start()), 'userinfo'))
-            elif not colon and userinfo and _looks_real(
-                    userinfo, quoted=False):
+                hits.append(('password', _line_of(text, m.start()), 'userinfo'))
+            elif not colon and userinfo and _looks_real(userinfo, quoted=False):
                 # Colon-less userinfo is how PAT-style tokens travel
                 # (``https://ghp_xxx@host``) and cannot be told from a
                 # username, so fail closed.
-                authority = f'{_marker("token")}@' + authority[at + 1:]
+                authority = f'{_marker("token")}@' + authority[at + 1 :]
                 changed = True
                 hits.append(('token', _line_of(text, m.start()), ''))
         if '?' in tail:
@@ -376,8 +395,7 @@ def _redact_urls(text: str, hits: list) -> str:
             for pair in query.split('&'):
                 name, eq, value = pair.partition('=')
                 strength = name_strength(name) if eq else _DENY
-                if strength > _DENY and _looks_real(
-                        value, quoted=True, strength=strength):
+                if strength > _DENY and _looks_real(value, quoted=True, strength=strength):
                     pairs.append(f'{name}={_marker("api_key")}')
                     changed = True
                     hits.append(('api_key', _line_of(text, m.start()), name))
@@ -401,11 +419,12 @@ def _redact_assignments(text: str, hits: list) -> str:
             return m.group(0)
         if not _looks_real(value, quoted=quoted, strength=strength):
             return m.group(0)
-        hits.append(('credential', _line_of(text,
-                                            m.start('val')), m.group('name')))
-        return (f"{m.group('vq1')}{m.group('name')}{m.group('vq2')}"
-                f"{m.group('sep')}{m.group('vq3')}{_marker('credential')}"
-                f"{m.group('vq3')}")
+        hits.append(('credential', _line_of(text, m.start('val')), m.group('name')))
+        return (
+            f'{m.group("vq1")}{m.group("name")}{m.group("vq2")}'
+            f'{m.group("sep")}{m.group("vq3")}{_marker("credential")}'
+            f'{m.group("vq3")}'
+        )
 
     return _ASSIGN_RE.sub(repl, text)
 
@@ -423,8 +442,7 @@ def _redact_flags(text: str, hits: list) -> str:
         if not _looks_real(value, quoted=quoted, strength=strength):
             return m.group(0)
         hits.append(('flag', _line_of(text, m.start('val')), m.group('name')))
-        return (f"--{m.group('name')}={m.group('vq')}{_marker('flag')}"
-                f"{m.group('vq')}")
+        return f'--{m.group("name")}={m.group("vq")}{_marker("flag")}{m.group("vq")}'
 
     return _FLAG_RE.sub(repl, text)
 
@@ -446,7 +464,7 @@ def _redact_base64(text: str, hits: list) -> str:
         if attempts >= _BASE64_MAX_ATTEMPTS:
             return m.group(0)
         attempts += 1
-        if text[max(0, start - 5):start].endswith('data:'):
+        if text[max(0, start - 5) : start].endswith('data:'):
             return m.group(0)
         try:
             decoded = base64.b64decode(blob, validate=True)
@@ -481,7 +499,9 @@ _PREFILTER_RE = re.compile(
     r'(?:sk-|gh[pousr]_|github_pat_|glpat-|xox[baprs]-|AKIA|AIza|hf_|npm_|'
     r'shpat_|eyJ|[Bb]earer|://|'
     r'key|keys|token|tokens|secret|secrets|password|passwd|credential|'
-    r'credentials|authorization|cookie|cookies)', re.IGNORECASE)
+    r'credentials|authorization|cookie|cookies)',
+    re.IGNORECASE,
+)
 
 
 def redact_text(text: str) -> tuple[str, tuple[tuple[str, int, str], ...]]:
@@ -513,19 +533,22 @@ def redact_text(text: str) -> tuple[str, tuple[tuple[str, int, str], ...]]:
 # ---------------------------------------------------------------------------
 
 _JSON_CONFIG_NAMES = frozenset(('mcp.json', 'settings.json', 'agent.json'))
-_YAML_CONFIG_NAMES = frozenset(
-    ('config.yaml', 'config.yml', 'mcp.yaml', 'mcp.yml'))
+_YAML_CONFIG_NAMES = frozenset(('config.yaml', 'config.yml', 'mcp.yaml', 'mcp.yml'))
 _TOML_CONFIG_NAMES = frozenset(('config.toml', 'mcp.toml'))
-_MCP_JSON_SUFFIXES = ('.mcp.json', )
+_MCP_JSON_SUFFIXES = ('.mcp.json',)
 
 _MCP_ROOT_KEYS = frozenset(('mcpServers', 'mcp_servers', 'mcpservers'))
 
 _YAML_MCP_SHAPE_RE = re.compile(
     r'^[ \t]*["\']?(?:mcpServers|mcp_servers)'
-    r'["\']?[ \t]*:', re.MULTILINE)
+    r'["\']?[ \t]*:',
+    re.MULTILINE,
+)
 _TOML_MCP_SHAPE_RE = re.compile(
     r'(?:^[ \t]*\[{1,2}[^\]\n]*\b(?:mcpServers|mcp_servers)\b'
-    r'|^[ \t]*(?:mcpServers|mcp_servers)[ \t]*=)', re.MULTILINE)
+    r'|^[ \t]*(?:mcpServers|mcp_servers)[ \t]*=)',
+    re.MULTILINE,
+)
 
 
 def _json_has_mcp(obj) -> bool:
@@ -552,8 +575,7 @@ def _scrub_json_mcp_subtrees(obj) -> bool:
             if key in _MCP_ROOT_KEYS and isinstance(val, dict):
                 before = json.dumps(val, sort_keys=True, ensure_ascii=False)
                 scrub_json_secrets(val)
-                if json.dumps(
-                        val, sort_keys=True, ensure_ascii=False) != before:
+                if json.dumps(val, sort_keys=True, ensure_ascii=False) != before:
                     changed = True
             elif _scrub_json_mcp_subtrees(val):
                 changed = True
@@ -564,8 +586,7 @@ def _scrub_json_mcp_subtrees(obj) -> bool:
     return changed
 
 
-def _redact_config(rel_path: str, text: str, hits: list[tuple[str, int,
-                                                              str]]) -> str:
+def _redact_config(rel_path: str, text: str, hits: list[tuple[str, int, str]]) -> str:
     """Tier A: structural cleaning of a config-shaped file at any path.
 
     Best effort: a config that fails to parse falls through to Tier B instead
@@ -575,8 +596,7 @@ def _redact_config(rel_path: str, text: str, hits: list[tuple[str, int,
     """
     base = rel_path.rsplit('/', 1)[-1].lower()
     if base.endswith('.json') or base.endswith('.jsonl'):
-        is_known = base in _JSON_CONFIG_NAMES or base.endswith(
-            _MCP_JSON_SUFFIXES)
+        is_known = base in _JSON_CONFIG_NAMES or base.endswith(_MCP_JSON_SUFFIXES)
         try:
             data = json.loads(text)
         except (ValueError, RecursionError):
@@ -593,16 +613,14 @@ def _redact_config(rel_path: str, text: str, hits: list[tuple[str, int,
             return json.dumps(data, ensure_ascii=False, indent=2)
         return text
     if base.endswith(('.yaml', '.yml')):
-        if base not in _YAML_CONFIG_NAMES \
-                and not _YAML_MCP_SHAPE_RE.search(text):
+        if base not in _YAML_CONFIG_NAMES and not _YAML_MCP_SHAPE_RE.search(text):
             return text
         cleaned = scrub_yaml_secrets(text)
         if cleaned != text:
             hits.append(('config', 0, base))
         return cleaned
     if base.endswith('.toml'):
-        if base not in _TOML_CONFIG_NAMES \
-                and not _TOML_MCP_SHAPE_RE.search(text):
+        if base not in _TOML_CONFIG_NAMES and not _TOML_MCP_SHAPE_RE.search(text):
             return text
         cleaned = scrub_toml_secrets(text)
         if cleaned != text:
@@ -620,8 +638,7 @@ def _redact_config(rel_path: str, text: str, hits: list[tuple[str, int,
 # per-file size to keep the daemon's footprint flat.
 _MEMO_MAX_ENTRIES = 128
 _MEMO_MAX_FILE_SIZE = 128 * 1024
-_memo: 'OrderedDict[tuple[str, str], tuple[bytes, tuple[Finding, ...]]]' = \
-    OrderedDict()
+_memo: 'OrderedDict[tuple[str, str], tuple[bytes, tuple[Finding, ...]]]' = OrderedDict()
 
 
 def _redact(rel_path: str, raw: bytes) -> tuple[bytes, tuple[Finding, ...]]:
@@ -637,12 +654,10 @@ def _redact(rel_path: str, raw: bytes) -> tuple[bytes, tuple[Finding, ...]]:
     if not hits:
         # Byte identity matters: see the module contract.
         return raw, ()
-    return out.encode('utf-8'), tuple(
-        Finding(rel_path, kind, line, name) for kind, line, name in hits)
+    return out.encode('utf-8'), tuple(Finding(rel_path, kind, line, name) for kind, line, name in hits)
 
 
-def redact_outbound(rel_path: str,
-                    raw: bytes) -> tuple[bytes, tuple[Finding, ...]]:
+def redact_outbound(rel_path: str, raw: bytes) -> tuple[bytes, tuple[Finding, ...]]:
     """Redact secrets in one collected file, by content rather than by path.
 
     Runs after the framework's own :meth:`sanitize_outbound_file` hook and
@@ -666,8 +681,5 @@ def redact_outbound(rel_path: str,
                 _memo.popitem(last=False)
         return result
     except Exception:
-        logger.debug(
-            'Secret redaction failed for %s; uploading as-is.',
-            rel_path,
-            exc_info=True)
+        logger.debug('Secret redaction failed for %s; uploading as-is.', rel_path, exc_info=True)
         return raw, ()

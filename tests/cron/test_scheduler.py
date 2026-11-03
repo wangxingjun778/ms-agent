@@ -1,4 +1,5 @@
 """Tests for ms_agent.cron.scheduler."""
+
 import asyncio
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -54,9 +55,7 @@ class TestAsyncScheduler:
 
     @pytest.mark.asyncio
     async def test_due_job_detected(self, repo):
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='due1', name='Due Job', prompt='test')
         state = CronJobState(status='scheduled', next_run_at=past)
         repo.save_job_and_state(job, state)
@@ -74,9 +73,7 @@ class TestAsyncScheduler:
 
     @pytest.mark.asyncio
     async def test_future_job_not_due(self, repo):
-        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='future1', name='Future Job', prompt='test')
         state = CronJobState(status='scheduled', next_run_at=future)
         repo.save_job_and_state(job, state)
@@ -92,9 +89,7 @@ class TestAsyncScheduler:
 
     @pytest.mark.asyncio
     async def test_paused_job_skipped(self, repo):
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='paused1', name='Paused Job', prompt='test')
         state = CronJobState(status='paused', next_run_at=past)
         repo.save_job_and_state(job, state)
@@ -114,9 +109,7 @@ class TestAsyncScheduler:
         # still looks "due". manual_tick must NOT re-dispatch it, otherwise the
         # same job runs twice concurrently. Regression for the manual_tick /
         # _on_tick status-filter divergence.
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='run1', name='Running Job', prompt='test')
         state = CronJobState(status='running', next_run_at=past)
         repo.save_job_and_state(job, state)
@@ -135,9 +128,7 @@ class TestAsyncScheduler:
     async def test_completed_job_skipped_by_manual_tick(self, repo):
         # Force a past next_run_at so the status filter is what skips it, not
         # the incidental next_run_at=None that completed jobs normally carry.
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='done1', name='Completed Job', prompt='test')
         state = CronJobState(status='completed', next_run_at=past)
         repo.save_job_and_state(job, state)
@@ -154,9 +145,7 @@ class TestAsyncScheduler:
 
     @pytest.mark.asyncio
     async def test_disabled_job_skipped(self, repo):
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
-            '%Y-%m-%dT%H:%M:%S+00:00'
-        )
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime('%Y-%m-%dT%H:%M:%S+00:00')
         job = CronJobSpec(id='dis1', name='Disabled', enabled=False, prompt='test')
         state = CronJobState(status='scheduled', next_run_at=past)
         repo.save_job_and_state(job, state)

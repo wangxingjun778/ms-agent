@@ -1,8 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from omegaconf import DictConfig
 from typing import Any, List, Union
 
+from omegaconf import DictConfig
+
 from ms_agent.llm import Message
+
 from .base import Agent
 
 
@@ -11,16 +13,11 @@ class CodeAgent(Agent):
 
     AGENT_NAME = 'CodeAgent'
 
-    def __init__(self,
-                 config: DictConfig,
-                 tag: str,
-                 trust_remote_code: bool = False,
-                 **kwargs):
+    def __init__(self, config: DictConfig, tag: str, trust_remote_code: bool = False, **kwargs):
         super().__init__(config, tag, trust_remote_code, **kwargs)
         self.load_cache = kwargs.get('load_cache', False)
 
-    async def run(self, inputs: Union[str, List[Message]],
-                  **kwargs) -> List[Message]:
+    async def run(self, inputs: Union[str, List[Message]], **kwargs) -> List[Message]:
         """Run the external code. Default implementation here does nothing.
 
         Args:
@@ -41,6 +38,5 @@ class CodeAgent(Agent):
         self.save_history(messages, **kwargs)
         return messages
 
-    async def execute_code(self, inputs: Union[str, List[Message]],
-                           **kwargs) -> List[Message]:
+    async def execute_code(self, inputs: Union[str, List[Message]], **kwargs) -> List[Message]:
         return inputs

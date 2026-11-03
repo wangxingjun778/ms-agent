@@ -11,14 +11,14 @@ and never written into a store whose owner has let go of it.
 * retrieval takes that lock too, so it cannot read a store mid-write;
 * a closed orchestrator must not be reopened by a straggling ingest.
 """
+
 import asyncio
 
 import pytest
 
 from ms_agent.llm.utils import Message
 from ms_agent.memory.unified.config import MemoryConfig
-from ms_agent.memory.unified.orchestrator import (MemoryOrchestrator,
-                                                  _store_lock)
+from ms_agent.memory.unified.orchestrator import MemoryOrchestrator, _store_lock
 
 
 class SlowBackend:
@@ -63,18 +63,14 @@ class SlowBackend:
 
 
 def _orch(tmp_path, backend, **cfg):
-    orch = MemoryOrchestrator(
-        MemoryConfig(base_dir=str(tmp_path), storage_backend='file', **cfg))
+    orch = MemoryOrchestrator(MemoryConfig(base_dir=str(tmp_path), storage_backend='file', **cfg))
     orch._backend = backend
     orch._started = True
     return orch
 
 
 def _round(user, assistant):
-    return [
-        Message(role='user', content=user),
-        Message(role='assistant', content=assistant)
-    ]
+    return [Message(role='user', content=user), Message(role='assistant', content=assistant)]
 
 
 def test_interrupt_does_not_swallow_an_ingest_in_flight(tmp_path):
@@ -216,11 +212,7 @@ def test_reconfigure_keeps_the_instance_usable(tmp_path):
     orch = _orch(tmp_path, backend)
 
     async def main():
-        await orch.reconfigure(
-            MemoryConfig(
-                base_dir=str(tmp_path),
-                storage_backend='file',
-                memory_path='OTHER.md'))
+        await orch.reconfigure(MemoryConfig(base_dir=str(tmp_path), storage_backend='file', memory_path='OTHER.md'))
         assert orch._closed is False
         # A fresh backend is built on demand from the new config.
         orch._backend, orch._started = backend, True

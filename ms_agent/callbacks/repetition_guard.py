@@ -12,8 +12,9 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from omegaconf import DictConfig
 from typing import List
+
+from omegaconf import DictConfig
 
 from ms_agent.agent.runtime import Runtime
 from ms_agent.callbacks.base import Callback
@@ -37,14 +38,16 @@ _STRATEGY_PROMPT = (
     '3. Use a different tool or a different command to achieve the same goal.\n'
     '4. Read error messages carefully — they often suggest specific fixes.\n'
     '5. If a dependency is missing, install it before retrying.\n\n'
-    'Do NOT repeat the same command again.')
+    'Do NOT repeat the same command again.'
+)
 
 _FORCE_STOP_PROMPT = (
     'You have been warned multiple times about repeating the same approach, '
     'but continue to retry the same failing action. '
     'To conserve resources, execution is being stopped. '
     'Please review the errors above and formulate a new plan before '
-    'the next attempt.')
+    'the next attempt.'
+)
 
 
 @dataclass(frozen=True)
@@ -57,8 +60,7 @@ class _Repetition:
 
 def _args_hash(arguments: str) -> str:
     try:
-        parsed = json.loads(arguments) if isinstance(arguments,
-                                                     str) else arguments
+        parsed = json.loads(arguments) if isinstance(arguments, str) else arguments
     except (json.JSONDecodeError, TypeError):
         parsed = arguments
     canonical = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
@@ -71,17 +73,13 @@ class RepetitionGuardCallback(Callback):
     def __init__(self, config: DictConfig) -> None:
         super().__init__(config)
         guard_cfg = getattr(config, 'repetition_guard', None) or {}
-        self.threshold: int = int(
-            guard_cfg.get('threshold', _DEFAULT_THRESHOLD))
-        self.lookback: int = int(
-            guard_cfg.get('lookback_rounds', _DEFAULT_LOOKBACK))
-        self.max_warnings: int = int(
-            guard_cfg.get('max_warnings', _DEFAULT_MAX_WARNINGS))
+        self.threshold: int = int(guard_cfg.get('threshold', _DEFAULT_THRESHOLD))
+        self.lookback: int = int(guard_cfg.get('lookback_rounds', _DEFAULT_LOOKBACK))
+        self.max_warnings: int = int(guard_cfg.get('max_warnings', _DEFAULT_MAX_WARNINGS))
         self._warnings_given: int = 0
         self._warned_keys: set[str] = set()
 
-    async def after_tool_call(self, runtime: Runtime,
-                              messages: List[Message]) -> None:
+    async def after_tool_call(self, runtime: Runtime, messages: List[Message]) -> None:
         if self._warnings_given >= self.max_warnings:
             logger.info(
                 '[RepetitionGuard] Max warnings (%d) reached — forcing stop.',
@@ -102,8 +100,7 @@ class RepetitionGuardCallback(Callback):
         self._warned_keys.add(repetition.key)
         self._warnings_given += 1
         logger.info(
-            '[RepetitionGuard] Stuck loop detected (%s, %dx). Injecting strategy prompt. '
-            'Warning %d/%d.',
+            '[RepetitionGuard] Stuck loop detected (%s, %dx). Injecting strategy prompt. Warning %d/%d.',
             repetition.tool_name,
             repetition.count,
             self._warnings_given,

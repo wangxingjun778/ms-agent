@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import Any
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from typing import Any
 
 from ms_agent.utils.logger import get_logger
+
 from .errors import wrap_a2a_error
 from .session_store import A2AAgentStore
 from .translator import extract_text_from_a2a_message, ms_messages_to_text
@@ -25,8 +27,7 @@ def configure_a2a_logging(log_file: str | None = None) -> None:
     else:
         handler = logging.StreamHandler(sys.stderr)
 
-    fmt = logging.Formatter(
-        '%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+    fmt = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
     handler.setFormatter(fmt)
 
     root = logging.getLogger()
@@ -97,6 +98,7 @@ class MSAgentA2AExecutor(AgentExecutor):
                 response_text = ms_messages_to_text(entry.messages)
                 if not response_text:
                     from .translator import collect_full_response
+
                     response_text = collect_full_response(entry.messages)
 
                 if response_text:
@@ -111,14 +113,14 @@ class MSAgentA2AExecutor(AgentExecutor):
                             '(Agent completed with no text output)',
                             task.context_id,
                             task.id,
-                        ))
+                        )
+                    )
 
             finally:
                 entry.is_running = False
 
         except Exception as e:
-            logger.error(
-                'A2A execute error for task %s: %s', task.id, e, exc_info=True)
+            logger.error('A2A execute error for task %s: %s', task.id, e, exc_info=True)
             err_info = wrap_a2a_error(e)
             try:
                 await updater.failed(
@@ -126,7 +128,8 @@ class MSAgentA2AExecutor(AgentExecutor):
                         f'Error: {err_info["message"]}',
                         task.context_id,
                         task.id,
-                    ))
+                    )
+                )
             except Exception:
                 logger.warning('Failed to send error status', exc_info=True)
 

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """LLMAgent.set_permission_mode: live mode switch used by the TUI /permission."""
+
 import pytest
 
 from ms_agent.agent.llm_agent import LLMAgent

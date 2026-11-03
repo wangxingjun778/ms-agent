@@ -21,7 +21,6 @@ def _parse_ui_args(*extra_args):
     return parser.parse_args(['ui'] + list(extra_args))
 
 
-
 def test_ui_parser_defaults_use_automatic_ssr_ports():
     args = _parse_ui_args()
 
@@ -34,12 +33,10 @@ def test_ui_parser_defaults_use_automatic_ssr_ports():
     assert args.no_browser is False
 
 
-
 @pytest.mark.parametrize('value', ['0', '-1', '65536', 'not-a-port'])
 def test_ui_parser_rejects_invalid_ports(value):
     with pytest.raises(SystemExit):
         _parse_ui_args('--port', value)
-
 
 
 def test_read_semantic_version_accepts_node_prefix(monkeypatch):
@@ -51,8 +48,7 @@ def test_read_semantic_version_accepts_node_prefix(monkeypatch):
 
     monkeypatch.setattr(ui.subprocess, 'run', fake_run)
 
-    assert ui._read_semantic_version('/tools/node', '--version',
-                                     'Node.js') == (22, 22, 0)
+    assert ui._read_semantic_version('/tools/node', '--version', 'Node.js') == (22, 22, 0)
     assert calls == [
         (
             ['/tools/node', '--version'],
@@ -68,7 +64,6 @@ def test_read_semantic_version_accepts_node_prefix(monkeypatch):
     ]
 
 
-
 def test_read_semantic_version_rejects_unparseable_output(monkeypatch):
     monkeypatch.setattr(
         ui.subprocess,
@@ -78,7 +73,6 @@ def test_read_semantic_version_rejects_unparseable_output(monkeypatch):
 
     with pytest.raises(ui.UIError, match='Could not parse the pnpm version'):
         ui._read_semantic_version('pnpm', '--version', 'pnpm')
-
 
 
 def test_windows_command_script_uses_native_shell_for_version(monkeypatch):
@@ -91,11 +85,8 @@ def test_windows_command_script_uses_native_shell_for_version(monkeypatch):
     monkeypatch.setattr(ui, 'IS_WINDOWS', True)
     monkeypatch.setattr(ui.subprocess, 'run', fake_run)
 
-    assert ui._read_semantic_version(
-        r'C:\Program Files\nodejs\pnpm.cmd', '--version', 'pnpm') == (
-            10, 17, 1)
+    assert ui._read_semantic_version(r'C:\Program Files\nodejs\pnpm.cmd', '--version', 'pnpm') == (10, 17, 1)
     assert calls[0][1]['shell'] is True
-
 
 
 def test_tool_versions_accept_supported_node_and_pnpm(monkeypatch, tmp_path):
@@ -128,20 +119,17 @@ def test_tool_versions_accept_supported_node_and_pnpm(monkeypatch, tmp_path):
     assert probes[0]['cwd'] is None
 
 
-
 def test_tool_versions_do_not_require_pnpm_when_install_is_skipped(monkeypatch):
     calls = []
     monkeypatch.setattr(
         ui,
         '_read_semantic_version',
-        lambda executable, flag, label, cwd=None: calls.append(label) or
-        (22, 22, 0),
+        lambda executable, flag, label, cwd=None: calls.append(label) or (22, 22, 0),
     )
 
     ui._check_tool_versions({'node': '/tools/node'})
 
     assert calls == ['Node.js']
-
 
 
 @pytest.mark.parametrize(
@@ -172,7 +160,6 @@ def test_tool_versions_reject_unsupported_versions(
         ui._check_tool_versions({'node': 'node', 'pnpm': 'pnpm'})
 
 
-
 @pytest.mark.parametrize(
     ('stdout', 'expected'),
     [
@@ -183,11 +170,9 @@ def test_tool_versions_reject_unsupported_versions(
         # read "20.1" here and rejected a valid pnpm as "found 20.1.0".
         ('WARN Node.js 20.1 is deprecated\n10.17.1\n', (10, 17, 1)),
         # Corepack announces the download of the pinned pnpm before printing it.
-        ('! Corepack is about to download pnpm-10.17.1.tgz\n10.17.1\n',
-         (10, 17, 1)),
+        ('! Corepack is about to download pnpm-10.17.1.tgz\n10.17.1\n', (10, 17, 1)),
         # uv tells you a newer version exists; that is not the version you have.
-        ('warning: uv 0.12.9 is available (you have 0.12.1)\nuv 0.12.1\n',
-         (0, 12, 1)),
+        ('warning: uv 0.12.9 is available (you have 0.12.1)\nuv 0.12.1\n', (0, 12, 1)),
         # A version-manager / conda preamble with a dotted number.
         ('Anaconda3 2024.02 activated\n10.17.1\n', (10, 17, 1)),
         ('  \n\nv26.0.0\n  \n', (26, 0, 0)),
@@ -197,11 +182,9 @@ def test_semantic_version_ignores_preamble_noise(stdout, expected):
     assert ui._parse_semantic_version(stdout, 'pnpm', '/tools/pnpm') == expected
 
 
-
 def test_semantic_version_error_names_the_executable():
     with pytest.raises(ui.UIError, match=r'/tools/pnpm'):
         ui._parse_semantic_version('no version here\n', 'pnpm', '/tools/pnpm')
-
 
 
 def test_min_node_version_matches_package_json_engines():
@@ -209,11 +192,11 @@ def test_min_node_version_matches_package_json_engines():
     gates before any Node tooling can read the manifest). This lock is what
     keeps the two from drifting apart silently."""
     import re
+
     engines = _frontend_package_json()['engines']['node']
     match = re.fullmatch(r'>=(\d+)\.(\d+)\.(\d+)', engines)
     assert match, f'unexpected engines.node format: {engines!r}'
     assert tuple(int(p) for p in match.groups()) == ui.MIN_NODE_VERSION
-
 
 
 def test_pnpm_major_gate_matches_package_manager_pin():
@@ -223,7 +206,6 @@ def test_pnpm_major_gate_matches_package_manager_pin():
     pinned = pkg['packageManager']
     assert pinned.startswith('pnpm@10.'), pinned
     assert pkg['engines']['pnpm'] == '>=10 <11'
-
 
 
 def test_tool_versions_reject_old_uv_with_path(monkeypatch):
@@ -238,17 +220,18 @@ def test_tool_versions_reject_old_uv_with_path(monkeypatch):
     )
 
     with pytest.raises(ui.UIError) as excinfo:
-        ui._check_tool_versions({
-            'node': '/tools/node',
-            'uv': '/tools/uv',
-        })
+        ui._check_tool_versions(
+            {
+                'node': '/tools/node',
+                'uv': '/tools/uv',
+            }
+        )
 
     message = str(excinfo.value)
     assert 'uv 0.5.0 or newer' in message
     # The resolved path is the actionable part: "installed it, but PATH found
     # another one" is indistinguishable from a bare version number.
     assert '/tools/uv' in message
-
 
 
 def test_production_flag_is_a_compatibility_alias():
@@ -296,10 +279,8 @@ def _prepare_installed_kwargs(monkeypatch, trace_env=None):
     monkeypatch.setattr(ui, 'find_webui', lambda: (Path('/webui'), True))
     monkeypatch.setattr(ui, 'load_common', lambda webui: SimpleNamespace())
     monkeypatch.setattr(ui, '_require_executable', lambda name: '/tools/' + name)
-    monkeypatch.setattr(ui, '_check_tool_versions',
-                        lambda tools, frontend=None: None)
-    monkeypatch.setattr(ui, '_read_semantic_version',
-                        lambda *args, **kwargs: (22, 22, 0))
+    monkeypatch.setattr(ui, '_check_tool_versions', lambda tools, frontend=None: None)
+    monkeypatch.setattr(ui, '_read_semantic_version', lambda *args, **kwargs: (22, 22, 0))
 
     def fake_prepare(webui, common, node_version, **kwargs):
         captured.update(kwargs)

@@ -1,7 +1,7 @@
 import json
-import pytest
 from pathlib import Path
 
+import pytest
 from omegaconf import OmegaConf
 
 from ms_agent.config.resolver import (
@@ -41,9 +41,7 @@ class TestConfigResolver:
 
     def test_agent_config_overrides_defaults(self, resolver, tmp_path):
         agent_yaml = tmp_path / 'agent.yaml'
-        agent_yaml.write_text(
-            'llm:\n  service: openai\n  model: gpt-4\n'
-        )
+        agent_yaml.write_text('llm:\n  service: openai\n  model: gpt-4\n')
         config = resolver.resolve(agent_config=str(agent_yaml))
         assert config.llm.service == 'openai'
         assert config.llm.model == 'gpt-4'
@@ -82,9 +80,7 @@ class TestConfigResolver:
         project_path.mkdir()
         ms_agent_dir = project_path / '.ms-agent'
         ms_agent_dir.mkdir()
-        (ms_agent_dir / 'config.yaml').write_text(
-            'max_chat_round: 50\n'
-        )
+        (ms_agent_dir / 'config.yaml').write_text('max_chat_round: 50\n')
 
         config = resolver.resolve(
             agent_config=str(agent_yaml),
@@ -115,9 +111,7 @@ class TestConfigResolver:
         project_path = tmp_path / 'proj'
         project_path.mkdir()
         (project_path / '.ms-agent').mkdir()
-        (project_path / '.ms-agent' / 'config.yaml').write_text(
-            'llm:\n  model: project-m\n'
-        )
+        (project_path / '.ms-agent' / 'config.yaml').write_text('llm:\n  model: project-m\n')
 
         resolver = ConfigResolver(global_dir=str(global_dir))
         config = resolver.resolve(
@@ -248,13 +242,15 @@ class TestMCPInResolver:
         global_dir.mkdir()
         plugin_path = str(global_dir / 'plugins' / 'demo')
         plugins_data = {
-            'plugins': [{
-                'id': 'demo',
-                'enabled': True,
-                'format': 'claude',
-                'manifest_path': '.claude-plugin/plugin.json',
-                'path': plugin_path,
-            }],
+            'plugins': [
+                {
+                    'id': 'demo',
+                    'enabled': True,
+                    'format': 'claude',
+                    'manifest_path': '.claude-plugin/plugin.json',
+                    'path': plugin_path,
+                }
+            ],
         }
         (global_dir / 'plugins.json').write_text(json.dumps(plugins_data))
 
@@ -265,8 +261,8 @@ class TestMCPInResolver:
         assert config._merged_plugins.plugins[0].id == 'demo'
         assert plugin_path in list(config.plugins)
 
-class TestPersonalizationInResolver:
 
+class TestPersonalizationInResolver:
     def test_personalization_mapped_from_settings(self, tmp_path):
         global_dir = tmp_path / '.ms_agent'
         global_dir.mkdir()
@@ -303,9 +299,7 @@ class TestPersonalizationInResolver:
         project_path.mkdir()
         ms_agent_dir = project_path / '.ms-agent'
         ms_agent_dir.mkdir()
-        (ms_agent_dir / 'config.yaml').write_text(
-            'personalization:\n  project_instruction: "Use TypeScript."\n'
-        )
+        (ms_agent_dir / 'config.yaml').write_text('personalization:\n  project_instruction: "Use TypeScript."\n')
         resolver = ConfigResolver(global_dir=str(global_dir))
         config = resolver.resolve(project_path=str(project_path))
         assert config.personalization.project_instruction == 'Use TypeScript.'

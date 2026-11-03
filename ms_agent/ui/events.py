@@ -20,6 +20,7 @@ The vocabulary maps 1:1 onto ACP ``session_update`` types (see
 (``UserMessage`` echo, command catalog), so the same stream can drive ACP,
 a WebUI, and the TUI without a second protocol.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -31,6 +32,7 @@ from typing import Any, ClassVar, List, Optional, Protocol, runtime_checkable
 @dataclass(frozen=True)
 class UsageInfo:
     """Token accounting carried on turn completion (drives the status bar)."""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reasoning_tokens: int = 0
@@ -41,6 +43,7 @@ class UsageInfo:
 @dataclass(frozen=True)
 class PlanEntry:
     """One item of a plan/todo list (from the todo / split_task tools)."""
+
     content: str
     status: str = 'pending'  # pending | in_progress | completed
 
@@ -55,6 +58,7 @@ class AgentEvent:
     ``EVENT_TYPE`` is a class-level discriminator (not a dataclass field), so
     it is excluded from ``asdict`` but injected by :meth:`to_dict`.
     """
+
     EVENT_TYPE: ClassVar[str] = 'agent_event'
 
     @property
@@ -72,6 +76,7 @@ class AgentEvent:
 @dataclass(frozen=True)
 class TurnStarted(AgentEvent):
     """A user turn began (one user input → one or more assistant steps)."""
+
     EVENT_TYPE: ClassVar[str] = 'turn_started'
     turn_id: str = ''
     source: str = 'tui'  # cli | tui | webui
@@ -80,6 +85,7 @@ class TurnStarted(AgentEvent):
 @dataclass(frozen=True)
 class UserMessage(AgentEvent):
     """Echo of the user's submitted text (ACP's missing user_message_chunk)."""
+
     EVENT_TYPE: ClassVar[str] = 'user_message'
     turn_id: str = ''
     text: str = ''
@@ -88,6 +94,7 @@ class UserMessage(AgentEvent):
 @dataclass(frozen=True)
 class TurnCompleted(AgentEvent):
     """The assistant finished responding to the current turn."""
+
     EVENT_TYPE: ClassVar[str] = 'turn_completed'
     turn_id: str = ''
     usage: Optional[UsageInfo] = None
@@ -99,6 +106,7 @@ class TurnCompleted(AgentEvent):
 @dataclass(frozen=True)
 class ContentDelta(AgentEvent):
     """An incremental chunk of assistant message content."""
+
     EVENT_TYPE: ClassVar[str] = 'content_delta'
     text: str = ''
 
@@ -110,18 +118,21 @@ class ContentEnd(AgentEvent):
     A renderer uses this to finalize a streaming bubble (e.g. re-render the
     accumulated text as Markdown).
     """
+
     EVENT_TYPE: ClassVar[str] = 'content_end'
 
 
 @dataclass(frozen=True)
 class ReasoningStarted(AgentEvent):
     """The model began emitting reasoning / thinking tokens."""
+
     EVENT_TYPE: ClassVar[str] = 'reasoning_started'
 
 
 @dataclass(frozen=True)
 class ReasoningDelta(AgentEvent):
     """An incremental chunk of reasoning / thinking content."""
+
     EVENT_TYPE: ClassVar[str] = 'reasoning_delta'
     text: str = ''
 
@@ -129,6 +140,7 @@ class ReasoningDelta(AgentEvent):
 @dataclass(frozen=True)
 class ReasoningEnded(AgentEvent):
     """The reasoning / thinking stream finished."""
+
     EVENT_TYPE: ClassVar[str] = 'reasoning_ended'
 
 
@@ -151,6 +163,7 @@ class ToolCallComposing(AgentEvent):
     progress, and deliberately not the payload itself, which is often huge and
     is delivered in full by ``tool_call_started`` anyway.
     """
+
     EVENT_TYPE: ClassVar[str] = 'tool_call_composing'
     index: int = 0
     name: str = ''
@@ -170,6 +183,7 @@ class ImageDelivered(AgentEvent):
     ``reason`` is a machine code (``llm/vision.py``'s ``REASON_*``), so the host
     renders its own sentence instead of relaying one the model improvised.
     """
+
     EVENT_TYPE: ClassVar[str] = 'image_delivered'
     index: int = 0
     path: str = ''
@@ -181,6 +195,7 @@ class ImageDelivered(AgentEvent):
 @dataclass(frozen=True)
 class ToolCallStarted(AgentEvent):
     """A tool call is about to execute."""
+
     EVENT_TYPE: ClassVar[str] = 'tool_call_started'
     call_id: str = ''
     name: str = ''
@@ -190,6 +205,7 @@ class ToolCallStarted(AgentEvent):
 @dataclass(frozen=True)
 class ToolCallCompleted(AgentEvent):
     """A tool call finished (successfully or with an error)."""
+
     EVENT_TYPE: ClassVar[str] = 'tool_call_completed'
     call_id: str = ''
     name: str = ''
@@ -204,6 +220,7 @@ class ToolCallCompleted(AgentEvent):
 @dataclass(frozen=True)
 class PlanUpdated(AgentEvent):
     """The agent's plan / todo list changed."""
+
     EVENT_TYPE: ClassVar[str] = 'plan_updated'
     entries: List[PlanEntry] = field(default_factory=list)
 
@@ -214,6 +231,7 @@ class PlanUpdated(AgentEvent):
 @dataclass(frozen=True)
 class PermissionRequested(AgentEvent):
     """A tool needs user authorization (mirrors WebPermissionHandler emit)."""
+
     EVENT_TYPE: ClassVar[str] = 'permission_requested'
     request_id: str = ''
     tool_name: str = ''
@@ -225,6 +243,7 @@ class PermissionRequested(AgentEvent):
 @dataclass(frozen=True)
 class PermissionResolved(AgentEvent):
     """A pending permission request was answered."""
+
     EVENT_TYPE: ClassVar[str] = 'permission_resolved'
     request_id: str = ''
     action: str = ''  # e.g. allow_once | deny | allow_always
@@ -236,6 +255,7 @@ class PermissionResolved(AgentEvent):
 @dataclass(frozen=True)
 class ContextCompacted(AgentEvent):
     """Non-destructive context compaction ran (long-conversation upkeep)."""
+
     EVENT_TYPE: ClassVar[str] = 'context_compacted'
     before_tokens: int = 0
     after_tokens: int = 0
@@ -244,6 +264,7 @@ class ContextCompacted(AgentEvent):
 @dataclass(frozen=True)
 class Notice(AgentEvent):
     """A user-facing informational notice."""
+
     EVENT_TYPE: ClassVar[str] = 'notice'
     level: str = 'info'  # info | success | warning
     text: str = ''
@@ -252,6 +273,7 @@ class Notice(AgentEvent):
 @dataclass(frozen=True)
 class ErrorRaised(AgentEvent):
     """An error surfaced during the run."""
+
     EVENT_TYPE: ClassVar[str] = 'error'
     message: str = ''
     recoverable: bool = True
@@ -268,8 +290,7 @@ class AgentEventSink(Protocol):
     hot path of token streaming. Rendering/formatting is the sink's business.
     """
 
-    def emit(self, event: AgentEvent) -> None:
-        ...
+    def emit(self, event: AgentEvent) -> None: ...
 
 
 class RecordingSink:
@@ -290,8 +311,7 @@ class RecordingSink:
 
     def text(self) -> str:
         """Concatenated assistant content — a quick assertion helper."""
-        return ''.join(
-            e.text for e in self.events if isinstance(e, ContentDelta))
+        return ''.join(e.text for e in self.events if isinstance(e, ContentDelta))
 
 
 class TeeEventSink:
@@ -313,13 +333,13 @@ class JsonlEventSink:
 
     def __init__(self, path) -> None:
         import json
+
         self._json = json
         self._own = isinstance(path, str)
         self._f = open(path, 'a', encoding='utf-8') if self._own else path
 
     def emit(self, event: AgentEvent) -> None:
-        self._f.write(
-            self._json.dumps(event.to_dict(), ensure_ascii=False) + '\n')
+        self._f.write(self._json.dumps(event.to_dict(), ensure_ascii=False) + '\n')
         self._f.flush()
 
     def close(self) -> None:

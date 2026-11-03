@@ -7,6 +7,7 @@ tool result into a one-line summary (``42 lines``, ``(no output)``,
 ``error: …``). Pattern-based, not a per-tool hardcode: a small verb map for
 common tools + a salient-argument heuristic, with a readable generic fallback.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,8 +38,21 @@ _VERBS = {
     'read_dir': 'List',
 }
 # arg keys probed, in priority order, for the salient value to show
-_ARG_KEYS = ('path', 'file_path', 'filename', 'query', 'q', 'command', 'cmd',
-             'skill_id', 'url', 'pattern', 'directory', 'dir', 'name')
+_ARG_KEYS = (
+    'path',
+    'file_path',
+    'filename',
+    'query',
+    'q',
+    'command',
+    'cmd',
+    'skill_id',
+    'url',
+    'pattern',
+    'directory',
+    'dir',
+    'name',
+)
 
 
 def _short(s: str, n: int = 72) -> str:

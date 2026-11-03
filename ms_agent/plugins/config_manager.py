@@ -22,8 +22,7 @@ class PluginConfigManager:
         project_root: str | Path | None = None,
     ) -> None:
         self.global_root = Path(global_dir).expanduser()
-        self.project_root = (
-            Path(project_root).expanduser() if project_root else None)
+        self.project_root = Path(project_root).expanduser() if project_root else None
         self._lock = Lock()
 
     @property
@@ -35,6 +34,7 @@ class PluginConfigManager:
         if self.project_root is None:
             raise ValueError('project_root is required for project scope')
         from ms_agent.project.paths import project_internal_file
+
         return project_internal_file(self.project_root, PLUGIN_FILE)
 
     @property
@@ -46,6 +46,7 @@ class PluginConfigManager:
         if self.project_root is None:
             raise ValueError('project_root is required for project scope')
         from ms_agent.project.paths import project_internal_dir
+
         return project_internal_dir(self.project_root) / 'plugins'
 
     @property
@@ -63,8 +64,7 @@ class PluginConfigManager:
                 self._load_scope('project') if self.project_root else [],
             )
 
-    def load_merged(self,
-                    project_path: str | None = None) -> list[PluginRecord]:
+    def load_merged(self, project_path: str | None = None) -> list[PluginRecord]:
         if project_path and self.project_root is None:
             scoped = PluginConfigManager(self.global_root, project_path)
             return scoped.list('merged')
@@ -125,15 +125,15 @@ class PluginConfigManager:
     def _path_for_scope(self, scope: Literal['global', 'project']) -> Path:
         return self.global_plugins_path if scope == 'global' else self.project_plugins_path
 
-    def _load_scope(self, scope: Literal['global',
-                                         'project']) -> list[PluginRecord]:
+    def _load_scope(self, scope: Literal['global', 'project']) -> list[PluginRecord]:
         path = self._path_for_scope(scope)
         data = self._read_json(path)
         raw_plugins = data.get('plugins', [])
         if not isinstance(raw_plugins, list):
             return []
         return [
-            PluginRecord.from_dict(item, scope=scope) for item in raw_plugins
+            PluginRecord.from_dict(item, scope=scope)
+            for item in raw_plugins
             if isinstance(item, dict) and item.get('id')
         ]
 

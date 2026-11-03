@@ -94,8 +94,11 @@ class TestReadOnlyDirectories:
         with tempfile.TemporaryDirectory() as write_dir:
             with tempfile.TemporaryDirectory() as ro_dir:
                 r = validate_path(
-                    os.path.join(ro_dir, 'data.csv'), write_dir,
-                    [write_dir], 'read', read_only_dirs=[ro_dir],
+                    os.path.join(ro_dir, 'data.csv'),
+                    write_dir,
+                    [write_dir],
+                    'read',
+                    read_only_dirs=[ro_dir],
                 )
                 assert r.allowed
                 assert r.action == 'allow'
@@ -104,8 +107,11 @@ class TestReadOnlyDirectories:
         with tempfile.TemporaryDirectory() as write_dir:
             with tempfile.TemporaryDirectory() as ro_dir:
                 r = validate_path(
-                    os.path.join(ro_dir, 'data.csv'), write_dir,
-                    [write_dir], 'write', read_only_dirs=[ro_dir],
+                    os.path.join(ro_dir, 'data.csv'),
+                    write_dir,
+                    [write_dir],
+                    'write',
+                    read_only_dirs=[ro_dir],
                 )
                 assert not r.allowed
                 assert r.action == 'deny'
@@ -114,8 +120,11 @@ class TestReadOnlyDirectories:
         with tempfile.TemporaryDirectory() as write_dir:
             with tempfile.TemporaryDirectory() as ro_dir:
                 r = validate_path(
-                    os.path.join(ro_dir, 'new.txt'), write_dir,
-                    [write_dir], 'create', read_only_dirs=[ro_dir],
+                    os.path.join(ro_dir, 'new.txt'),
+                    write_dir,
+                    [write_dir],
+                    'create',
+                    read_only_dirs=[ro_dir],
                 )
                 assert not r.allowed
                 assert r.action == 'deny'
@@ -124,8 +133,11 @@ class TestReadOnlyDirectories:
         with tempfile.TemporaryDirectory() as write_dir:
             with tempfile.TemporaryDirectory() as ro_dir:
                 r = validate_path(
-                    '/etc/passwd', write_dir,
-                    [write_dir], 'read', read_only_dirs=[ro_dir],
+                    '/etc/passwd',
+                    write_dir,
+                    [write_dir],
+                    'read',
+                    read_only_dirs=[ro_dir],
                 )
                 assert not r.allowed
                 assert r.action == 'ask'
@@ -134,8 +146,11 @@ class TestReadOnlyDirectories:
     def test_allowed_dir_takes_precedence_over_read_only(self):
         with tempfile.TemporaryDirectory() as td:
             r = validate_path(
-                os.path.join(td, 'file.txt'), td,
-                [td], 'read', read_only_dirs=[td],
+                os.path.join(td, 'file.txt'),
+                td,
+                [td],
+                'read',
+                read_only_dirs=[td],
             )
             assert r.allowed
 
@@ -143,29 +158,38 @@ class TestReadOnlyDirectories:
         with tempfile.TemporaryDirectory() as td:
             with tempfile.TemporaryDirectory() as ro_dir:
                 r = validate_path(
-                    os.path.join(td, 'file.txt'), td,
-                    [td], 'write', read_only_dirs=[ro_dir],
+                    os.path.join(td, 'file.txt'),
+                    td,
+                    [td],
+                    'write',
+                    read_only_dirs=[ro_dir],
                 )
                 assert r.allowed
 
 
 class TestIsDangerousRemovalPath:
-    @pytest.mark.parametrize('path', [
-        '/',
-        '*',
-        '/tmp/*',
-        '/usr',
-        os.path.expanduser('~'),
-    ])
+    @pytest.mark.parametrize(
+        'path',
+        [
+            '/',
+            '*',
+            '/tmp/*',
+            '/usr',
+            os.path.expanduser('~'),
+        ],
+    )
     def test_dangerous_paths(self, path):
         assert is_dangerous_removal_path(path)
 
-    @pytest.mark.parametrize('path', [
-        '/tmp/mydir',
-        '/usr/local/bin',
-        'relative/path',
-        './test.txt',
-    ])
+    @pytest.mark.parametrize(
+        'path',
+        [
+            '/tmp/mydir',
+            '/usr/local/bin',
+            'relative/path',
+            './test.txt',
+        ],
+    )
     def test_safe_paths(self, path):
         assert not is_dangerous_removal_path(path)
 
@@ -208,27 +232,34 @@ class TestDangerousRemovalWithConfiguredPatterns:
     @staticmethod
     def _patterns():
         from ms_agent.permission.config import SafetyConfig
+
         return SafetyConfig().dangerous_removal_paths
 
-    @pytest.mark.parametrize('path', [
-        'build/out.txt',
-        'a.log',
-        './tmp/x',
-        'dist/',
-        os.path.join(os.path.expanduser('~'), 'proj/build/x.o'),
-        '~/proj/build/x.o',
-    ])
+    @pytest.mark.parametrize(
+        'path',
+        [
+            'build/out.txt',
+            'a.log',
+            './tmp/x',
+            'dist/',
+            os.path.join(os.path.expanduser('~'), 'proj/build/x.o'),
+            '~/proj/build/x.o',
+        ],
+    )
     def test_ordinary_removals_are_allowed(self, path):
         assert not is_dangerous_removal_path(path, self._patterns())
 
-    @pytest.mark.parametrize('path', [
-        '*',
-        '/*',
-        '/',
-        '/etc',
-        '/usr',
-        'build/*',
-    ])
+    @pytest.mark.parametrize(
+        'path',
+        [
+            '*',
+            '/*',
+            '/',
+            '/etc',
+            '/usr',
+            'build/*',
+        ],
+    )
     def test_dangerous_removals_still_refused(self, path):
         assert is_dangerous_removal_path(path, self._patterns())
 
@@ -241,7 +272,5 @@ class TestDangerousRemovalWithConfiguredPatterns:
     def test_a_real_glob_pattern_still_globs(self):
         """Only a separators-and-stars entry is literal-only; a pattern with an
         actual path in it keeps working as a glob."""
-        assert is_dangerous_removal_path('/opt/data/db',
-                                         ('/opt/data/*', ))
-        assert not is_dangerous_removal_path('/opt/other/db',
-                                            ('/opt/data/*', ))
+        assert is_dangerous_removal_path('/opt/data/db', ('/opt/data/*',))
+        assert not is_dangerous_removal_path('/opt/other/db', ('/opt/data/*',))

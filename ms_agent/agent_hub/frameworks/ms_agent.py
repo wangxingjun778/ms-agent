@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """ms-agent workspace specification (single-agent install)."""
+
 from __future__ import annotations
 
 import json
@@ -8,8 +9,7 @@ from typing import Any
 
 from ms_agent.project.paths import global_home
 
-from .._workspace import (WorkspaceSpec, register_framework,
-                          scrub_json_secrets)
+from .._workspace import WorkspaceSpec, register_framework, scrub_json_secrets
 
 
 class MsAgentWorkspace(WorkspaceSpec):
@@ -112,8 +112,7 @@ class MsAgentWorkspace(WorkspaceSpec):
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                 return content
             scrub_json_secrets(data)
-            return json.dumps(
-                data, ensure_ascii=False, indent=2).encode('utf-8')
+            return json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
         if rel_path == 'skills.json':
             return self._preserve_local_skill_switches(content)
         return content
@@ -145,8 +144,7 @@ class MsAgentWorkspace(WorkspaceSpec):
             incoming['disabled'] = local_disabled
         else:
             incoming.pop('disabled', None)
-        return json.dumps(
-            incoming, ensure_ascii=False, indent=2).encode('utf-8')
+        return json.dumps(incoming, ensure_ascii=False, indent=2).encode('utf-8')
 
     def sanitize_outbound_file(self, rel_path: str, content: bytes) -> bytes:
         """Fail-closed upload sanitize for the secret-bearing config files.
@@ -168,8 +166,7 @@ class MsAgentWorkspace(WorkspaceSpec):
                 return content
             if isinstance(data, dict):
                 data.pop('disabled', None)
-                return json.dumps(
-                    data, ensure_ascii=False, indent=2).encode('utf-8')
+                return json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
             return content
         if rel_path in ('settings.json', 'mcp.json'):
             try:
@@ -178,7 +175,8 @@ class MsAgentWorkspace(WorkspaceSpec):
                 raise ValueError(
                     f'{rel_path} is not valid JSON; cannot verify it is free '
                     f'of secrets -- refusing to upload it. Fix the file and '
-                    f'retry.')
+                    f'retry.'
+                )
         return self.sanitize_inbound_file(rel_path, content)
 
 

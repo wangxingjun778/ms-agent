@@ -7,7 +7,7 @@ from typing import Any, Dict
 from ms_agent.personalization.types import PersonalizationConfig
 from ms_agent.utils.atomic_file import atomic_write_json
 from ms_agent.utils.file_lock import locked
-from ms_agent.utils.json_store import read_json, json_transaction
+from ms_agent.utils.json_store import json_transaction, read_json
 
 SETTINGS_FILE = 'settings.json'
 SECTION_KEY = 'personalization'
@@ -24,6 +24,7 @@ class PersonalizationSettings:
         # Follows MS_AGENT_HOME by default (see ProfileManager for rationale).
         if global_dir is None:
             from ms_agent.project.paths import global_home
+
             self._path = global_home() / SETTINGS_FILE
         else:
             self._path = Path(os.path.expanduser(global_dir)) / SETTINGS_FILE
@@ -39,11 +40,13 @@ class PersonalizationSettings:
     @locked(lambda self, *args, **kwargs: self._path)
     def save(self, config: PersonalizationConfig) -> None:
         full = self._read_full()
-        full.setdefault(SECTION_KEY, {}).update({
-            'global_instruction': config.global_instruction,
-            'memory_enabled': config.memory_enabled,
-            'memory_backend': config.memory_backend,
-        })
+        full.setdefault(SECTION_KEY, {}).update(
+            {
+                'global_instruction': config.global_instruction,
+                'memory_enabled': config.memory_enabled,
+                'memory_backend': config.memory_backend,
+            }
+        )
         self._write_full(full)
 
     def update(self, **patch) -> PersonalizationConfig:

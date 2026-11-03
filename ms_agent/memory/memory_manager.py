@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from omegaconf import DictConfig, OmegaConf
 from typing import Dict
+
+from omegaconf import DictConfig, OmegaConf
 
 from ms_agent.memory import Memory, memory_mapping
 from ms_agent.utils import get_logger
@@ -12,11 +13,11 @@ logger = get_logger()
 
 class SharedMemoryManager:
     """Manager for shared memory instances across different agents."""
+
     _instances: Dict[str, Memory] = {}
 
     @classmethod
-    async def get_shared_memory(cls, config: DictConfig,
-                                mem_instance_type: str) -> Memory:
+    async def get_shared_memory(cls, config: DictConfig, mem_instance_type: str) -> Memory:
         """Get or create the shared memory instance for this config's store.
 
         An existing instance is reconfigured in place when the incoming config
@@ -26,15 +27,16 @@ class SharedMemoryManager:
         node = getattr(config.memory, mem_instance_type, OmegaConf.create({}))
         # unified_memory namespaces the user under `namespace.user_id`;
         # legacy memories keep a top-level `user_id`. Honor both.
-        user_id: str = getattr(node, 'user_id', None) or getattr(
-            getattr(node, 'namespace', OmegaConf.create({})), 'user_id',
-            None) or DEFAULT_USER
+        user_id: str = (
+            getattr(node, 'user_id', None)
+            or getattr(getattr(node, 'namespace', OmegaConf.create({})), 'user_id', None)
+            or DEFAULT_USER
+        )
         # The store roots under the work dir (<output_dir>/.ms_agent/memory for
         # unified_memory), so the share key must isolate per resolved work dir —
         # otherwise two projects on the same model would read/write each
         # other's MEMORY.md through one cached instance.
-        path: str = getattr(node, 'path', None) or getattr(
-            config, 'output_dir', None) or DEFAULT_OUTPUT_DIR
+        path: str = getattr(node, 'path', None) or getattr(config, 'output_dir', None) or DEFAULT_OUTPUT_DIR
         path = os.path.abspath(os.path.expanduser(str(path)))
 
         # One instance per (memory type, user, store) — deliberately NOT
@@ -63,9 +65,7 @@ class SharedMemoryManager:
             try:
                 await reconfigure(config)
             except Exception as e:  # noqa: BLE001 - never fail agent startup
-                logger.warning(
-                    f'Reconfiguring shared memory {key} failed, keeping the '
-                    f'existing configuration: {e}')
+                logger.warning(f'Reconfiguring shared memory {key} failed, keeping the existing configuration: {e}')
         return instance
 
     @classmethod
@@ -91,8 +91,7 @@ class SharedMemoryManager:
                 if close is not None:
                     await close()
             except Exception as e:  # noqa: BLE001 - eviction is best-effort
-                logger.warning(
-                    f'closing shared memory for {key} failed: {e}')
+                logger.warning(f'closing shared memory for {key} failed: {e}')
             cls._instances.pop(key, None)
             closed += 1
             logger.info(f'Closed shared memory instance: {key}')
@@ -113,5 +112,4 @@ class SharedMemoryManager:
                 del cls._instances[key]
                 logger.info(f'Cleared shared memory instance for key: {key}')
             else:
-                logger.warning(
-                    f'No shared memory instance found for key: {key}')
+                logger.warning(f'No shared memory instance found for key: {key}')

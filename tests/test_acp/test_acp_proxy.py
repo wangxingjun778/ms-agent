@@ -3,10 +3,15 @@
 import asyncio
 import os
 import tempfile
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from ms_agent.acp.errors import (
+    ConfigError,
+    MaxSessionsError,
+    SessionNotFoundError,
+)
 from ms_agent.acp.proxy import (
     BackendConfig,
     MSAgentACPProxy,
@@ -14,15 +19,9 @@ from ms_agent.acp.proxy import (
     _RelayClient,
 )
 from ms_agent.acp.proxy_session import ProxySessionEntry, ProxySessionStore
-from ms_agent.acp.errors import (
-    ConfigError,
-    MaxSessionsError,
-    SessionNotFoundError,
-)
 
 
 class TestProxyConfig:
-
     def test_from_yaml_basic(self, tmp_path):
         cfg_file = tmp_path / 'proxy.yaml'
         cfg_file.write_text("""
@@ -97,7 +96,6 @@ backends:
 
 
 class TestProxySessionStore:
-
     def test_register_and_get(self):
         store = ProxySessionStore(max_sessions=4)
         entry = store.register(
@@ -122,23 +120,18 @@ class TestProxySessionStore:
 
     def test_max_sessions_eviction(self):
         store = ProxySessionStore(max_sessions=2)
-        e1 = store.register(
-            'a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
-        e2 = store.register(
-            'b', 'sid2', MagicMock(), MagicMock(), None, '/tmp')
-        e3 = store.register(
-            'c', 'sid3', MagicMock(), MagicMock(), None, '/tmp')
+        store.register('a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
+        store.register('b', 'sid2', MagicMock(), MagicMock(), None, '/tmp')
+        e3 = store.register('c', 'sid3', MagicMock(), MagicMock(), None, '/tmp')
         assert len(store._sessions) == 2
         assert e3.id in store._sessions
 
     def test_max_sessions_all_running(self):
         store = ProxySessionStore(max_sessions=1)
-        e1 = store.register(
-            'a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
+        e1 = store.register('a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
         e1.is_running = True
         with pytest.raises(MaxSessionsError):
-            store.register(
-                'b', 'sid2', MagicMock(), MagicMock(), None, '/tmp')
+            store.register('b', 'sid2', MagicMock(), MagicMock(), None, '/tmp')
 
     def test_list_sessions(self):
         store = ProxySessionStore()
@@ -152,8 +145,7 @@ class TestProxySessionStore:
     @pytest.mark.asyncio
     async def test_remove(self):
         store = ProxySessionStore()
-        entry = store.register(
-            'a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
+        entry = store.register('a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
         await store.remove(entry.id)
         assert entry.id not in store._sessions
 
@@ -167,15 +159,13 @@ class TestProxySessionStore:
 
     def test_cancel(self):
         store = ProxySessionStore()
-        entry = store.register(
-            'a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
+        entry = store.register('a', 'sid1', MagicMock(), MagicMock(), None, '/tmp')
         assert not entry.cancelled
         entry.request_cancel()
         assert entry.cancelled
 
 
 class TestRelayClient:
-
     @pytest.mark.asyncio
     async def test_session_update_relay(self):
         mock_conn = AsyncMock()
@@ -201,7 +191,6 @@ class TestRelayClient:
 
 
 class TestMSAgentACPProxy:
-
     def _make_config(self):
         return ProxyConfig(
             max_sessions=4,

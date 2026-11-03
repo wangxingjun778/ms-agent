@@ -14,6 +14,7 @@ Two LLM call paths are supported:
 2. **Fallback** — direct OpenAI-compatible HTTP call via ``aiohttp`` so the
    runner works even without the full LLM stack.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -89,7 +90,9 @@ class AgentRunner:
 
             # 4. Assemble messages for LLM
             llm_messages = self._assemble_messages(
-                system_prompt, history, ctx.messages,
+                system_prompt,
+                history,
+                ctx.messages,
             )
 
             # 5. Function-calling loop
@@ -105,7 +108,9 @@ class AgentRunner:
             while round_count < ctx.max_rounds:
                 # Call LLM
                 llm_response = await self._call_llm(
-                    ctx, llm_messages, tool_specs,
+                    ctx,
+                    llm_messages,
+                    tool_specs,
                 )
 
                 # Accumulate usage
@@ -137,10 +142,12 @@ class AgentRunner:
                     seq += 1
 
                     # Add assistant message to history
-                    llm_messages.append({
-                        'role': 'assistant',
-                        'content': content,
-                    })
+                    llm_messages.append(
+                        {
+                            'role': 'assistant',
+                            'content': content,
+                        }
+                    )
                     break
 
                 # Emit tool call events
@@ -157,11 +164,13 @@ class AgentRunner:
                     seq += 1
 
                 # Add assistant message with tool_calls to message list
-                llm_messages.append({
-                    'role': 'assistant',
-                    'content': content,
-                    'tool_calls': tool_calls,
-                })
+                llm_messages.append(
+                    {
+                        'role': 'assistant',
+                        'content': content,
+                        'tool_calls': tool_calls,
+                    }
+                )
 
                 # Execute tools in parallel
                 results = await self._execute_tools(ctx, tool_calls)
@@ -180,19 +189,23 @@ class AgentRunner:
                     seq += 1
 
                     func = tc.get('function', {})
-                    tool_call_records.append({
-                        'tool_name': result.tool_name,
-                        'arguments': func.get('arguments', {}),
-                        'result': result,
-                        'duration_ms': result.metadata.get('duration_ms', 0),
-                    })
+                    tool_call_records.append(
+                        {
+                            'tool_name': result.tool_name,
+                            'arguments': func.get('arguments', {}),
+                            'result': result,
+                            'duration_ms': result.metadata.get('duration_ms', 0),
+                        }
+                    )
 
                     # Add tool result message
-                    llm_messages.append({
-                        'role': 'tool',
-                        'tool_call_id': tc.get('id', ''),
-                        'content': result.content,
-                    })
+                    llm_messages.append(
+                        {
+                            'role': 'tool',
+                            'tool_call_id': tc.get('id', ''),
+                            'content': result.content,
+                        }
+                    )
 
                 round_count += 1
 
@@ -246,7 +259,8 @@ class AgentRunner:
 
         # Base system prompt from config
         base_prompt = ctx.config.get(
-            'system_prompt', 'You are a helpful assistant.',
+            'system_prompt',
+            'You are a helpful assistant.',
         )
         parts.append(base_prompt)
 
@@ -329,8 +343,7 @@ class AgentRunner:
             return await self._call_llm_native(ctx, messages, tools)
         except Exception as native_exc:  # noqa: BLE001
             logger.debug(
-                'AgentRunner: native LLM call failed (%s), '
-                'falling back to HTTP',
+                'AgentRunner: native LLM call failed (%s), falling back to HTTP',
                 native_exc,
             )
 
@@ -376,7 +389,8 @@ class AgentRunner:
                         'type': tc.get('type', 'function'),
                         'tool_name': tc.get('function', {}).get('name', ''),
                         'arguments': tc.get('function', {}).get(
-                            'arguments', '{}',
+                            'arguments',
+                            '{}',
                         ),
                     }
                     for tc in msg['tool_calls']
@@ -393,11 +407,13 @@ class AgentRunner:
             llm_tools = []
             for spec in tools:
                 func = spec.get('function', {})
-                llm_tools.append({
-                    'tool_name': func.get('name', ''),
-                    'description': func.get('description', ''),
-                    'parameters': func.get('parameters', {}),
-                })
+                llm_tools.append(
+                    {
+                        'tool_name': func.get('name', ''),
+                        'description': func.get('description', ''),
+                        'parameters': func.get('parameters', {}),
+                    }
+                )
 
         # Call the LLM (synchronous generate, run in thread)
         from ms_agent.llm.utils import collect_response
@@ -416,12 +432,9 @@ class AgentRunner:
             },
             'usage': {
                 'prompt_tokens': getattr(response, 'prompt_tokens', 0) or 0,
-                'completion_tokens': (
-                    getattr(response, 'completion_tokens', 0) or 0
-                ),
+                'completion_tokens': (getattr(response, 'completion_tokens', 0) or 0),
                 'total_tokens': (
-                    (getattr(response, 'prompt_tokens', 0) or 0)
-                    + (getattr(response, 'completion_tokens', 0) or 0)
+                    (getattr(response, 'prompt_tokens', 0) or 0) + (getattr(response, 'completion_tokens', 0) or 0)
                 ),
             },
         }
@@ -450,12 +463,12 @@ class AgentRunner:
             import aiohttp
         except ImportError as exc:
             raise RuntimeError(
-                'aiohttp is required for the HTTP LLM fallback; '
-                "install via 'pip install aiohttp'",
+                "aiohttp is required for the HTTP LLM fallback; install via 'pip install aiohttp'",
             ) from exc
 
         base_url = ctx.llm_config.get(
-            'base_url', 'https://api.openai.com/v1',
+            'base_url',
+            'https://api.openai.com/v1',
         ).rstrip('/')
         api_key = ctx.llm_config.get('api_key', '')
         model = ctx.llm_config.get('model', 'gpt-4o')
@@ -494,7 +507,9 @@ class AgentRunner:
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
-                url, headers=headers, json=payload,
+                url,
+                headers=headers,
+                json=payload,
             ) as resp:
                 text = await resp.text()
                 if resp.status != 200:
@@ -570,7 +585,8 @@ class AgentRunner:
                 return result
             except KeyError:
                 return ToolResult.from_error(
-                    name, f'Tool "{name}" is not available',
+                    name,
+                    f'Tool "{name}" is not available',
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning('Tool %s failed: %s', name, exc, exc_info=True)

@@ -107,11 +107,13 @@ def test_install_uses_manifest_default_enabled(tmp_path):
     source = tmp_path / 'source-plugin'
     _sample_plugin(source)
     (source / '.claude-plugin' / 'plugin.json').write_text(
-        json.dumps({
-            'name': 'local-demo',
-            'version': '0.1.0',
-            'defaultEnabled': False,
-        }),
+        json.dumps(
+            {
+                'name': 'local-demo',
+                'version': '0.1.0',
+                'defaultEnabled': False,
+            }
+        ),
         encoding='utf-8',
     )
     global_dir = tmp_path / '.ms_agent'
@@ -236,6 +238,7 @@ def test_install_modelscope_uri_uses_snapshot_download(tmp_path, monkeypatch):
         return str(source)
 
     import ms_agent.plugins.installer as installer_mod
+
     monkeypatch.setattr(installer_mod, 'snapshot_download', fake_snapshot_download)
 
     manifest = installer.install('modelscope://org/pack@v1', scope='global')

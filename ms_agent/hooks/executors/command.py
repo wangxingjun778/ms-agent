@@ -17,29 +17,31 @@ from ms_agent.utils import get_logger
 logger = get_logger()
 
 # Safe parent env vars needed for hook subprocess execution. Secrets are excluded.
-_HOOK_ENV_ALLOWLIST = frozenset({
-    'PATH',
-    'HOME',
-    'USER',
-    'LOGNAME',
-    'USERNAME',
-    'LANG',
-    'LC_ALL',
-    'LC_CTYPE',
-    'LC_MESSAGES',
-    'TMPDIR',
-    'TEMP',
-    'TMP',
-    'TERM',
-    'SHELL',
-    'PWD',
-    'SYSTEMROOT',
-    'COMSPEC',
-    'PATHEXT',
-    'WINDIR',
-    'OS',
-    'PROCESSOR_ARCHITECTURE',
-})
+_HOOK_ENV_ALLOWLIST = frozenset(
+    {
+        'PATH',
+        'HOME',
+        'USER',
+        'LOGNAME',
+        'USERNAME',
+        'LANG',
+        'LC_ALL',
+        'LC_CTYPE',
+        'LC_MESSAGES',
+        'TMPDIR',
+        'TEMP',
+        'TMP',
+        'TERM',
+        'SHELL',
+        'PWD',
+        'SYSTEMROOT',
+        'COMSPEC',
+        'PATHEXT',
+        'WINDIR',
+        'OS',
+        'PROCESSOR_ARCHITECTURE',
+    }
+)
 
 
 @dataclass
@@ -75,10 +77,7 @@ def plugin_compat_payload(
 
 
 def build_hook_env(ctx: HookExecutionContext) -> dict[str, str]:
-    env = {
-        key: value
-        for key, value in os.environ.items() if key in _HOOK_ENV_ALLOWLIST
-    }
+    env = {key: value for key, value in os.environ.items() if key in _HOOK_ENV_ALLOWLIST}
     env['MS_AGENT_PROJECT_DIR'] = ctx.project_path
     env['CLAUDE_PROJECT_DIR'] = ctx.project_path
     if ctx.plugin_root:
@@ -93,7 +92,6 @@ def build_hook_env(ctx: HookExecutionContext) -> dict[str, str]:
 
 
 class CommandHookExecutor:
-
     def __init__(
         self,
         working_dir: str | None = None,
@@ -161,8 +159,7 @@ class CommandHookExecutor:
             )
 
         if exit_code != 0:
-            logger.warning("Hook '%s' exited %d: %s", handler.command,
-                           exit_code, stderr_text)
+            logger.warning("Hook '%s' exited %d: %s", handler.command, exit_code, stderr_text)
             if handler.fail_closed or self._fail_closed:
                 return HookResult(
                     action='deny',
@@ -177,6 +174,4 @@ class CommandHookExecutor:
                 stderr=stderr_text,
             )
 
-        return self._response_adapter.parse(stdout_text,
-                                            exit_code, stderr_text,
-                                            event_data.get('event'))
+        return self._response_adapter.parse(stdout_text, exit_code, stderr_text, event_data.get('event'))

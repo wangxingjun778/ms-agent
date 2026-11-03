@@ -1,7 +1,8 @@
-import pytest
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
+
+import pytest
 
 from ms_agent.command.router import CommandRouter
 from ms_agent.command.skill_bridge import SkillCommandBridge

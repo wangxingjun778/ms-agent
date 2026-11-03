@@ -10,12 +10,11 @@ neither which model answered a turn nor what it was permitted to receive:
 * with the SAME model and only the image switch turned off, a model that had
   just read one picture described the next one from its filename.
 """
+
 import tempfile
 import unittest
 
-from ms_agent.prompting.model_switch import (MODEL_SWITCH_MARKER,
-                                             capability_signature,
-                                             render_capability_change_notice)
+from ms_agent.prompting.model_switch import MODEL_SWITCH_MARKER, capability_signature, render_capability_change_notice
 from ms_agent.session.session_log import SessionLog
 
 VL_ON = capability_signature('qwen3-vl', True)
@@ -24,7 +23,6 @@ GLM_ON = capability_signature('glm-5.2', True)
 
 
 class TestWhenItFires(unittest.TestCase):
-
     def test_silent_when_nothing_moved(self):
         self.assertIsNone(render_capability_change_notice(VL_ON, VL_ON))
 
@@ -41,12 +39,10 @@ class TestWhenItFires(unittest.TestCase):
         self.assertIn('now off', text)
 
     def test_says_which_way_the_switch_went(self):
-        self.assertIn('now on',
-                      render_capability_change_notice(VL_OFF, VL_ON))
+        self.assertIn('now on', render_capability_change_notice(VL_OFF, VL_ON))
 
     def test_reports_both_when_both_moved(self):
-        text = render_capability_change_notice(VL_ON, capability_signature(
-            'glm-5.2', False))
+        text = render_capability_change_notice(VL_ON, capability_signature('glm-5.2', False))
         self.assertIn('glm-5.2', text)
         self.assertIn('now off', text)
 
@@ -54,12 +50,10 @@ class TestWhenItFires(unittest.TestCase):
         # It is replayed on every later request for the rest of the session, so
         # length is a recurring cost, not a one-off.
         for a, b in ((VL_ON, GLM_ON), (VL_ON, VL_OFF)):
-            self.assertLess(len(render_capability_change_notice(a, b).split()),
-                            60)
+            self.assertLess(len(render_capability_change_notice(a, b).split()), 60)
 
 
 class TestWhatItSays(unittest.TestCase):
-
     def setUp(self):
         self.text = render_capability_change_notice(VL_ON, GLM_ON)
 
@@ -77,7 +71,6 @@ class TestWhatItSays(unittest.TestCase):
 
 
 class TestSignature(unittest.TestCase):
-
     def test_distinguishes_both_axes(self):
         self.assertNotEqual(VL_ON, VL_OFF)
         self.assertNotEqual(VL_ON, GLM_ON)

@@ -73,7 +73,7 @@ class TestAutoMode:
         # rule rather than leaning on a default.
         config = PermissionConfig(
             mode='auto',
-            blacklist=('code_executor---shell_executor:curl *', ),
+            blacklist=('code_executor---shell_executor:curl *',),
         )
         r = await PermissionEnforcer(config=config).check(
             'code_executor---shell_executor',
@@ -248,8 +248,7 @@ class TestNetworkCommandsAsk:
             handler=Probe(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'curl --version'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'curl --version'})
         assert r.action == 'allow'
         assert Probe.asked == 1
 
@@ -258,6 +257,7 @@ class TestNetworkCommandsAsk:
         """Reaching the network is worth one deliberate click even from a user
         who waved the agent through everything else — the ask rule outranks the
         mode AND the whitelist."""
+
         class Probe:
             asked = 0
 
@@ -265,17 +265,18 @@ class TestNetworkCommandsAsk:
                 Probe.asked += 1
                 return PermissionResponse(action=PermissionAction.ALLOW_ONCE)
 
-        config = PermissionConfig.from_dict({
-            'mode': 'auto',
-            'whitelist': ['code_executor---shell_executor'],
-        })
+        config = PermissionConfig.from_dict(
+            {
+                'mode': 'auto',
+                'whitelist': ['code_executor---shell_executor'],
+            }
+        )
         enforcer = PermissionEnforcer(
             config=config,
             handler=Probe(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'curl https://example.com'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'curl https://example.com'})
         assert r.action == 'allow'
         assert Probe.asked == 1
 
@@ -293,8 +294,7 @@ class TestNetworkCommandsAsk:
             handler=Probe(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'ls -la'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'ls -la'})
         assert r.action == 'allow'
         assert Probe.asked == 0
 
@@ -308,8 +308,7 @@ class TestNetworkCommandsAsk:
             handler=AutoPermissionHandler(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'curl https://example.com'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'curl https://example.com'})
         assert r.action == 'deny'
         assert 'curl' in r.reason
 
@@ -322,19 +321,21 @@ class TestNetworkCommandsAsk:
                 Probe.asked += 1
                 return PermissionResponse(action=PermissionAction.ALLOW_ONCE)
 
-        config = PermissionConfig.from_dict({
-            'mode': 'auto',
-            'allow_network': True,
-        })
+        config = PermissionConfig.from_dict(
+            {
+                'mode': 'auto',
+                'allow_network': True,
+            }
+        )
         enforcer = PermissionEnforcer(
             config=config,
             handler=Probe(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'curl https://example.com'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'curl https://example.com'})
         assert r.action == 'allow'
         assert Probe.asked == 0
+
 
 class TestRememberedPatternBreadth:
     """`allow_always` remembering the approval at PROJECT scope is BY DESIGN —
@@ -359,17 +360,13 @@ class TestRememberedPatternBreadth:
             handler=self._PatternlessAlways(),
             memory=memory,
         )
-        r = await enforcer.check('code_executor---shell_executor',
-                                 {'command': 'ls -la'})
+        r = await enforcer.check('code_executor---shell_executor', {'command': 'ls -la'})
         assert r.action == 'allow'
         # The approved command, remembered — including with no arguments at all.
-        assert memory.matches('code_executor---shell_executor',
-                              {'command': 'ls /tmp'})
-        assert memory.matches('code_executor---shell_executor',
-                              {'command': 'ls'})
+        assert memory.matches('code_executor---shell_executor', {'command': 'ls /tmp'})
+        assert memory.matches('code_executor---shell_executor', {'command': 'ls'})
         # A DIFFERENT command is not covered by having approved `ls`.
-        assert not memory.matches('code_executor---shell_executor',
-                                  {'command': 'rm -rf build'})
+        assert not memory.matches('code_executor---shell_executor', {'command': 'rm -rf build'})
 
     @pytest.mark.asyncio
     async def test_the_narrow_pattern_persists_to_the_project(self, tmp_path):
@@ -380,14 +377,11 @@ class TestRememberedPatternBreadth:
             handler=self._PatternlessAlways(),
             memory=PermissionMemory(project_path=tmp_path),
         )
-        await enforcer.check('code_executor---shell_executor',
-                             {'command': 'ls -la'})
+        await enforcer.check('code_executor---shell_executor', {'command': 'ls -la'})
         # A fresh memory — i.e. a new conversation — reads the same file back.
         reloaded = PermissionMemory(project_path=tmp_path)
-        assert reloaded.matches('code_executor---shell_executor',
-                                {'command': 'ls -la'})
-        assert not reloaded.matches('code_executor---shell_executor',
-                                    {'command': 'curl https://example.com'})
+        assert reloaded.matches('code_executor---shell_executor', {'command': 'ls -la'})
+        assert not reloaded.matches('code_executor---shell_executor', {'command': 'curl https://example.com'})
 
     @pytest.mark.asyncio
     async def test_argument_less_command_remembers_itself(self, tmp_path):
@@ -399,10 +393,8 @@ class TestRememberedPatternBreadth:
             handler=self._PatternlessAlways(),
             memory=memory,
         )
-        await enforcer.check('code_executor---shell_executor',
-                             {'command': 'whoami'})
-        assert memory.matches('code_executor---shell_executor',
-                              {'command': 'whoami'})
+        await enforcer.check('code_executor---shell_executor', {'command': 'whoami'})
+        assert memory.matches('code_executor---shell_executor', {'command': 'whoami'})
 
     @pytest.mark.asyncio
     async def test_fallback_never_widens_past_the_tool(self, tmp_path):
@@ -436,7 +428,5 @@ class TestRememberedPatternBreadth:
             handler=Chooses(),
             memory=memory,
         )
-        await enforcer.check('code_executor---shell_executor',
-                             {'command': 'ls -la'})
-        assert memory.matches('code_executor---shell_executor',
-                              {'command': 'rm -rf build'})
+        await enforcer.check('code_executor---shell_executor', {'command': 'ls -la'})
+        assert memory.matches('code_executor---shell_executor', {'command': 'rm -rf build'})

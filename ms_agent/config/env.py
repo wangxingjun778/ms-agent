@@ -1,12 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from copy import copy
-from dotenv import load_dotenv
 from typing import Dict, Optional
+
+from dotenv import load_dotenv
 
 
 class Env:
-
     @staticmethod
     def load_dotenv_into_environ(dotenv_path: Optional[str] = None) -> None:
         """Load key=value pairs from a .env file into ``os.environ``.
@@ -28,8 +28,7 @@ class Env:
                 load_dotenv(default, override=False)
 
     @staticmethod
-    def load_env(envs: Dict[str, str] = None,
-                 dotenv_path: Optional[str] = None) -> Dict[str, str]:
+    def load_env(envs: Dict[str, str] = None, dotenv_path: Optional[str] = None) -> Dict[str, str]:
         """Load .env into the process env, then merge with ``envs`` and return."""
         Env.load_dotenv_into_environ(dotenv_path)
         _envs = copy(os.environ)

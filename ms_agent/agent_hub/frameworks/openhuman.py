@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """OpenHuman workspace specification (single-agent install)."""
+
 from __future__ import annotations
 
 import copy
@@ -7,8 +8,8 @@ import json
 from pathlib import Path
 
 from ms_agent.utils.logger import get_logger
-from .._workspace import (DEFAULT_AGENT_NAME, MAX_FILE_SIZE, WorkspaceSpec,
-                          register_framework, scrub_toml_secrets)
+
+from .._workspace import DEFAULT_AGENT_NAME, MAX_FILE_SIZE, WorkspaceSpec, register_framework, scrub_toml_secrets
 
 logger = get_logger()
 
@@ -63,10 +64,7 @@ class OpenhumanWorkspace(WorkspaceSpec):
     # Profile reads it from the root), so it always falls back. config.toml
     # is handled separately (it lives above the workspace); wiki/skills are
     # large trees whose per-profile duplication would bloat upload/sync.
-    _WORKSPACE_FALLBACK_FILES = frozenset([
-        'SOUL.md', 'IDENTITY.md', 'HEARTBEAT.md', 'MEMORY.md',
-        'MEMORY_GOALS.md'
-    ])
+    _WORKSPACE_FALLBACK_FILES = frozenset(['SOUL.md', 'IDENTITY.md', 'HEARTBEAT.md', 'MEMORY.md', 'MEMORY_GOALS.md'])
 
     @property
     def product_name(self) -> str:
@@ -119,10 +117,7 @@ class OpenhumanWorkspace(WorkspaceSpec):
                 users = data_root / cls._USERS_DIRNAME
         if users.is_dir():
             candidates = sorted(d for d in users.iterdir() if d.is_dir())
-            workspaces = [
-                d / cls._WORKSPACE_DIRNAME for d in candidates
-                if (d / cls._WORKSPACE_DIRNAME).is_dir()
-            ]
+            workspaces = [d / cls._WORKSPACE_DIRNAME for d in candidates if (d / cls._WORKSPACE_DIRNAME).is_dir()]
             if workspaces:
                 # ``max`` keeps the FIRST maximum in iteration order, and the
                 # list is sorted -- so ties deterministically fall back to the
@@ -244,8 +239,7 @@ class OpenhumanWorkspace(WorkspaceSpec):
         return resources
 
     def collect_bytes(self) -> dict[str, bytes]:
-        resources = self._with_workspace_fallbacks(
-            super().collect_bytes(), text=False)
+        resources = self._with_workspace_fallbacks(super().collect_bytes(), text=False)
         self._add_parent_config(resources, text=False)
         return resources
 
@@ -267,12 +261,9 @@ class OpenhumanWorkspace(WorkspaceSpec):
             return
         try:
             if path.stat().st_size > MAX_FILE_SIZE:
-                logger.warning('Skip large file %s (exceeds limit %d)', path,
-                               MAX_FILE_SIZE)
+                logger.warning('Skip large file %s (exceeds limit %d)', path, MAX_FILE_SIZE)
                 return
-            resources['config.toml'] = (
-                path.read_text(encoding='utf-8') if text else
-                path.read_bytes())
+            resources['config.toml'] = path.read_text(encoding='utf-8') if text else path.read_bytes()
         except (OSError, UnicodeDecodeError) as e:
             logger.warning('Skip %s: %s', path, e)
 
@@ -284,11 +275,9 @@ class OpenhumanWorkspace(WorkspaceSpec):
         resources = dict(resources)
         relocated: dict[str, Path] = {}
         if not self._is_all():
-            if 'config.toml' in resources \
-                    and self.root.name == self._WORKSPACE_DIRNAME:
+            if 'config.toml' in resources and self.root.name == self._WORKSPACE_DIRNAME:
                 relocated['config.toml'] = self.root.parent / 'config.toml'
-            if 'MEMORY_GOALS.md' in resources \
-                    and self.workspace_root != self.root:
+            if 'MEMORY_GOALS.md' in resources and self.workspace_root != self.root:
                 relocated['MEMORY_GOALS.md'] = self.root / 'MEMORY_GOALS.md'
         if not relocated:
             return super().apply(resources)
@@ -303,8 +292,7 @@ class OpenhumanWorkspace(WorkspaceSpec):
             written.append(str(target))
         return written
 
-    def _with_workspace_fallbacks(self, resources: dict, *,
-                                  text: bool) -> dict:
+    def _with_workspace_fallbacks(self, resources: dict, *, text: bool) -> dict:
         """Fill missing OR BLANK Profile files from the workspace copies --
         the app treats an empty file as absent and falls back, so a 0-byte
         Profile file must not shadow the real workspace content. A Profile
@@ -321,8 +309,7 @@ class OpenhumanWorkspace(WorkspaceSpec):
             if existing is not None and existing.strip():
                 continue
             try:
-                content = (
-                    f.read_text(encoding='utf-8') if text else f.read_bytes())
+                content = f.read_text(encoding='utf-8') if text else f.read_bytes()
             except (OSError, UnicodeDecodeError) as e:
                 logger.warning('Skip workspace fallback %s: %s', f, e)
                 continue

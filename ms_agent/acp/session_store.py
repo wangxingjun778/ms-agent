@@ -4,9 +4,10 @@ import asyncio
 import os
 import uuid
 from dataclasses import dataclass, field
-from omegaconf import DictConfig, OmegaConf
 from time import monotonic
 from typing import Any, Dict, List, Optional
+
+from omegaconf import DictConfig, OmegaConf
 
 from ms_agent.agent.base import Agent
 from ms_agent.agent.loader import AgentLoader
@@ -14,6 +15,7 @@ from ms_agent.config.config import Config
 from ms_agent.config.env import Env
 from ms_agent.llm.utils import Message
 from ms_agent.utils.logger import get_logger
+
 from .errors import ConfigError, MaxSessionsError, SessionNotFoundError
 
 logger = get_logger()
@@ -88,8 +90,7 @@ class ACPSessionStore:
             raise ConfigError(f'Config not found: {config_path}')
 
         config = Config.from_task(config_path)
-        OmegaConf.update(
-            config, 'generation_config.stream_output', False, merge=True)
+        OmegaConf.update(config, 'generation_config.stream_output', False, merge=True)
         agent = AgentLoader.build(
             config_dir_or_id=config_path,
             config=config,
@@ -109,8 +110,7 @@ class ACPSessionStore:
         )
         self._sessions[session_id] = entry
         self._ensure_cleanup_running()
-        logger.info('ACP session created: %s (config=%s)', session_id,
-                    config_path)
+        logger.info('ACP session created: %s (config=%s)', session_id, config_path)
         return entry
 
     def get(self, session_id: str) -> ACPSessionEntry:
@@ -126,12 +126,14 @@ class ACPSessionStore:
         """Return metadata for every active session."""
         result = []
         for sid, entry in self._sessions.items():
-            result.append({
-                'session_id': sid,
-                'config_path': entry.config_path,
-                'cwd': entry.cwd,
-                'is_running': entry.is_running,
-            })
+            result.append(
+                {
+                    'session_id': sid,
+                    'config_path': entry.config_path,
+                    'cwd': entry.cwd,
+                    'is_running': entry.is_running,
+                }
+            )
         return result
 
     async def remove(self, session_id: str) -> None:
@@ -149,8 +151,7 @@ class ACPSessionStore:
 
     def _evict_lru(self) -> Optional[str]:
         """Pick the least-recently-used *idle* session for eviction."""
-        idle = [(sid, s) for sid, s in self._sessions.items()
-                if not s.is_running]
+        idle = [(sid, s) for sid, s in self._sessions.items() if not s.is_running]
         if not idle:
             return None
         return min(idle, key=lambda x: x[1].last_activity)[0]
@@ -163,8 +164,7 @@ class ACPSessionStore:
             if hasattr(entry.agent, 'cleanup_tools'):
                 await entry.agent.cleanup_tools()
         except Exception:
-            logger.warning(
-                'Error cleaning up session %s', session_id, exc_info=True)
+            logger.warning('Error cleaning up session %s', session_id, exc_info=True)
         logger.info('ACP session removed: %s', session_id)
 
     def _ensure_cleanup_running(self) -> None:
@@ -177,9 +177,9 @@ class ACPSessionStore:
             await asyncio.sleep(self.cleanup_interval)
             now = monotonic()
             expired = [
-                sid for sid, s in self._sessions.items()
-                if (now - s.last_activity > self.session_timeout
-                    and not s.is_running)
+                sid
+                for sid, s in self._sessions.items()
+                if (now - s.last_activity > self.session_timeout and not s.is_running)
             ]
             for sid in expired:
                 logger.info('Evicting timed-out session %s', sid)

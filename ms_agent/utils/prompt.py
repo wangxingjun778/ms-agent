@@ -1,6 +1,3 @@
-# flake8: noqa
-# isort: skip_file
-# yapf: disable
 from datetime import datetime
 
 

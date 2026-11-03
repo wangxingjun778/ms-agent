@@ -19,6 +19,7 @@ deepagents ``BASE_AGENT_PROMPT``, hermes ``prompt_builder.py``, deer-flow
 ``SYSTEM_PROMPT_TEMPLATE``. Code constants ship with the wheel by
 construction — no package-data risk.
 """
+
 from __future__ import annotations
 
 #: Bump when a template below changes materially. The workspace sidecar
@@ -218,24 +219,26 @@ Settings that apply to every project live in {home}."""
 
 #: ``transcripts_where`` for the layout whose working directory doubles as
 #: the records directory.
-TRANSCRIPTS_INSIDE = ("in `sessions/` at the root of your working "
-                      "directory.{session_line}")
+TRANSCRIPTS_INSIDE = 'in `sessions/` at the root of your working directory.{session_line}'
 
 #: ``transcripts_where`` for a mounted project: records live in the data
 #: directory, and a `sessions/` folder in the workspace — if there is one —
 #: belongs to the user.
 TRANSCRIPTS_OUTSIDE = (
     'outside the working directory: this conversation is recorded at '
-    '`{session_dir}`, and the project\'s other sessions sit beside it. Any '
-    '`sessions/` directory inside the working directory is the user\'s own.')
+    "`{session_dir}`, and the project's other sessions sit beside it. Any "
+    "`sessions/` directory inside the working directory is the user's own."
+)
 
 SESSION_PLAN_HINT = (
-    'The current session\'s todo tools use `{plan_json}` and render Markdown '
-    'to `{plan_md}` by default. Use the todo tools to read or update this plan.')
+    "The current session's todo tools use `{plan_json}` and render Markdown "
+    'to `{plan_md}` by default. Use the todo tools to read or update this plan.'
+)
 
 FORK_PLAN_HINT = (
     'This is a branched session with an independent plan. Paths in inherited '
-    'tool results identify the source sessions, not the current plan.')
+    'tool results identify the source sessions, not the current plan.'
+)
 
 #: Filename -> template registry used by workspace_files.ensure logic.
 HOME_FILE_TEMPLATES = {

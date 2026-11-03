@@ -20,6 +20,7 @@ import on the LLM package. If ``ms_agent.tools.schema`` is introduced
 later, ToolResult should be re-exported from there and this definition
 removed.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +34,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     import aiohttp  # type: ignore
+
     _HAS_AIOHTTP = True
 except ImportError:  # pragma: no cover — aiohttp is in requirements/framework.txt
     aiohttp = None  # type: ignore
@@ -139,10 +141,8 @@ class OutputMapping:
     error_path: str = 'errors.message'
     task_id_path: str = 'output.task_id'
     status_path: str = 'output.task_status'
-    success_statuses: List[str] = field(
-        default_factory=lambda: ['SUCCEED'])
-    failure_statuses: List[str] = field(
-        default_factory=lambda: ['FAILED', 'TIMEOUT'])
+    success_statuses: List[str] = field(default_factory=lambda: ['SUCCEED'])
+    failure_statuses: List[str] = field(default_factory=lambda: ['FAILED', 'TIMEOUT'])
 
 
 @dataclass
@@ -168,9 +168,7 @@ class APIToolSpec:
         # so a mis-named tool is caught at load time instead of silently being
         # dropped by the dispatcher later.
         if len(self.name) > 64:
-            raise ValueError(
-                f'APIToolSpec.name must be <= 64 chars, got {len(self.name)}: '
-                f'{self.name!r}')
+            raise ValueError(f'APIToolSpec.name must be <= 64 chars, got {len(self.name)}: {self.name!r}')
 
 
 @dataclass
@@ -189,8 +187,7 @@ class ToolResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_error(cls, tool_name: str, error_msg: str,
-                   **metadata: Any) -> 'ToolResult':
+    def from_error(cls, tool_name: str, error_msg: str, **metadata: Any) -> 'ToolResult':
         return cls(
             tool_name=tool_name,
             success=False,
@@ -200,11 +197,9 @@ class ToolResult:
         )
 
     @classmethod
-    def from_success(cls,
-                     tool_name: str,
-                     content: str,
-                     raw_data: Optional[Dict[str, Any]] = None,
-                     **metadata: Any) -> 'ToolResult':
+    def from_success(
+        cls, tool_name: str, content: str, raw_data: Optional[Dict[str, Any]] = None, **metadata: Any
+    ) -> 'ToolResult':
         return cls(
             tool_name=tool_name,
             success=True,
@@ -308,8 +303,8 @@ class APIToolAdapter:
         url = self._build_url(self._spec.api_config.path)
         headers = self._build_headers()
         data = await self._request(
-            self._spec.api_config.method, url, headers, json_body=args,
-            timeout=self._spec.api_config.timeout)
+            self._spec.api_config.method, url, headers, json_body=args, timeout=self._spec.api_config.timeout
+        )
         return self._shape_result(data)
 
     async def _async_call(self, args: Dict[str, Any]) -> ToolResult:
@@ -322,28 +317,24 @@ class APIToolAdapter:
         submit_url = self._build_url(self._spec.api_config.path)
         headers = self._build_headers()
         submit_resp = await self._request(
-            self._spec.api_config.method, submit_url, headers, json_body=args,
-            timeout=self._spec.api_config.timeout)
+            self._spec.api_config.method, submit_url, headers, json_body=args, timeout=self._spec.api_config.timeout
+        )
 
-        task_id = self._extract_value(
-            submit_resp, self._spec.output_mapping.task_id_path)
+        task_id = self._extract_value(submit_resp, self._spec.output_mapping.task_id_path)
         # Some task APIs put task_id at the top level instead of under
         # ``output`` — fall back to the common top-level key before giving up,
         # so a legitimate submission isn't rejected over a path mismatch.
         if not task_id and 'task_id' in submit_resp:
             task_id = submit_resp.get('task_id')
         if not task_id:
-            err = self._extract_value(
-                submit_resp, self._spec.output_mapping.error_path)
+            err = self._extract_value(submit_resp, self._spec.output_mapping.error_path)
             return ToolResult.from_error(
                 self._spec.name,
-                f'Task submission did not return task_id: '
-                f'{err or submit_resp}',
+                f'Task submission did not return task_id: {err or submit_resp}',
                 raw=submit_resp,
             )
 
-        logger.info('API tool %s submitted async task %s', self._spec.name,
-                    task_id)
+        logger.info('API tool %s submitted async task %s', self._spec.name, task_id)
         final = await self._poll_task(str(task_id))
         result = self._shape_result(final)
         result.metadata['task_id'] = str(task_id)
@@ -361,13 +352,9 @@ class APIToolAdapter:
         interval = max(0.1, float(self._spec.api_config.poll_interval))
         last = {}
         while True:
-            data = await self._request(
-                'GET', url, headers,
-                json_body=None,
-                timeout=self._spec.api_config.timeout)
+            data = await self._request('GET', url, headers, json_body=None, timeout=self._spec.api_config.timeout)
             last = data if isinstance(data, dict) else {'raw': data}
-            status = self._extract_value(
-                last, self._spec.output_mapping.status_path)
+            status = self._extract_value(last, self._spec.output_mapping.status_path)
             if status in self._spec.output_mapping.success_statuses:
                 return last
             if status in self._spec.output_mapping.failure_statuses:
@@ -396,16 +383,13 @@ class APIToolAdapter:
         """
         if self._client is not None and _HAS_AIOHTTP:
             tmo = aiohttp.ClientTimeout(total=timeout)
-            async with self._client.request(
-                    method.upper(), url, headers=headers, json=json_body,
-                    timeout=tmo) as resp:
+            async with self._client.request(method.upper(), url, headers=headers, json=json_body, timeout=tmo) as resp:
                 text = await resp.text()
                 return _parse_json_or_wrap(text, resp.status)
         # Fallback path: no shared aiohttp client. Keep the signature async
         # by delegating a blocking urllib call to a worker thread so the
         # event loop isn't stalled on sockets.
-        return await asyncio.to_thread(
-            _urllib_request, method, url, headers, json_body, timeout)
+        return await asyncio.to_thread(_urllib_request, method, url, headers, json_body, timeout)
 
     def _shape_result(self, data: Dict[str, Any]) -> ToolResult:
         """Translate a parsed response into a :class:`ToolResult`.
@@ -418,15 +402,13 @@ class APIToolAdapter:
         if data.get('_poll_timeout'):
             return ToolResult.from_error(
                 self._spec.name,
-                f'Polling exceeded {self._spec.api_config.poll_timeout:.0f}s '
-                'without a terminal status',
+                f'Polling exceeded {self._spec.api_config.poll_timeout:.0f}s without a terminal status',
                 raw=data,
             )
 
         err = self._extract_value(data, self._spec.output_mapping.error_path)
         if err:
-            msg = err if isinstance(err, str) else json.dumps(
-                err, ensure_ascii=False)
+            msg = err if isinstance(err, str) else json.dumps(err, ensure_ascii=False)
             return ToolResult.from_error(self._spec.name, msg, raw=data)
 
         success_path = self._spec.output_mapping.success_path
@@ -441,8 +423,7 @@ class APIToolAdapter:
             content = _stringify(value)
         else:
             content = json.dumps(data, ensure_ascii=False)
-        return ToolResult.from_success(
-            self._spec.name, content, raw_data=data)
+        return ToolResult.from_success(self._spec.name, content, raw_data=data)
 
     def _build_url(self, path: str, **placeholders: Any) -> str:
         """Join ``base_url`` and ``path``, substituting ``{foo}`` placeholders."""
@@ -450,8 +431,7 @@ class APIToolAdapter:
             try:
                 path = path.format(**placeholders)
             except KeyError as exc:
-                raise ValueError(
-                    f'Missing placeholder {exc!s} for path {path!r}') from exc
+                raise ValueError(f'Missing placeholder {exc!s} for path {path!r}') from exc
         if not path.startswith('/'):
             path = '/' + path
         return f'{self._base_url}{path}'
@@ -470,8 +450,7 @@ class APIToolAdapter:
                     value = f'{prefix} {token}'.strip() if prefix else token
                     headers[self._auth.header_name] = value
                 else:
-                    logger.warning('Unknown auth type %r, skipping header',
-                                   auth_type)
+                    logger.warning('Unknown auth type %r, skipping header', auth_type)
         if self._spec.api_config.headers:
             headers.update(self._spec.api_config.headers)
         return headers
@@ -500,13 +479,10 @@ class APIToolAdapter:
                 if not isinstance(current, list):
                     return None
                 # Everything *after* the wildcard applies to each element.
-                remainder = _rebuild_path(tokens[i + 1:])
+                remainder = _rebuild_path(tokens[i + 1 :])
                 if not remainder:
                     return list(current)
-                return [
-                    APIToolAdapter._extract_value(item, remainder)
-                    for item in current
-                ]
+                return [APIToolAdapter._extract_value(item, remainder) for item in current]
             else:
                 if not isinstance(current, list):
                     return None
@@ -579,8 +555,7 @@ def _urllib_request(
     import urllib.error
     import urllib.request
 
-    body_bytes = (json.dumps(json_body, ensure_ascii=False).encode('utf-8')
-                  if json_body is not None else None)
+    body_bytes = json.dumps(json_body, ensure_ascii=False).encode('utf-8') if json_body is not None else None
     req = urllib.request.Request(url=url, data=body_bytes, method=method.upper())
     for key, value in headers.items():
         req.add_header(key, value)

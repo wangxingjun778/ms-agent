@@ -1,12 +1,13 @@
 """A stdio server's child process must be spawnable and networked: the MCP
 SDK's default child env strips proxy/index settings, and a backend launched
 with a minimal PATH cannot see the user's uvx at all."""
+
 import os
 from unittest import mock
 
 import pytest
 
-from ms_agent.tools.mcp_client import (stdio_child_env, resolve_stdio_command)
+from ms_agent.tools.mcp_client import resolve_stdio_command, stdio_child_env
 
 
 def test_child_env_carries_network_settings_but_not_credentials():
@@ -33,16 +34,18 @@ def test_command_is_found_in_user_bin_dirs_when_path_is_minimal(tmp_path):
     exe = tmp_path / 'uvx'
     exe.write_text('#!/bin/sh\n')
     exe.chmod(0o755)
-    with mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True), \
-            mock.patch('ms_agent.tools.mcp_client._STDIO_EXTRA_BIN_DIRS',
-                       (str(tmp_path), )):
+    with (
+        mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True),
+        mock.patch('ms_agent.tools.mcp_client._STDIO_EXTRA_BIN_DIRS', (str(tmp_path),)),
+    ):
         assert resolve_stdio_command('uvx') == str(exe)
 
 
 def test_missing_command_names_what_was_searched(tmp_path):
-    with mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True), \
-            mock.patch('ms_agent.tools.mcp_client._STDIO_EXTRA_BIN_DIRS',
-                       (str(tmp_path), )):
+    with (
+        mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True),
+        mock.patch('ms_agent.tools.mcp_client._STDIO_EXTRA_BIN_DIRS', (str(tmp_path),)),
+    ):
         with pytest.raises(FileNotFoundError) as err:
             resolve_stdio_command('no-such-tool-xyz')
     message = str(err.value)

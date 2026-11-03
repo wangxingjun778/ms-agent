@@ -1,12 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """System prompt assembly: layering, the enabled gate, memory segment."""
+
 import asyncio
 
 import pytest
 from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
-from ms_agent.prompting import builtin, workspace_files as wf
+from ms_agent.prompting import builtin
+from ms_agent.prompting import workspace_files as wf
 
 
 @pytest.fixture()
@@ -53,12 +55,16 @@ def test_enabled_definition_layers_in_order(home, tmp_path):
 
     content = agent._build_system_content()
     assert content.startswith(builtin.BASE_AGENT_PROMPT)
-    for fragment in ('# Soul', '## Custom Instructions', 'Answer in Chinese.',
-                     '## Project Instructions', 'This project uses TypeScript.'):
+    for fragment in (
+        '# Soul',
+        '## Custom Instructions',
+        'Answer in Chinese.',
+        '## Project Instructions',
+        'This project uses TypeScript.',
+    ):
         assert fragment in content, fragment
     # order: BASE < SOUL < custom < project
-    assert (content.index('# Soul') < content.index('## Custom Instructions')
-            < content.index('## Project Instructions'))
+    assert content.index('# Soul') < content.index('## Custom Instructions') < content.index('## Project Instructions')
     # source labels present
     assert 'source="~/.ms_agent/AGENTS.md"' in content
     assert 'source="AGENTS.md"' in content
@@ -68,10 +74,7 @@ def test_explicit_system_replaces_base_but_keeps_environment(home, tmp_path):
     wf.ensure_home_files()
     (home / 'SOUL.md').write_text('Custom soul body.\n')
     wf.reset_cache()
-    agent = _agent(
-        tmp_path,
-        prompt={'system': 'You are a custom assistant.'},
-        personalization={'enabled': True})
+    agent = _agent(tmp_path, prompt={'system': 'You are a custom assistant.'}, personalization={'enabled': True})
     content = agent._build_system_content()
     assert content.startswith('You are a custom assistant.')
     assert builtin.BASE_AGENT_PROMPT not in content
@@ -86,7 +89,8 @@ def test_legacy_fields_fall_back_until_files_have_content(home, tmp_path):
             'enabled': True,
             'global_instruction': 'Be terse.',
             'project_instruction': 'Use uv.',
-        })
+        },
+    )
     content = agent._build_system_content()
     assert 'Be terse.' in content and 'legacy:settings.json' in content
     assert 'Use uv.' in content and 'legacy:project.instruction' in content

@@ -1,4 +1,5 @@
 """Read immutable conversation prefixes and their committed context views."""
+
 from __future__ import annotations
 
 import json
@@ -12,8 +13,7 @@ class InvalidForkPoint(ValueError):
     """The requested history cannot be safely continued."""
 
 
-def read_records(source: Path | BinaryIO, after_seq: int | None = None,
-                 *, strict: bool = False) -> list[dict]:
+def read_records(source: Path | BinaryIO, after_seq: int | None = None, *, strict: bool = False) -> list[dict]:
     if isinstance(source, Path):
         with source.open('rb') as stream:
             return read_records(stream, after_seq, strict=strict)
@@ -69,17 +69,19 @@ def committed_records(records: list[dict]) -> tuple[list[dict], int | None]:
         elif kind == 'compaction_commit':
             transaction = row.get('transaction_id')
             event, messages = pending.get(transaction, ({}, []))
-            if (messages and len(messages) == event.get('message_count')
-                    and messages[0]['seq'] == row.get('context_start')
-                    and messages[-1]['seq'] == row.get('context_end')):
+            if (
+                messages
+                and len(messages) == event.get('message_count')
+                and messages[0]['seq'] == row.get('context_start')
+                and messages[-1]['seq'] == row.get('context_end')
+            ):
                 accepted.add(transaction)
                 start = row['context_start']
         elif legacy_pending:
             if row.get('_source') == 'compaction':
                 start = row['seq']
             legacy_pending = False
-    return ([r for r in records if not r.get('_compaction_id')
-             or r['_compaction_id'] in accepted], start)
+    return ([r for r in records if not r.get('_compaction_id') or r['_compaction_id'] in accepted], start)
 
 
 def context_messages(records: list[dict], start: int | None = None) -> list[dict]:
@@ -121,12 +123,18 @@ def fork_points(records: list[dict], *, require_checkpoint: bool = True) -> list
     accepted = {r.get('_compaction_id') for r in valid if r.get('_compaction_id')}
     legacy_compaction = False
     checkpoint = False
-    required_from = next((r['checkpoint_from_seq'] for r in records
-                          if r.get('_type') == 'metadata' and 'checkpoint_from_seq' in r), None)
+    required_from = next(
+        (r['checkpoint_from_seq'] for r in records if r.get('_type') == 'metadata' and 'checkpoint_from_seq' in r), None
+    )
 
     def finish():
-        if (final is not None and has_user and not failed and not pending
-                and (not require_checkpoint or checkpoint or required_from is None or final < required_from)):
+        if (
+            final is not None
+            and has_user
+            and not failed
+            and not pending
+            and (not require_checkpoint or checkpoint or required_from is None or final < required_from)
+        ):
             round_at_reply = saved_round if saved_round is not None else max(0, rounds - 1)
             points.append(ForkPoint(end, final, context_start, round_at_reply, dict(state)))
 

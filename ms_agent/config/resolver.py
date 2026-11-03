@@ -21,28 +21,31 @@ This class does NOT replace Config.from_task(). CLI mode continues to use
 Config.from_task() directly. ConfigResolver is for server/UI scenarios
 where layered config is needed.
 """
+
 from __future__ import annotations
 
 import copy
 import json
 import os
 from copy import deepcopy
-from omegaconf import DictConfig, ListConfig, OmegaConf
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from omegaconf import DictConfig, ListConfig, OmegaConf
+
 from ms_agent.config.mcp_manager import MCPConfigManager
-from ms_agent.config.mcp_schema import (ResolvedMCPConfig,
-                                        collect_builtin_tool_names,
-                                        merge_mcp_layers,
-                                        normalize_mcp_servers_layer)
+from ms_agent.config.mcp_schema import (
+    ResolvedMCPConfig,
+    collect_builtin_tool_names,
+    merge_mcp_layers,
+    normalize_mcp_servers_layer,
+)
 from ms_agent.plugins.config_manager import PluginConfigManager
 from ms_agent.utils import get_logger
 
 logger = get_logger()
 
-_FRAMEWORK_DEFAULTS_PATH = (
-    Path(__file__).parent.parent / 'agent' / 'agent.yaml')
+_FRAMEWORK_DEFAULTS_PATH = Path(__file__).parent.parent / 'agent' / 'agent.yaml'
 _LIGHTWEIGHT_DEFAULTS_PATH = Path(__file__).parent / 'lightweight.yaml'
 
 GLOBAL_SETTINGS_FILE = 'settings.json'
@@ -84,15 +87,12 @@ class ConfigResolver:
         defaults: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._global_dir = Path(global_dir).expanduser()
-        self.project_root = (
-            Path(project_root).expanduser() if project_root else None)
+        self.project_root = Path(project_root).expanduser() if project_root else None
         self.agent_config = agent_config
         # Interface defaults sit above framework defaults, below all user layers.
         self.defaults = deepcopy(defaults)
-        self.mcp_manager = mcp_manager or MCPConfigManager(
-            self._global_dir, self.project_root)
-        self.plugin_manager = PluginConfigManager(self._global_dir,
-                                                  self.project_root)
+        self.mcp_manager = mcp_manager or MCPConfigManager(self._global_dir, self.project_root)
+        self.plugin_manager = PluginConfigManager(self._global_dir, self.project_root)
 
     @property
     def global_root(self) -> Path:
@@ -125,13 +125,15 @@ class ConfigResolver:
         if self.defaults is not None:
             layers.append(OmegaConf.create(self.defaults))
 
-        global_layer = (self._settings_to_agent_config(global_settings)
-                        if global_settings is not None else self._load_global_settings())
+        global_layer = (
+            self._settings_to_agent_config(global_settings)
+            if global_settings is not None
+            else self._load_global_settings()
+        )
         if global_layer:
             layers.append(global_layer)
 
-        effective_agent_config = (
-            agent_config if agent_config is not None else self.agent_config)
+        effective_agent_config = agent_config if agent_config is not None else self.agent_config
         if effective_agent_config is not None:
             if isinstance(effective_agent_config, str):
                 effective_agent_config = OmegaConf.load(effective_agent_config)
@@ -166,6 +168,7 @@ class ConfigResolver:
         merged = self._merge_plugins(merged, effective_project_path)
 
         from ms_agent.config.config import Config
+
         merged = Config.fill_missing_fields(merged)
 
         if effective_project_path:
@@ -176,6 +179,7 @@ class ConfigResolver:
             # construction (e.g. the WebUI's shaping).
             try:
                 from omegaconf import open_dict
+
                 with open_dict(merged):
                     merged._project_patch_applied = True
             except Exception:
@@ -233,17 +237,13 @@ class ConfigResolver:
         """Return merged servers including disabled entries (for UI listing)."""
         from ms_agent.config.config import Config
 
-        global_layer = normalize_mcp_servers_layer(
-            self.mcp_manager.list('global'), source='global')
+        global_layer = normalize_mcp_servers_layer(self.mcp_manager.list('global'), source='global')
         agent_yaml_layer: Dict[str, Dict[str, Any]] = {}
         if self.agent_config is not None:
             raw = Config.convert_mcp_servers_to_json(self.agent_config)
-            agent_yaml_layer = normalize_mcp_servers_layer(
-                raw.get('mcpServers'), source='agent_yaml')
-        project_layer = normalize_mcp_servers_layer(
-            self.mcp_manager.list('project'), source='project')
-        session_layer = normalize_mcp_servers_layer(
-            session_override, source='session')
+            agent_yaml_layer = normalize_mcp_servers_layer(raw.get('mcpServers'), source='agent_yaml')
+        project_layer = normalize_mcp_servers_layer(self.mcp_manager.list('project'), source='project')
+        session_layer = normalize_mcp_servers_layer(session_override, source='session')
         merged = merge_mcp_layers(
             global_layer,
             agent_yaml_layer,
@@ -276,9 +276,7 @@ class ConfigResolver:
         if str(mode or 'legacy') != 'lightweight':
             return config
         if not _LIGHTWEIGHT_DEFAULTS_PATH.exists():
-            logger.warning(
-                'Lightweight mode requested but %s not found',
-                _LIGHTWEIGHT_DEFAULTS_PATH)
+            logger.warning('Lightweight mode requested but %s not found', _LIGHTWEIGHT_DEFAULTS_PATH)
             return config
         lightweight = OmegaConf.load(str(_LIGHTWEIGHT_DEFAULTS_PATH))
         # Merge lightweight UNDER the user config (lightweight first, user on
@@ -323,8 +321,7 @@ class ConfigResolver:
             except Exception as e:
                 logger.warning(f'Failed to load project config.yaml: {e}')
 
-        local_file = _project_internal_file(project_path,
-                                            PROJECT_SETTINGS_LOCAL_FILE)
+        local_file = _project_internal_file(project_path, PROJECT_SETTINGS_LOCAL_FILE)
         if local_file and local_file.exists():
             try:
                 with open(local_file, 'r', encoding='utf-8') as f:
@@ -348,23 +345,21 @@ class ConfigResolver:
             tools = None
             if merge_tools and 'tools' in layer:
                 from ms_agent.config.tool_settings import merge_tool_settings
+
                 tools = merge_tool_settings(
-                    OmegaConf.to_container(result.tools)
-                    if OmegaConf.is_config(result.get('tools')) else {},
-                    OmegaConf.to_container(layer.tools)
-                    if OmegaConf.is_config(layer.tools) else layer.tools)
+                    OmegaConf.to_container(result.tools) if OmegaConf.is_config(result.get('tools')) else {},
+                    OmegaConf.to_container(layer.tools) if OmegaConf.is_config(layer.tools) else layer.tools,
+                )
             result = OmegaConf.merge(result, layer)
             if tools is not None:
                 OmegaConf.update(result, 'tools', tools, merge=False)
         return result
 
-    def _merge_mcp(self, config: DictConfig,
-                   project_path: Optional[str]) -> DictConfig:
+    def _merge_mcp(self, config: DictConfig, project_path: Optional[str]) -> DictConfig:
         global_mcp = self._load_json_safe(self._global_dir / GLOBAL_MCP_FILE)
         project_mcp = {}
         if project_path:
-            project_mcp = self._load_json_safe(
-                _project_internal_file(project_path, PROJECT_MCP_FILE))
+            project_mcp = self._load_json_safe(_project_internal_file(project_path, PROJECT_MCP_FILE))
 
         if not global_mcp and not project_mcp:
             return config
@@ -374,44 +369,29 @@ class ConfigResolver:
             OmegaConf.update(config, '_merged_mcp', merged, merge=True)
         return config
 
-    def _merge_plugins(self, config: DictConfig,
-                       project_path: Optional[str]) -> DictConfig:
-        manager = (
-            PluginConfigManager(self._global_dir, project_path)
-            if project_path else self.plugin_manager)
+    def _merge_plugins(self, config: DictConfig, project_path: Optional[str]) -> DictConfig:
+        manager = PluginConfigManager(self._global_dir, project_path) if project_path else self.plugin_manager
         records = manager.load_merged(project_path)
         if not records:
             return config
 
-        payload = {
-            'plugins':
-            [record.to_dict() | {
-                'scope': record.scope
-            } for record in records]
-        }
+        payload = {'plugins': [record.to_dict() | {'scope': record.scope} for record in records]}
         OmegaConf.update(config, '_merged_plugins', payload, merge=True)
 
-        enabled_paths = [
-            record.path for record in records if record.enabled and record.path
-        ]
+        enabled_paths = [record.path for record in records if record.enabled and record.path]
         existing = []
         if hasattr(config, 'plugins') and config.plugins:
             existing = [str(item) for item in config.plugins]
-        merged_paths = existing + [
-            p for p in enabled_paths if p not in existing
-        ]
+        merged_paths = existing + [p for p in enabled_paths if p not in existing]
         if merged_paths:
             OmegaConf.update(config, 'plugins', merged_paths, merge=True)
         return config
 
-    def _merge_skills(self, config: DictConfig,
-                      project_path: Optional[str]) -> DictConfig:
-        global_skills = self._load_json_safe(self._global_dir
-                                             / GLOBAL_SKILLS_FILE)
+    def _merge_skills(self, config: DictConfig, project_path: Optional[str]) -> DictConfig:
+        global_skills = self._load_json_safe(self._global_dir / GLOBAL_SKILLS_FILE)
         project_skills = {}
         if project_path:
-            project_skills = self._load_json_safe(
-                _project_internal_file(project_path, PROJECT_SKILLS_FILE))
+            project_skills = self._load_json_safe(_project_internal_file(project_path, PROJECT_SKILLS_FILE))
 
         if not global_skills and not project_skills:
             return config
@@ -446,12 +426,10 @@ class ConfigResolver:
                 agent_llm[f'{service}_base_url'] = llm['base_url']
             if 'temperature' in llm and llm.get('temperature_enabled'):
                 agent_fields.setdefault('generation_config', {})
-                agent_fields['generation_config']['temperature'] = llm[
-                    'temperature']
+                agent_fields['generation_config']['temperature'] = llm['temperature']
             if 'max_tokens' in llm and llm['max_tokens']:
                 agent_fields.setdefault('generation_config', {})
-                agent_fields['generation_config']['max_tokens'] = llm[
-                    'max_tokens']
+                agent_fields['generation_config']['max_tokens'] = llm['max_tokens']
             if agent_llm:
                 agent_fields['llm'] = agent_llm
         # default_model (from ModelSettingsManager) is a fallback when the llm
@@ -546,25 +524,18 @@ def merge_skills_configs(
     all_disabled = global_disabled | project_disabled
 
     global_enabled_map = {
-        s.get('name', s.get('path', '')): s.get('enabled', True)
-        for s in global_sources if isinstance(s, dict)
+        s.get('name', s.get('path', '')): s.get('enabled', True) for s in global_sources if isinstance(s, dict)
     }
     project_enabled_map = {
-        s.get('name', s.get('path', '')): s.get('enabled', True)
-        for s in project_sources if isinstance(s, dict)
+        s.get('name', s.get('path', '')): s.get('enabled', True) for s in project_sources if isinstance(s, dict)
     }
 
-    merged_sources = list(global_sources) + [
-        s for s in project_sources if s not in global_sources
-    ]
+    merged_sources = list(global_sources) + [s for s in project_sources if s not in global_sources]
 
     return {
         'sources': merged_sources,
         'disabled': sorted(all_disabled),
-        '_enabled_map': {
-            **global_enabled_map,
-            **project_enabled_map
-        },
+        '_enabled_map': {**global_enabled_map, **project_enabled_map},
     }
 
 
@@ -574,8 +545,4 @@ def _extract_mcp_servers(mcp_data: Dict[str, Any]) -> Dict[str, Any]:
         return mcp_data['mcpServers']
     if 'servers' in mcp_data:
         return mcp_data['servers']
-    return {
-        k: v
-        for k, v in mcp_data.items()
-        if isinstance(v, dict) and k not in ('_scope', 'enabled')
-    }
+    return {k: v for k, v in mcp_data.items() if isinstance(v, dict) and k not in ('_scope', 'enabled')}

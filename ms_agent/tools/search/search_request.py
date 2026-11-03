@@ -1,5 +1,3 @@
-# flake8: noqa
-# yapf: disable
 from datetime import datetime
 from typing import Any, Dict
 
@@ -19,30 +17,24 @@ class SearchRequestGenerator:
     def get_args_template(self) -> str:
         raise NotImplementedError
 
-    def get_json_schema(self,
-                        num_queries: int,
-                        is_strict: bool = True) -> Dict[str, Any]:
+    def get_json_schema(self, num_queries: int, is_strict: bool = True) -> Dict[str, Any]:
         raise NotImplementedError
 
     def get_rewrite_prompt(self) -> str:
         raise NotImplementedError
 
-    def create_request(self, search_request_d: Dict[str,
-                                                    Any]) -> SearchRequest:
+    def create_request(self, search_request_d: Dict[str, Any]) -> SearchRequest:
         raise NotImplementedError
 
 
 class ExaSearchRequestGenerator(SearchRequestGenerator):
-
     def get_args_template(self) -> str:
         return (
             '{"query": "xxx", "num_results": 20, '
             '"start_published_date": "2025-01-01", "end_published_date": "2025-05-30"}'
         )
 
-    def get_json_schema(self,
-                        num_queries: int,
-                        is_strict: bool = True) -> Dict[str, Any]:
+    def get_json_schema(self, num_queries: int, is_strict: bool = True) -> Dict[str, Any]:
         return {
             'name': 'search_requests',
             'strict': is_strict,
@@ -53,8 +45,8 @@ class ExaSearchRequestGenerator(SearchRequestGenerator):
                     'properties': {
                         'query': {
                             'type': 'string',
-                            'description':  (
-                                'Write a **Google-style keyword query** optimized for Exa\'s keyword search. '
+                            'description': (
+                                "Write a **Google-style keyword query** optimized for Exa's keyword search. "
                                 'Prefer precise boolean/keyword operators over natural language. Follow these rules:\n'
                                 '1) Use exact-match quotes for key phrases (e.g., "contrastive learning"). '
                                 'Note that Chinese phrases do not require quotation marks.\n'
@@ -72,39 +64,39 @@ class ExaSearchRequestGenerator(SearchRequestGenerator):
                                 '- 大模型 AND (函数调用 OR 工具调用) -广告\n'
                                 '- 医疗人工智能 AND (监管 OR 合规) 风险\n\n'
                                 'Notes: Exa supports both keyword and neural search; this schema **prefers keyword**. '
-                                'Respect any provided date filters.')
+                                'Respect any provided date filters.'
+                            ),
                         },
                         'type': {
                             'type': 'string',
                             'enum': ['keyword', 'neural'],
                             'description': (
                                 'Search mode hint. Default is "keyword" (Google-style lexical match). '
-                                'Use "neural" only if semantic recall is essential (e.g., long, fuzzy queries).')
+                                'Use "neural" only if semantic recall is essential (e.g., long, fuzzy queries).'
+                            ),
                         },
                         'num_results': {
                             'type': 'integer',
                             'description': 'The number of results to return (1-25). '
-                                           'Choose a value appropriate to the query complexity (e.g., 10)',
+                            'Choose a value appropriate to the query complexity (e.g., 10)',
                         },
                         'start_published_date': {
                             'type': 'string',
-                            'description': 'ISO date (YYYY-MM-DD). Only return results '
-                                           'published on/after this date.',
+                            'description': 'ISO date (YYYY-MM-DD). Only return results published on/after this date.',
                         },
                         'end_published_date': {
                             'type': 'string',
-                            'description': 'ISO date (YYYY-MM-DD). Only return results '
-                                           'published on/before this date.',
+                            'description': 'ISO date (YYYY-MM-DD). Only return results published on/before this date.',
                         },
                         'research_goal': {
                             'type': 'string',
-                            'description': 'The goal of the research and additional research directions'
-                        }
+                            'description': 'The goal of the research and additional research directions',
+                        },
                     },
-                    'required': ['query', 'num_results', 'research_goal']
+                    'required': ['query', 'num_results', 'research_goal'],
                 },
-                'description': f'List of Exa-style queries, max of {num_queries}'
-            }
+                'description': f'List of Exa-style queries, max of {num_queries}',
+            },
         }
 
     def get_rewrite_prompt(self) -> str:
@@ -114,21 +106,18 @@ class ExaSearchRequestGenerator(SearchRequestGenerator):
             f'\n2. 其中，query参数的值直接使用用户原始输入，即：{self.user_prompt}'
             f'\n3. 参数需要符合搜索引擎的要求，num_results需要根据实际问题的复杂程度来估算，最大25，最小1,对于复杂的问题，num_results的值需要尽量大；'
             f'\n4. start_published_date和end_published_date需要根据实际问题的时间范围来估算，默认均为None。'
-            f'当前日期为：{datetime.now().strftime("%Y-%m-%d")}')
+            f'当前日期为：{datetime.now().strftime("%Y-%m-%d")}'
+        )
 
-    def create_request(self, search_request_d: Dict[str,
-                                                    Any]) -> ExaSearchRequest:
+    def create_request(self, search_request_d: Dict[str, Any]) -> ExaSearchRequest:
         return ExaSearchRequest(**search_request_d)
 
 
 class SerpApiSearchRequestGenerator(SearchRequestGenerator):
-
     def get_args_template(self) -> str:
         return '{"query": "xxx", "num_results": 20, "location": null}'
 
-    def get_json_schema(self,
-                        num_queries: int,
-                        is_strict: bool = True) -> Dict[str, Any]:
+    def get_json_schema(self, num_queries: int, is_strict: bool = True) -> Dict[str, Any]:
         return {
             'name': 'search_requests',
             'strict': is_strict,
@@ -146,12 +135,13 @@ class SerpApiSearchRequestGenerator(SearchRequestGenerator):
                                 'Date limits supported via before:YYYY-MM-DD and after:YYYY-MM-DD. '
                                 'Unless absolutely required for the search objective, do not apply '
                                 'domain scoping (e.g., site:) or advanced operator filters (e.g., '
-                                'intitle:, filetype:). Prefer simpler, recall-oriented keyword formulations.')
+                                'intitle:, filetype:). Prefer simpler, recall-oriented keyword formulations.'
+                            ),
                         },
                         'num_results': {
                             'type': 'integer',
                             'description': 'The number of results to return (1-25). '
-                                           'Choose a value appropriate to the query complexity (e.g., 10)',
+                            'Choose a value appropriate to the query complexity (e.g., 10)',
                         },
                         'location': {
                             'type': 'string',
@@ -159,13 +149,13 @@ class SerpApiSearchRequestGenerator(SearchRequestGenerator):
                         },
                         'research_goal': {
                             'type': 'string',
-                            'description': 'The goal of the research and additional research directions'
-                        }
+                            'description': 'The goal of the research and additional research directions',
+                        },
                     },
-                    'required': ['query', 'num_results', 'research_goal']
+                    'required': ['query', 'num_results', 'research_goal'],
                 },
-                'description': f'List of SERP queries, max of {num_queries}'
-            }
+                'description': f'List of SERP queries, max of {num_queries}',
+            },
         }
 
     def get_rewrite_prompt(self) -> str:
@@ -175,21 +165,18 @@ class SerpApiSearchRequestGenerator(SearchRequestGenerator):
             f'\n2. 其中，query参数的值通过分析用户原始输入中的有效问题部分生成，即{self.user_prompt}，要求为精简的Google风格关键词查询，'
             f'例如，用户输入"请帮我查找2023年发表的关于大语言模型在医疗领域应用的最新研究"，则query参数的值应为"large language model medical applications 2023"；'
             f'\n3. 参数需要符合搜索引擎的要求，num_results需要根据实际问题的复杂程度来估算，最大25，最小1；'
-            f'\n4. location参数用于指定搜索位置，如"Austin,Texas"，如不需要特定位置可设为null')
+            f'\n4. location参数用于指定搜索位置，如"Austin,Texas"，如不需要特定位置可设为null'
+        )
 
-    def create_request(
-            self, search_request_d: Dict[str, Any]) -> SerpApiSearchRequest:
+    def create_request(self, search_request_d: Dict[str, Any]) -> SerpApiSearchRequest:
         return SerpApiSearchRequest(**search_request_d)
 
 
 class ArxivSearchRequestGenerator(SearchRequestGenerator):
-
     def get_args_template(self) -> str:
         return '{"query": "xxx", "num_results": 20}'
 
-    def get_json_schema(self,
-                        num_queries: int,
-                        is_strict: bool = True) -> Dict[str, Any]:
+    def get_json_schema(self, num_queries: int, is_strict: bool = True) -> Dict[str, Any]:
         return {
             'name': 'search_requests',
             'strict': is_strict,
@@ -201,21 +188,22 @@ class ArxivSearchRequestGenerator(SearchRequestGenerator):
                         'query': {
                             'type': 'string',
                             'description': (
-                                'An English arXiv advanced search string: core scholarly concepts from the user\'s natural-language '
+                                "An English arXiv advanced search string: core scholarly concepts from the user's natural-language "
                                 'input have been translated into standard English terms; use field prefixes (all:, ti:, au:, abs:) '
                                 'and Boolean operators AND/OR/ANDNOT appropriately; wrap multi-word terms in double quotes to form '
                                 'exact phrases; keep the query concise, executable, and precise to maximize relevant recall while '
-                                'minimizing noise. Example: all:("large language model" AND retrieval) ANDNOT ti:survey')
+                                'minimizing noise. Example: all:("large language model" AND retrieval) ANDNOT ti:survey'
+                            ),
                         },
                         'num_results': {
                             'type': 'integer',
                             'description': 'The number of results to return (1-25). '
-                                           'Choose a value appropriate to the query complexity (e.g., 10)',
+                            'Choose a value appropriate to the query complexity (e.g., 10)',
                         },
                         'sort_strategy': {
                             'type': 'string',
                             'description': 'The sort strategy to use for the query, '
-                                           'chose from "relevance", "lastUpdatedDate", "submittedDate"',
+                            'chose from "relevance", "lastUpdatedDate", "submittedDate"',
                         },
                         'sort_order': {
                             'type': 'string',
@@ -223,13 +211,13 @@ class ArxivSearchRequestGenerator(SearchRequestGenerator):
                         },
                         'research_goal': {
                             'type': 'string',
-                            'description': 'The goal of the research and additional research directions'
-                        }
+                            'description': 'The goal of the research and additional research directions',
+                        },
                     },
-                    'required': ['query', 'num_results', 'research_goal']
+                    'required': ['query', 'num_results', 'research_goal'],
                 },
-                'description': f'List of ArXiv-style queries, max of {num_queries}'
-            }
+                'description': f'List of ArXiv-style queries, max of {num_queries}',
+            },
         }
 
     def get_rewrite_prompt(self) -> str:
@@ -249,15 +237,14 @@ class ArxivSearchRequestGenerator(SearchRequestGenerator):
             f'\n现在，基于以上所有原则和范例，为用户的原始输入"{self.user_prompt}"生成最终的搜索请求。'
             f'\n1. 将你构建的、最优的英文查询语句填入query参数。'
             f'\n2. num_results参数的值必须在1到25之间，请选择一个适合问题复杂程度的值，比如10。'
-            f'\n3. 必须符合以下arguments格式: {self.get_args_template()}')
+            f'\n3. 必须符合以下arguments格式: {self.get_args_template()}'
+        )
 
-    def create_request(self,
-                       search_request_d: Dict[str, Any]) -> ArxivSearchRequest:
+    def create_request(self, search_request_d: Dict[str, Any]) -> ArxivSearchRequest:
         return ArxivSearchRequest(**search_request_d)
 
 
-def get_search_request_generator(engine_type: SearchEngineType,
-                                 user_prompt: str) -> SearchRequestGenerator:
+def get_search_request_generator(engine_type: SearchEngineType, user_prompt: str) -> SearchRequestGenerator:
     """
     Get the corresponding search request generator
 

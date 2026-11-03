@@ -1,0 +1,30 @@
+# Ruff replaces the former pre-commit hooks (flake8, isort and yapf) and their
+# sections in setup.cfg. Run `make lint` to check and `make format` to fix.
+#
+# WebUI, the development skills under `.agents/` and the vendored skill
+# packages under `examples/skills/claude_skills/` keep their own conventions:
+# the WebUI backend and frontend are checked by the WebUI workflow.
+
+line-length = 120
+target-version = "py310"
+extend-exclude = [
+    ".agents",
+    "webui",
+    "examples/skills/claude_skills",
+]
+
+[lint]
+# Same rule families the removed flake8 configuration selected (E, W, F), plus
+# import sorting in place of isort.
+select = ["E", "F", "I", "W"]
+# E501 is left to the formatter: long strings and URLs are not split.
+# F401/F405/F541 are pipeline re-exports and f-strings kept for readability;
+# F821 and E722 are pre-existing patterns in optional-integration modules.
+ignore = ["E501", "E722", "F401", "F405", "F541", "F821"]
+
+[lint.isort]
+known-first-party = ["ms_agent"]
+
+[format]
+quote-style = "single"
+line-ending = "lf"

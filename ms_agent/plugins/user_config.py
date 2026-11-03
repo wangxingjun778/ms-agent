@@ -8,8 +8,7 @@ from typing import Any
 
 from ms_agent.utils.atomic_file import atomic_write_json
 
-_ALLOWED_TYPES = frozenset(
-    {'string', 'boolean', 'number', 'integer', 'array', 'object'})
+_ALLOWED_TYPES = frozenset({'string', 'boolean', 'number', 'integer', 'array', 'object'})
 
 
 class UserConfigError(ValueError):
@@ -30,9 +29,7 @@ def validate_schema(schema: dict[str, Any]) -> list[str]:
             continue
         field_type = field.get('type')
         if field_type not in _ALLOWED_TYPES:
-            errors.append(
-                f'userConfig.{key}.type must be one of {sorted(_ALLOWED_TYPES)}'
-            )
+            errors.append(f'userConfig.{key}.type must be one of {sorted(_ALLOWED_TYPES)}')
     return errors
 
 
@@ -57,8 +54,7 @@ def validate_values(
             errors.append(f'userConfig.{key} must be a string')
         elif field_type == 'boolean' and not isinstance(value, bool):
             errors.append(f'userConfig.{key} must be a boolean')
-        elif field_type in {'number', 'integer'
-                            } and not isinstance(value, (int, float)):
+        elif field_type in {'number', 'integer'} and not isinstance(value, (int, float)):
             errors.append(f'userConfig.{key} must be a number')
         elif field_type == 'array' and not isinstance(value, list):
             errors.append(f'userConfig.{key} must be an array')

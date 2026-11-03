@@ -4,8 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ms_agent.tools.search.search_base import SearchEngine, SearchEngineType
 from ms_agent.tools.search.tavily.http import post_json
-from ms_agent.tools.search.tavily.schema import (TavilySearchRequest,
-                                                 TavilySearchResult)
+from ms_agent.tools.search.tavily.schema import TavilySearchRequest, TavilySearchResult
 from ms_agent.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -57,17 +56,12 @@ class TavilySearch(SearchEngine):
     def _headers(self) -> dict:
         return dict(KEYLESS_HEADER) if self.keyless else {}
 
-    def search(self,
-               search_request: TavilySearchRequest) -> TavilySearchResult:
+    def search(self, search_request: TavilySearchRequest) -> TavilySearchResult:
         body = search_request.to_api_body(self._api_key)
         # Deliberately unguarded: TavilyHTTPError carries the quota/auth fields
         # the tool layer needs to tell the agent WHY a search failed. This used
         # to be wrapped in a bare RuntimeError, which erased them.
-        data = post_json(
-            TAVILY_SEARCH_URL,
-            body,
-            timeout=self._request_timeout,
-            headers=self._headers())
+        data = post_json(TAVILY_SEARCH_URL, body, timeout=self._request_timeout, headers=self._headers())
         safe_args = {k: v for k, v in body.items() if k != 'api_key'}
         if self._api_key:
             safe_args['api_key'] = '<redacted>'
@@ -81,6 +75,7 @@ class TavilySearch(SearchEngine):
     @classmethod
     def get_tool_definition(cls, server_name: str = 'web_search') -> 'Tool':
         from ms_agent.llm.utils import Tool
+
         return Tool(
             tool_name=cls.get_tool_name(),
             server_name=server_name,
@@ -98,36 +93,26 @@ class TavilySearch(SearchEngine):
                         'description': 'Search query.',
                     },
                     'num_results': {
-                        'type':
-                        'integer',
-                        'minimum':
-                        1,
-                        'maximum':
-                        20,
-                        'description':
-                        'Max results (maps to Tavily max_results). Default 10.',
+                        'type': 'integer',
+                        'minimum': 1,
+                        'maximum': 20,
+                        'description': 'Max results (maps to Tavily max_results). Default 10.',
                     },
                     'search_depth': {
-                        'type':
-                        'string',
+                        'type': 'string',
                         'enum': ['advanced', 'basic', 'fast', 'ultra-fast'],
-                        'description':
-                        ('advanced: best quality, 2 credits; '
-                         'basic/fast/ultra-fast: 1 credit (see Tavily docs).'),
+                        'description': (
+                            'advanced: best quality, 2 credits; basic/fast/ultra-fast: 1 credit (see Tavily docs).'
+                        ),
                     },
                     'topic': {
-                        'type':
-                        'string',
+                        'type': 'string',
                         'enum': ['general', 'news', 'finance'],
-                        'description':
-                        'Search category (`news` / `finance` for focused verticals).',
+                        'description': 'Search category (`news` / `finance` for focused verticals).',
                     },
                     'time_range': {
-                        'type':
-                        'string',
-                        'description':
-                        ('Filter by recency: day, week, month, year or d,w,m,y.'
-                         ),
+                        'type': 'string',
+                        'description': ('Filter by recency: day, week, month, year or d,w,m,y.'),
                     },
                     'start_date': {
                         'type': 'string',
@@ -138,58 +123,41 @@ class TavilySearch(SearchEngine):
                         'description': 'Results before YYYY-MM-DD.',
                     },
                     'include_answer': {
-                        'type':
-                        'string',
+                        'type': 'string',
                         'enum': ['false', 'true', 'basic', 'advanced'],
-                        'description':
-                        ('LLM answer: true/basic for short, advanced for detailed. '
-                         'Use false to skip.'),
+                        'description': ('LLM answer: true/basic for short, advanced for detailed. Use false to skip.'),
                     },
                     'include_raw_content': {
-                        'type':
-                        'string',
+                        'type': 'string',
                         'enum': ['false', 'true', 'markdown', 'text'],
-                        'description':
-                        ('full page text: markdown (recommended) or text; '
-                         'false to skip raw content.'),
+                        'description': ('full page text: markdown (recommended) or text; false to skip raw content.'),
                     },
                     'chunks_per_source': {
-                        'type':
-                        'integer',
-                        'minimum':
-                        1,
-                        'maximum':
-                        3,
-                        'description':
-                        ('Relevant chunks per URL when search_depth=advanced. '
-                         'Each chunk up to ~500 chars in `content` field.'),
+                        'type': 'integer',
+                        'minimum': 1,
+                        'maximum': 3,
+                        'description': (
+                            'Relevant chunks per URL when search_depth=advanced. '
+                            'Each chunk up to ~500 chars in `content` field.'
+                        ),
                     },
                     'include_domains': {
                         'type': 'array',
-                        'items': {
-                            'type': 'string'
-                        },
+                        'items': {'type': 'string'},
                         'description': 'Only include these domains (max 300).',
                     },
                     'exclude_domains': {
                         'type': 'array',
-                        'items': {
-                            'type': 'string'
-                        },
+                        'items': {'type': 'string'},
                         'description': 'Exclude domains (max 150).',
                     },
                     'country': {
-                        'type':
-                        'string',
-                        'description':
-                        ('Boost results from country (e.g. united states). '
-                         'See Tavily docs for enum.'),
+                        'type': 'string',
+                        'description': ('Boost results from country (e.g. united states). See Tavily docs for enum.'),
                     },
                     'exact_match': {
-                        'type':
-                        'boolean',
-                        'description':
-                        'Only results with exact quoted phrases in query.',
+                        'type': 'boolean',
+                        'description': 'Only results with exact quoted phrases in query.',
                     },
                 },
                 'required': ['query'],
@@ -243,8 +211,7 @@ class TavilySearch(SearchEngine):
             include_answer=inc_ans,
             include_raw_content=inc_raw,
             include_images=bool(_boolish('include_images', False)),
-            include_image_descriptions=bool(
-                _boolish('include_image_descriptions', False)),
+            include_image_descriptions=bool(_boolish('include_image_descriptions', False)),
             include_favicon=bool(_boolish('include_favicon', False)),
             include_domains=list(kwargs.get('include_domains') or []),
             exclude_domains=list(kwargs.get('exclude_domains') or []),

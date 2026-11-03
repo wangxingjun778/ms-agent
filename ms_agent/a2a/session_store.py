@@ -2,15 +2,17 @@ import asyncio
 import os
 import uuid
 from dataclasses import dataclass, field
-from omegaconf import DictConfig, OmegaConf
 from time import monotonic
 from typing import Any, Dict, List, Optional
+
+from omegaconf import DictConfig, OmegaConf
 
 from ms_agent.agent.base import Agent
 from ms_agent.agent.loader import AgentLoader
 from ms_agent.config.config import Config
 from ms_agent.llm.utils import Message
 from ms_agent.utils.logger import get_logger
+
 from .errors import AgentLoadError, ConfigError, MaxTasksError
 
 logger = get_logger()
@@ -87,8 +89,7 @@ class A2AAgentStore:
 
         try:
             config = Config.from_task(self.config_path)
-            OmegaConf.update(
-                config, 'generation_config.stream_output', False, merge=True)
+            OmegaConf.update(config, 'generation_config.stream_output', False, merge=True)
             agent = AgentLoader.build(
                 config_dir_or_id=self.config_path,
                 config=config,
@@ -108,8 +109,7 @@ class A2AAgentStore:
         )
         self._tasks[task_id] = entry
         self._ensure_cleanup_running()
-        logger.info('A2A agent created for task: %s (config=%s)', task_id,
-                    self.config_path)
+        logger.info('A2A agent created for task: %s (config=%s)', task_id, self.config_path)
         return entry
 
     def get(self, task_id: str) -> A2ATaskEntry | None:
@@ -145,8 +145,7 @@ class A2AAgentStore:
             if hasattr(entry.agent, 'cleanup_tools'):
                 await entry.agent.cleanup_tools()
         except Exception:
-            logger.warning(
-                'Error cleaning up A2A task %s', task_id, exc_info=True)
+            logger.warning('Error cleaning up A2A task %s', task_id, exc_info=True)
         logger.info('A2A agent removed for task: %s', task_id)
 
     def _ensure_cleanup_running(self) -> None:
@@ -158,9 +157,9 @@ class A2AAgentStore:
             await asyncio.sleep(self.cleanup_interval)
             now = monotonic()
             expired = [
-                tid for tid, t in self._tasks.items()
-                if (now
-                    - t.last_activity > self.task_timeout and not t.is_running)
+                tid
+                for tid, t in self._tasks.items()
+                if (now - t.last_activity > self.task_timeout and not t.is_running)
             ]
             for tid in expired:
                 logger.info('Evicting timed-out A2A task %s', tid)

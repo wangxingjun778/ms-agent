@@ -53,8 +53,7 @@ class PermissionHandler(Protocol):
         context: str,
         suggestions: list[str] | None = None,
         call_id: str = '',
-    ) -> PermissionResponse:
-        ...
+    ) -> PermissionResponse: ...
 
 
 class AutoPermissionHandler:
@@ -91,24 +90,23 @@ class CLIPermissionHandler:
 
         suggestion = suggestions[0] if suggestions else tool_name
 
-        print(f'\n{"="*60}', file=sys.stderr)
+        print(f'\n{"=" * 60}', file=sys.stderr)
         print(f' Permission Required', file=sys.stderr)
-        print(f'{"="*60}', file=sys.stderr)
+        print(f'{"=" * 60}', file=sys.stderr)
         print(f' Tool: {tool_name}', file=sys.stderr)
         print(f' Args: {args_display}', file=sys.stderr)
         if context:
             print(f' Context: {context}', file=sys.stderr)
-        print(f'{"─"*60}', file=sys.stderr)
+        print(f'{"─" * 60}', file=sys.stderr)
         print(f' [y] Allow this once', file=sys.stderr)
         print(f' [s] Allow for this session', file=sys.stderr)
         print(f' [a] Always allow (pattern: {suggestion})', file=sys.stderr)
         print(f' [e] Edit args then execute', file=sys.stderr)
         print(f' [n] Deny', file=sys.stderr)
-        print(f'{"="*60}', file=sys.stderr)
+        print(f'{"=" * 60}', file=sys.stderr)
 
         loop = asyncio.get_running_loop()
-        choice = await loop.run_in_executor(
-            None, lambda: input('Choice [y/s/a/e/n]: ').strip().lower())
+        choice = await loop.run_in_executor(None, lambda: input('Choice [y/s/a/e/n]: ').strip().lower())
 
         if choice == 's':
             return PermissionResponse(
@@ -148,13 +146,13 @@ class CLIPermissionHandler:
 class EventEmitter(Protocol):
     """Protocol for pushing events to the frontend."""
 
-    def emit(self, event: dict[str, Any]) -> None:
-        ...
+    def emit(self, event: dict[str, Any]) -> None: ...
 
 
 @dataclass
 class _PendingAsk:
     """One card the user has not answered yet, and what it was about."""
+
     future: 'asyncio.Future[PermissionResponse]'
     tool_name: str
     tool_args: dict
@@ -208,23 +206,18 @@ class WebPermissionHandler:
             forced=forced,
         )
 
-        self._event_emitter.emit({
-            'type':
-            'permission_request',
-            'request_id':
-            request_id,
-            'call_id':
-            call_id,
-            'tool_name':
-            tool_name,
-            'tool_args':
-            tool_args,
-            'context':
-            context,
-            'suggestions':
-            suggestions or [],
-            'options': [a.value for a in PermissionAction],
-        })
+        self._event_emitter.emit(
+            {
+                'type': 'permission_request',
+                'request_id': request_id,
+                'call_id': call_id,
+                'tool_name': tool_name,
+                'tool_args': tool_args,
+                'context': context,
+                'suggestions': suggestions or [],
+                'options': [a.value for a in PermissionAction],
+            }
+        )
 
         try:
             if self._timeout is None:
@@ -243,7 +236,8 @@ class WebPermissionHandler:
                     'was not run. This is a TIMEOUT, not a refusal by the '
                     'user — nobody saw the request. Do not re-request the '
                     'same approval; finish what you can without it and say '
-                    'plainly what is left waiting on approval.'),
+                    'plainly what is left waiting on approval.'
+                ),
             )
         finally:
             self._pending.pop(request_id, None)
@@ -254,11 +248,7 @@ class WebPermissionHandler:
         A host replaying a reconnected turn needs this to tell a card that is
         still live from one that was already decided.
         """
-        return {
-            request_id
-            for request_id, pending in self._pending.items()
-            if not pending.future.done()
-        }
+        return {request_id for request_id, pending in self._pending.items() if not pending.future.done()}
 
     def is_awaiting(self, request_id: str) -> bool:
         """Whether this request is still open for an answer.
@@ -315,9 +305,7 @@ class WebPermissionHandler:
         for request_id, pending in list(self._pending.items()):
             if pending.future.done():
                 continue
-            pending.future.set_result(
-                PermissionResponse(
-                    action=PermissionAction.DENY, feedback=feedback))
+            pending.future.set_result(PermissionResponse(action=PermissionAction.DENY, feedback=feedback))
             resolved += 1
             self._pending.pop(request_id, None)
         return resolved

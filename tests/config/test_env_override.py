@@ -3,6 +3,7 @@
 to allow overrides (e.g. OPENAI_API_KEY -> llm.openai_api_key). Ambient shell
 vars (PATH/HOME/...) must be excluded from that source, else a config key like
 ``path`` (skills sources[].path) is silently clobbered by the shell's $PATH."""
+
 import sys
 from unittest.mock import patch
 
@@ -16,10 +17,14 @@ def _cfg_dir(tmp_path, body):
 
 def test_path_key_not_clobbered_by_env_PATH(tmp_path, monkeypatch):
     monkeypatch.setenv('PATH', '/usr/bin:/bin:/sentinel/from/shell')
-    d = _cfg_dir(tmp_path, (
-        'llm:\n  service: openai\n  model: m\n'
-        'skills:\n  sources:\n    - type: local\n'
-        '      path: /marker/skills/dir\n'))
+    d = _cfg_dir(
+        tmp_path,
+        (
+            'llm:\n  service: openai\n  model: m\n'
+            'skills:\n  sources:\n    - type: local\n'
+            '      path: /marker/skills/dir\n'
+        ),
+    )
     with patch.object(sys, 'argv', ['ms-agent']):
         cfg = Config.from_task(d)
     assert cfg.skills.sources[0].path == '/marker/skills/dir'
@@ -27,8 +32,7 @@ def test_path_key_not_clobbered_by_env_PATH(tmp_path, monkeypatch):
 
 def test_home_key_not_clobbered_by_env_HOME(tmp_path, monkeypatch):
     monkeypatch.setenv('HOME', '/Users/somebody')
-    d = _cfg_dir(tmp_path,
-                 'llm:\n  service: openai\n  model: m\n  home: /keep/this\n')
+    d = _cfg_dir(tmp_path, 'llm:\n  service: openai\n  model: m\n  home: /keep/this\n')
     with patch.object(sys, 'argv', ['ms-agent']):
         cfg = Config.from_task(d)
     assert cfg.llm.home == '/keep/this'

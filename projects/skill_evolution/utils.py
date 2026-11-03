@@ -1,15 +1,15 @@
 import asyncio
 from typing import List
 
-from ms_agent.utils import get_logger
-
 from tasks.base import BaseEvaluationResult
+
+from ms_agent.utils import get_logger
 
 logger = get_logger(__name__)
 
 
 async def dummy_evaluate() -> BaseEvaluationResult:
-    return BaseEvaluationResult(messages=[], score=0.0, status="failure")
+    return BaseEvaluationResult(messages=[], score=0.0, status='failure')
 
 
 async def worker(semaphore: asyncio.Semaphore, coroutine):
@@ -18,7 +18,7 @@ async def worker(semaphore: asyncio.Semaphore, coroutine):
         try:
             return await coroutine
         except Exception as e:
-            logger.error(f"Error in worker: {e}", exc_info=True)
+            logger.error(f'Error in worker: {e}', exc_info=True)
             return None
 
 
@@ -47,13 +47,15 @@ def collect_and_log_evaluation_results(
     total_score, total_success = 0.0, 0
     for result in evaluation_results:
         total_score += result.score
-        total_success += 1 if result.status == "success" else 0
+        total_success += 1 if result.status == 'success' else 0
     num_results = len(evaluation_results)
-    
-    avg_score = total_score / num_results if evaluation_results else 0.
-    success_rate = total_success / num_results if evaluation_results else 0.
-    logger.info(f"{context} Evaluation results: avg_score={avg_score:.4f}, "
-                f"success_rate={success_rate:.2%} [{total_success}/{num_results}]")
+
+    avg_score = total_score / num_results if evaluation_results else 0.0
+    success_rate = total_success / num_results if evaluation_results else 0.0
+    logger.info(
+        f'{context} Evaluation results: avg_score={avg_score:.4f}, '
+        f'success_rate={success_rate:.2%} [{total_success}/{num_results}]'
+    )
     return avg_score
 
 
@@ -66,6 +68,6 @@ def format_evaluation_result(evaluation_result: BaseEvaluationResult) -> str:
     Returns:
         str: A string representation of the evaluation result.
     """
-    messages_str = "\n".join(f"{message.role}: {message.content}" for message in evaluation_result.messages)
-    other_str = "\n".join(f"{key}: {value}" for key, value in evaluation_result.to_dict().items() if key != "messages")
-    return f"{messages_str}\n\n{other_str}"
+    messages_str = '\n'.join(f'{message.role}: {message.content}' for message in evaluation_result.messages)
+    other_str = '\n'.join(f'{key}: {value}' for key, value in evaluation_result.to_dict().items() if key != 'messages')
+    return f'{messages_str}\n\n{other_str}'

@@ -9,6 +9,7 @@ dispatch through one :class:`CommandRouter`, and the interpretation of a
 instance, the ``extra`` contract, and the command-loop semantics are shared
 rather than duplicated per call site.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -37,12 +38,14 @@ class InteractiveTurn:
 class InteractiveSession:
     """Drives a single ``>>>`` prompt turn, handling slash commands in a loop."""
 
-    def __init__(self,
-                 router: CommandRouter,
-                 source: str = 'cli',
-                 input_source: Any = None,
-                 event_sink: Any = None,
-                 persist_context: Any = None) -> None:
+    def __init__(
+        self,
+        router: CommandRouter,
+        source: str = 'cli',
+        input_source: Any = None,
+        event_sink: Any = None,
+        persist_context: Any = None,
+    ) -> None:
         self._router = router
         self._source = source
         # Async InputSource (ms_agent.ui). Its awaitable read_prompt lets the
@@ -95,8 +98,7 @@ class InteractiveSession:
         while True:
             try:
                 if self._input_source is not None:
-                    query = (await
-                             self._input_source.read_prompt('>>> ')).strip()
+                    query = (await self._input_source.read_prompt('>>> ')).strip()
                 else:
                     query = input('>>> ').strip()
             except (EOFError, KeyboardInterrupt):
@@ -109,11 +111,9 @@ class InteractiveSession:
                 # already shows the typed line — but a WebUI renders it.
                 if self._event_sink is not None:
                     from ms_agent.ui.events import UserMessage
+
                     self._event_sink.emit(UserMessage(text=query))
-                return InteractiveTurn(
-                    action='submit',
-                    text=query,
-                    attachments=self._take_attachments())
+                return InteractiveTurn(action='submit', text=query, attachments=self._take_attachments())
 
             cmd_name, args = self._router.parse_input(query)
             ctx = CommandContext(
@@ -145,6 +145,7 @@ class InteractiveSession:
     def _emit(self, text: str) -> None:
         if self._event_sink is not None:
             from ms_agent.ui.events import Notice
+
             self._event_sink.emit(Notice(level='info', text=text))
         else:
             print(text)

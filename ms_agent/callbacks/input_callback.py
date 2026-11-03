@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from omegaconf import DictConfig
 from typing import TYPE_CHECKING, List, Optional
+
+from omegaconf import DictConfig
 
 from ms_agent.agent.runtime import Runtime
 from ms_agent.callbacks import Callback
@@ -41,7 +42,8 @@ class InputCallback(Callback):
             source='tui' if input_source is not None else 'cli',
             input_source=input_source,
             event_sink=event_sink,
-            persist_context=persist_context)
+            persist_context=persist_context,
+        )
 
     @staticmethod
     def _build_default_router() -> 'CommandRouter':
@@ -60,8 +62,4 @@ class InputCallback(Callback):
             runtime.should_stop = True
             return
         runtime.should_stop = False
-        messages.append(
-            Message(
-                role='user',
-                content=turn.text,
-                attachments=turn.attachments))
+        messages.append(Message(role='user', content=turn.text, attachments=turn.attachments))

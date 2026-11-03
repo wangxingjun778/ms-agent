@@ -23,6 +23,7 @@ Read-side semantics (loads and list_sources):
     ("existence = filesystem, state = disabled list"). The managed tree wins
     over the standard tree, and explicit sources remain highest priority.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,6 +58,7 @@ def project_standard_skills_tree(project_path: str) -> Path:
     root = Path(os.path.expanduser(str(project_path))).resolve()
     return root / '.agents' / SKILLS_TREE_DIR
 
+
 #: Remote-source prefixes that must never be path-anchored.
 _REMOTE_PREFIXES = ('modelscope://', 'http://', 'https://', 'git://', '@')
 #: ``owner/repo`` hub shorthand (mirrors sources.parse_skill_source).
@@ -80,8 +82,7 @@ def resolve_source_entry(entry: Any, base: Path) -> Any:
     if os.path.isabs(raw):
         return entry
     candidate = Path(base) / raw
-    if (not raw.startswith(('./', '../')) and _OWNER_REPO_RE.match(raw)
-            and not candidate.exists()):
+    if not raw.startswith(('./', '../')) and _OWNER_REPO_RE.match(raw) and not candidate.exists():
         return entry  # hub shorthand, not a local dir
     return str(candidate.resolve())
 
@@ -114,8 +115,7 @@ class SkillsConfigManager:
             ),
         )
 
-    def load_merged(self,
-                    project_path: Optional[str] = None) -> Dict[str, Any]:
+    def load_merged(self, project_path: Optional[str] = None) -> Dict[str, Any]:
         g = self.load_global()
         p = self.load_project(project_path) if project_path else {}
         return merge_skills_configs(g, p)
@@ -128,8 +128,8 @@ class SkillsConfigManager:
     def project_skills_tree(project_path: str) -> Path:
         """The project live tree: ``<project>/.ms_agent/skills`` (legacy
         ``.ms-agent/skills`` honored when only it exists)."""
-        from ms_agent.project.paths import (INTERNAL_DIR_NAME,
-                                            LEGACY_INTERNAL_DIR_NAME)
+        from ms_agent.project.paths import INTERNAL_DIR_NAME, LEGACY_INTERNAL_DIR_NAME
+
         root = Path(os.path.expanduser(str(project_path))).resolve()
         new = root / INTERNAL_DIR_NAME / SKILLS_TREE_DIR
         if new.exists():
@@ -138,8 +138,7 @@ class SkillsConfigManager:
         return legacy if legacy.exists() else new
 
     @staticmethod
-    def _resolved(data: Dict[str, Any], base: Path,
-                  trees: tuple[Path, ...]) -> Dict[str, Any]:
+    def _resolved(data: Dict[str, Any], base: Path, trees: tuple[Path, ...]) -> Dict[str, Any]:
         """Anchor relative sources at *base* and prepend implicit trees.
 
         Trees are ordered from lower to higher priority.  The standard
@@ -148,9 +147,7 @@ class SkillsConfigManager:
         precedence.
         """
         out = dict(data)
-        sources = [
-            resolve_source_entry(s, base) for s in (data.get('sources') or [])
-        ]
+        sources = [resolve_source_entry(s, base) for s in (data.get('sources') or [])]
         implicit: List[str] = []
         for tree in trees:
             if not tree.is_dir():
@@ -218,10 +215,7 @@ class SkillsConfigManager:
             sources: List[str] = data.get('sources', [])
             # Match the raw string or its anchored form, so callers may pass
             # either what the file stores or what list_sources returned.
-            data['sources'] = [
-                s for s in sources
-                if s != source and resolve_source_entry(s, base) != source
-            ]
+            data['sources'] = [s for s in sources if s != source and resolve_source_entry(s, base) != source]
             self._write(path, data)
 
     def list_sources(
@@ -254,10 +248,7 @@ class SkillsConfigManager:
         else:
             base = self._global_dir
             data = self._read(self._global_path())
-        return [
-            resolve_source_entry(source, base)
-            for source in (data.get('sources') or [])
-        ]
+        return [resolve_source_entry(source, base) for source in (data.get('sources') or [])]
 
     # -- internal --
 
@@ -266,6 +257,7 @@ class SkillsConfigManager:
 
     def _project_path(self, project_path: str) -> Path:
         from ms_agent.project.paths import project_internal_file
+
         return project_internal_file(project_path, SKILLS_FILE)
 
     def _resolve_path(self, scope: str, project_path: Optional[str]) -> Path:

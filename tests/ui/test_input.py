@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Async input contract: StdinInputSource reads a line off the event loop."""
+
 import asyncio
 from unittest.mock import patch
 

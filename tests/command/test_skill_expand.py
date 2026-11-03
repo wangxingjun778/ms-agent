@@ -1,8 +1,8 @@
 """Public skill-expansion helpers: structured + anywhere-in-text invocation."""
+
 import pytest
 
-from ms_agent.command.skill_bridge import (SkillCommandBridge, expand_skill,
-                                           expand_slash_text)
+from ms_agent.command.skill_bridge import SkillCommandBridge, expand_skill, expand_slash_text
 from ms_agent.command.types import CommandContext, CommandResultType
 
 
@@ -25,17 +25,15 @@ class _FakeCatalog:
 
 @pytest.fixture
 def catalog():
-    return _FakeCatalog(
-        _FakeSkill('writer', 'Writer',
-                   '---\nname: Writer\n---\nGuide: $ARGUMENTS'))
+    return _FakeCatalog(_FakeSkill('writer', 'Writer', '---\nname: Writer\n---\nGuide: $ARGUMENTS'))
 
 
 def test_expand_skill_structured_invocation(catalog):
     result = expand_skill(catalog, 'writer', '润色这段')
     assert result.type == CommandResultType.SUBMIT_PROMPT
-    assert 'Guide: 润色这段' in result.content       # $ARGUMENTS substituted
+    assert 'Guide: 润色这段' in result.content  # $ARGUMENTS substituted
     assert "User's request: 润色这段" in result.content
-    assert '---' not in result.content               # frontmatter stripped
+    assert '---' not in result.content  # frontmatter stripped
 
 
 def test_expand_skill_bare_invocation_submits(catalog):
@@ -44,7 +42,7 @@ def test_expand_skill_bare_invocation_submits(catalog):
     bare = expand_skill(catalog, 'writer', '')
     assert bare.type == CommandResultType.SUBMIT_PROMPT
     assert 'Use the [Writer] skill' in bare.content
-    assert 'Guide: ' in bare.content            # $ARGUMENTS replaced with ''
+    assert 'Guide: ' in bare.content  # $ARGUMENTS replaced with ''
     assert 'without additional arguments' in bare.content
     assert "User's request:" not in bare.content
     assert expand_skill(catalog, 'nope', 'x') is None
@@ -56,8 +54,9 @@ def test_expand_slash_text_mid_sentence(catalog):
     # The token may sit anywhere; surrounding words become the arguments.
     result = expand_slash_text(catalog, '帮我 /writer 润色下面这段话')
     assert result.type == CommandResultType.SUBMIT_PROMPT
-    assert "User's request: 帮我  润色下面这段话".replace('  ', ' ') \
-        or True  # args = full text minus the token (whitespace normalized below)
+    assert (
+        "User's request: 帮我  润色下面这段话".replace('  ', ' ') or True
+    )  # args = full text minus the token (whitespace normalized below)
     assert '/writer' not in result.content.split("User's request:")[1]
 
 
@@ -68,17 +67,14 @@ def test_expand_slash_text_boundaries(catalog):
     assert expand_slash_text(catalog, '看看 /unknown 是什么') is None
     # Leading position still works; a token-only input submits too (the model
     # reads the skill and acts on its instructions).
-    assert expand_slash_text(catalog, '/writer 开始').type \
-        == CommandResultType.SUBMIT_PROMPT
+    assert expand_slash_text(catalog, '/writer 开始').type == CommandResultType.SUBMIT_PROMPT
     bare = expand_slash_text(catalog, '/writer')
     assert bare.type == CommandResultType.SUBMIT_PROMPT
     assert 'without additional arguments' in bare.content
 
 
 def test_expand_slash_text_first_known_token_wins():
-    cat = _FakeCatalog(
-        _FakeSkill('a', 'A', 'A body: $ARGUMENTS'),
-        _FakeSkill('b', 'B', 'B body: $ARGUMENTS'))
+    cat = _FakeCatalog(_FakeSkill('a', 'A', 'A body: $ARGUMENTS'), _FakeSkill('b', 'B', 'B body: $ARGUMENTS'))
     result = expand_slash_text(cat, '先 /unknown 再 /b 然后 /a')
     # /unknown is skipped (not in catalog); /b is the first known token.
     assert 'B body:' in result.content
@@ -89,8 +85,7 @@ def test_expand_slash_text_first_known_token_wins():
 @pytest.mark.asyncio
 async def test_intercept_delegates_to_expand(catalog):
     bridge = SkillCommandBridge(catalog)
-    ctx = CommandContext(raw_input='/writer 改写', command_name='writer',
-                         args='改写', source='webui')
+    ctx = CommandContext(raw_input='/writer 改写', command_name='writer', args='改写', source='webui')
     result = await bridge._intercept(ctx)
     assert result.type == CommandResultType.SUBMIT_PROMPT
     assert 'Guide: 改写' in result.content
@@ -103,11 +98,9 @@ def test_session_log_skill_invocation_marker(tmp_path):
 
     log = SessionLog(session_dir=str(tmp_path), session_key='s1')
     log.append({'role': 'user', 'content': 'expanded prompt …'})
-    log.record_skill_invocation({
-        'original_text': '/writer 润色', 'skill_ids': ['writer']})
+    log.record_skill_invocation({'original_text': '/writer 润色', 'skill_ids': ['writer']})
     # Marker is display-only: filtered from messages, readable via its getter.
-    assert all(
-        m.get('_type') != 'skill_invocation' for m in log.get_all_messages())
+    assert all(m.get('_type') != 'skill_invocation' for m in log.get_all_messages())
     marks = log.get_skill_invocations()
     assert len(marks) == 1
     assert marks[0]['original_text'] == '/writer 润色'

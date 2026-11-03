@@ -1,14 +1,15 @@
 import os
 import tempfile
-import pytest
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+import pytest
+
 from ms_agent.skill.runtime import SkillRuntime
 
-
 # -- Minimal mocks that mirror the real API surface --
+
 
 @dataclass
 class MockSkill:
@@ -54,8 +55,7 @@ class MockInjector:
 
     def build_skill_prompt_section(self):
         enabled = [
-            s.name for sid, s in sorted(self._catalog._skills.items())
-            if sid not in self._catalog._disabled_skills
+            s.name for sid, s in sorted(self._catalog._skills.items()) if sid not in self._catalog._disabled_skills
         ]
         if not enabled:
             return ''
@@ -81,10 +81,13 @@ class MockMessage:
 
 
 def make_runtime(skills=None, with_config=False, with_injector=True):
-    catalog = MockCatalog(skills or {
-        'alpha': MockSkill(skill_id='alpha', name='Alpha'),
-        'beta': MockSkill(skill_id='beta', name='Beta'),
-    })
+    catalog = MockCatalog(
+        skills
+        or {
+            'alpha': MockSkill(skill_id='alpha', name='Alpha'),
+            'beta': MockSkill(skill_id='beta', name='Beta'),
+        }
+    )
     injector = MockInjector(catalog) if with_injector else None
     config_mgr = MockConfigManager() if with_config else None
     return SkillRuntime(catalog, injector, config_mgr), catalog, config_mgr

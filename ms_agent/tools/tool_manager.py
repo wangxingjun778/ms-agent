@@ -15,8 +15,8 @@ from types import TracebackType
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ms_agent.llm.utils import Tool, ToolCall
-from ms_agent.tools.arg_coercion import coerce_arguments
 from ms_agent.tools.agent_tool import AgentTool
+from ms_agent.tools.arg_coercion import coerce_arguments
 from ms_agent.tools.base import ToolBase
 from ms_agent.tools.code import CodeExecutionTool, LocalCodeExecutionTool
 from ms_agent.tools.filesystem_tool import FileSystemTool
@@ -28,8 +28,7 @@ try:
 except ImportError:
     MCPClient = None
 from ms_agent.tools.search.localsearch_tool import LocalSearchTool
-from ms_agent.tools.search.sirchmunk_search import \
-    effective_localsearch_settings
+from ms_agent.tools.search.sirchmunk_search import effective_localsearch_settings
 from ms_agent.tools.search.websearch_tool import WebSearchTool
 from ms_agent.tools.todolist_tool import TodoListTool
 from ms_agent.tools.video_generator import VideoGenerator
@@ -67,17 +66,13 @@ def _truncate_tool_output(response: str, tool_ins: Any) -> str:
         return response
 
     keep = str(getattr(tool_ins, 'truncate_keep', 'both') or 'both')
-    notice = (
-        f'\n\n...[SYSTEM: Output truncated, {len(response)} chars total, '
-        f'showing {{shown}}]...\n\n')
+    notice = f'\n\n...[SYSTEM: Output truncated, {len(response)} chars total, showing {{shown}}]...\n\n'
     if keep == 'head':
         return response[:budget] + notice.format(shown=f'first {budget} chars')
     if keep == 'tail':
         return notice.format(shown=f'last {budget} chars') + response[-budget:]
     half = budget // 2
-    return (response[:half]
-            + notice.format(shown=f'first and last {half} chars')
-            + response[-half:])
+    return response[:half] + notice.format(shown=f'first and last {half} chars') + response[-half:]
 
 
 def _tool_on(config, name: str) -> bool:
@@ -91,8 +86,7 @@ def _tool_on(config, name: str) -> bool:
     return getattr(tool_cfg, 'enabled', True) is not False
 
 
-def parse_timeout_from_tool_args(
-        tool_args: Optional[Dict[str, Any]]) -> Optional[float]:
+def parse_timeout_from_tool_args(tool_args: Optional[Dict[str, Any]]) -> Optional[float]:
     """Read ``tools.arguments.timeout`` if present (even when omitted from JSON schema).
 
     Providers may still drop unknown keys before arguments reach the host; when the key
@@ -129,8 +123,7 @@ def effective_tool_wait_seconds(
 
 
 class ToolManager:
-    """Interacting with Agent class, hold all tools
-    """
+    """Interacting with Agent class, hold all tools"""
 
     TOOL_SPLITER = '---'
 
@@ -142,23 +135,22 @@ class ToolManager:
         return full_name.split(splitter, 1)[1]
 
     def __init__(
-            self,
-            config,
-            mcp_config: Optional[Dict[str, Any]] = None,
-            mcp_client: Optional[MCPClient] = None,
-            permission_enforcer=None,
-            safety_guard=None,
-            permission_mode: str = 'auto',
-            read_policy: str = 'loose',
-            hook_runtime=None,
-            permission_config=None,
-            mcp_callable_check: Optional[Callable[[str], bool]] = None,
-            mcp_failure_handler: Optional[Callable[
-                [str, str, str, Optional[str]], Awaitable[None]]] = None,
-            mcp_unavailable_detail: Optional[Callable[[str], dict]] = None,
-            mcp_success_handler: Optional[Callable[[str],
-                                                   Awaitable[None]]] = None,
-            **kwargs):
+        self,
+        config,
+        mcp_config: Optional[Dict[str, Any]] = None,
+        mcp_client: Optional[MCPClient] = None,
+        permission_enforcer=None,
+        safety_guard=None,
+        permission_mode: str = 'auto',
+        read_policy: str = 'loose',
+        hook_runtime=None,
+        permission_config=None,
+        mcp_callable_check: Optional[Callable[[str], bool]] = None,
+        mcp_failure_handler: Optional[Callable[[str, str, str, Optional[str]], Awaitable[None]]] = None,
+        mcp_unavailable_detail: Optional[Callable[[str], dict]] = None,
+        mcp_success_handler: Optional[Callable[[str], Awaitable[None]]] = None,
+        **kwargs,
+    ):
         self.config = config
         self.trust_remote_code = kwargs.get('trust_remote_code', False)
         self._permission_enforcer = permission_enforcer
@@ -180,19 +172,17 @@ class ToolManager:
         _builtin_enabled = True
         try:
             from ms_agent.config.config import Config
+
             _builtin_enabled = Config.builtin_tools_enabled(config)
         except Exception:  # noqa: BLE001
             pass
 
         if not _builtin_enabled:
-            logger.info(
-                'Built-in tools disabled (tools.builtin_enabled=false)')
+            logger.info('Built-in tools disabled (tools.builtin_enabled=false)')
         else:
-            if hasattr(config, 'tools') and hasattr(config.tools,
-                                                    'image_generator'):
+            if hasattr(config, 'tools') and hasattr(config.tools, 'image_generator'):
                 self.extra_tools.append(ImageGenerator(config))
-            if hasattr(config, 'tools') and hasattr(config.tools,
-                                                    'video_generator'):
+            if hasattr(config, 'tools') and hasattr(config.tools, 'video_generator'):
                 self.extra_tools.append(VideoGenerator(config))
             # image_reader is registered ONLY when an auxiliary vision model is
             # configured: without one the tool can do nothing, and an always-present
@@ -204,37 +194,28 @@ class ToolManager:
                     self.extra_tools.append(ImageReaderTool(config))
                 else:
                     logger.info(
-                        'tools.image_reader is enabled but '
-                        'llm.vision.auxiliary.model is unset; not registering it')
+                        'tools.image_reader is enabled but llm.vision.auxiliary.model is unset; not registering it'
+                    )
             if _tool_on(config, 'file_system'):
-                self.extra_tools.append(
-                    FileSystemTool(
-                        config, trust_remote_code=self.trust_remote_code))
+                self.extra_tools.append(FileSystemTool(config, trust_remote_code=self.trust_remote_code))
             if _tool_on(config, 'code_executor'):
                 code_exec_cfg = getattr(config.tools, 'code_executor')
-                implementation = getattr(code_exec_cfg, 'implementation',
-                                         'sandbox')
-                if isinstance(implementation,
-                              str) and implementation.lower() == 'python_env':
+                implementation = getattr(code_exec_cfg, 'implementation', 'sandbox')
+                if isinstance(implementation, str) and implementation.lower() == 'python_env':
                     self.extra_tools.append(LocalCodeExecutionTool(config))
-                elif isinstance(implementation,
-                                str) and implementation.lower() == 'sandbox':
+                elif isinstance(implementation, str) and implementation.lower() == 'sandbox':
                     self.extra_tools.append(CodeExecutionTool(config))
                 else:
-                    logger.warning(
-                        f'Unknown code execution implementation: {implementation},'
-                        f'using sandbox instead.')
+                    logger.warning(f'Unknown code execution implementation: {implementation},using sandbox instead.')
                     self.extra_tools.append(CodeExecutionTool(config))
-            if hasattr(config, 'tools') and hasattr(config.tools,
-                                                    'financial_data_fetcher'):
-                from ms_agent.tools.findata.findata_fetcher import \
-                    FinancialDataFetcher
+            if hasattr(config, 'tools') and hasattr(config.tools, 'financial_data_fetcher'):
+                from ms_agent.tools.findata.findata_fetcher import FinancialDataFetcher
+
                 self.extra_tools.append(FinancialDataFetcher(config))
-            if hasattr(config,
-                       'tools') and (getattr(config.tools, 'agent_tools', None)
-                                     or hasattr(config.tools, 'split_task')):
-                agent_tool = AgentTool(
-                    config, trust_remote_code=self.trust_remote_code)
+            if hasattr(config, 'tools') and (
+                getattr(config.tools, 'agent_tools', None) or hasattr(config.tools, 'split_task')
+            ):
+                agent_tool = AgentTool(config, trust_remote_code=self.trust_remote_code)
                 if agent_tool.enabled:
                     self.extra_tools.append(agent_tool)
             if _tool_on(config, 'todo_list'):
@@ -245,14 +226,17 @@ class ToolManager:
                 cron_cfg = getattr(config.tools, 'cron', None)
                 if not getattr(cron_cfg, 'mcp', False):
                     from ms_agent.tools.cron_tool import CronTool
+
                     self.extra_tools.append(CronTool(config))
             if effective_localsearch_settings(config) is not None:
                 self.extra_tools.append(LocalSearchTool(config))
             if _tool_on(config, 'task_control'):
                 from ms_agent.tools.task_control_tool import TaskControlTool
+
                 self.extra_tools.append(TaskControlTool(config))
             try:
                 from ms_agent.tools.acp_agent_tool import ACPAgentTool
+
                 acp_tool = ACPAgentTool.from_config(config)
                 if acp_tool is not None:
                     self.extra_tools.append(acp_tool)
@@ -260,19 +244,16 @@ class ToolManager:
                 pass
             try:
                 from ms_agent.tools.a2a_agent_tool import A2AAgentTool
+
                 a2a_tool = A2AAgentTool.from_config(config)
                 if a2a_tool is not None:
                     self.extra_tools.append(a2a_tool)
             except ImportError:
                 pass
-        self.tool_call_timeout = float(
-            getattr(config, 'tool_call_timeout', TOOL_CALL_TIMEOUT))
-        self.tool_call_timeout_max = float(
-            getattr(config, 'tool_call_timeout_max', TOOL_CALL_TIMEOUT_MAX))
-        local_dir = self.config.local_dir if hasattr(self.config,
-                                                     'local_dir') else None
-        if hasattr(config, 'tools') and hasattr(config.tools,
-                                                TOOL_PLUGIN_NAME):
+        self.tool_call_timeout = float(getattr(config, 'tool_call_timeout', TOOL_CALL_TIMEOUT))
+        self.tool_call_timeout_max = float(getattr(config, 'tool_call_timeout_max', TOOL_CALL_TIMEOUT_MAX))
+        local_dir = self.config.local_dir if hasattr(self.config, 'local_dir') else None
+        if hasattr(config, 'tools') and hasattr(config.tools, TOOL_PLUGIN_NAME):
             plugins = getattr(config.tools, TOOL_PLUGIN_NAME)
             for plugin in plugins:
                 subdir = os.path.dirname(plugin)
@@ -293,11 +274,7 @@ class ToolManager:
                 if _plugin.endswith('.py'):
                     _plugin = _plugin[:-3]
                 plugin_file = importlib.import_module(_plugin)
-                module_classes = {
-                    name: cls
-                    for name, cls in inspect.getmembers(
-                        plugin_file, inspect.isclass)
-                }
+                module_classes = {name: cls for name, cls in inspect.getmembers(plugin_file, inspect.isclass)}
                 for name, cls in module_classes.items():
                     # Find cls which base class is `ToolBase`
                     if issubclass(cls, ToolBase) and cls.__module__ == _plugin:
@@ -338,8 +315,7 @@ class ToolManager:
                 agent_tool = tool
                 break
         if agent_tool is None:
-            agent_tool = AgentTool(
-                self.config, trust_remote_code=self.trust_remote_code)
+            agent_tool = AgentTool(self.config, trust_remote_code=self.trust_remote_code)
             self.extra_tools.append(agent_tool)
         agent_tool.sync_plugin_agents(registry)
 
@@ -350,28 +326,21 @@ class ToolManager:
         if self.mcp_client is not None:
             self.servers = self.mcp_client
             has_add = hasattr(self.servers, 'add_mcp_config')
-            is_mcp = MCPClient is not None and isinstance(
-                self.mcp_client, MCPClient)
-            if (isinstance(self.mcp_config, dict)
-                    and self.mcp_config.get('mcpServers')
-                    and (is_mcp or has_add)):
+            is_mcp = MCPClient is not None and isinstance(self.mcp_client, MCPClient)
+            if isinstance(self.mcp_config, dict) and self.mcp_config.get('mcpServers') and (is_mcp or has_add):
                 await self.servers.add_mcp_config(self.mcp_config)
                 if hasattr(self.servers, 'mcp_config'):
                     self.mcp_config = self.servers.mcp_config
         elif MCPClient is not None:
             self.servers = MCPClient(self.mcp_config, self.config)
             await self.servers.connect()
-        elif (isinstance(self.mcp_config, dict)
-              and self.mcp_config.get('mcpServers')):
-            logger.warning_once(
-                'mcp package not installed; MCP tools disabled for this run')
+        elif isinstance(self.mcp_config, dict) and self.mcp_config.get('mcpServers'):
+            logger.warning_once('mcp package not installed; MCP tools disabled for this run')
         for tool in self.extra_tools:
             try:
                 await tool.connect()
             except Exception as e:
-                logger.warning(
-                    f'Tool {getattr(tool, "name", type(tool).__name__)} '
-                    f'failed to connect: {e}; disabling.')
+                logger.warning(f'Tool {getattr(tool, "name", type(tool).__name__)} failed to connect: {e}; disabling.')
 
         # reindex_tool() self-gates its MCP portion on _skip_mcp_reindex, so it
         # is always safe to call here: extra tools get indexed in every path,
@@ -411,8 +380,8 @@ class ToolManager:
     ) -> None:
         if self.mcp_failure_handler is None:
             return
-        from ms_agent.mcp.runtime import (classify_failure_message,
-                                          is_connection_error)
+        from ms_agent.mcp.runtime import classify_failure_message, is_connection_error
+
         if exc is not None:
             if not is_connection_error(exc):
                 return
@@ -432,10 +401,9 @@ class ToolManager:
         The *server* segment is truncated (the tool segment is preserved) so the
         whole key fits within ``MAX_TOOL_NAME_LEN``.
         """
-        max_server_len = MAX_TOOL_NAME_LEN - len(tool_name) - len(
-            self.TOOL_SPLITER)
+        max_server_len = MAX_TOOL_NAME_LEN - len(tool_name) - len(self.TOOL_SPLITER)
         if len(server_name) > max_server_len:
-            server_name = server_name[:max(0, max_server_len)]
+            server_name = server_name[: max(0, max_server_len)]
         return f'{server_name}{self.TOOL_SPLITER}{tool_name}'
 
     def _resolve_tool_name(self, tool_name: str) -> tuple:
@@ -458,8 +426,8 @@ class ToolManager:
         matches = [key for key in self._tool_index if key.startswith(prefix)]
         if len(matches) == 1:
             return matches[0], (
-                f'Note: "{tool_name}" was resolved to "{matches[0]}". '
-                'Use the exact tool name in subsequent calls.')
+                f'Note: "{tool_name}" was resolved to "{matches[0]}". Use the exact tool name in subsequent calls.'
+            )
         return None, ''
 
     def _unknown_tool_message(self, tool_name: str) -> str:
@@ -471,11 +439,12 @@ class ToolManager:
         if not close:
             prefix = f'{tool_name}{self.TOOL_SPLITER}'
             close = [k for k in available if k.startswith(prefix)][:3]
-        detail = (f' Closest matches: {", ".join(close)}.' if close else
-                  f' Available tools: {", ".join(available[:20])}'
-                  f'{" …" if len(available) > 20 else ""}.')
-        return (f'Tool "{tool_name}" is not available.{detail} '
-                'Use the exact tool name from the tool list.')
+        detail = (
+            f' Closest matches: {", ".join(close)}.'
+            if close
+            else f' Available tools: {", ".join(available[:20])}{" …" if len(available) > 20 else ""}.'
+        )
+        return f'Tool "{tool_name}" is not available.{detail} Use the exact tool name from the tool list.'
 
     def _extend_mcp_tool_index(
         self,
@@ -496,8 +465,12 @@ class ToolManager:
                     logger.warning(
                         'MCP tool key collision on %r: keeping server %r, '
                         'ignoring %r (server names truncated to fit '
-                        'MAX_TOOL_NAME_LEN=%d)', key, existing[1], server_name,
-                        MAX_TOOL_NAME_LEN)
+                        'MAX_TOOL_NAME_LEN=%d)',
+                        key,
+                        existing[1],
+                        server_name,
+                        MAX_TOOL_NAME_LEN,
+                    )
                 continue
             indexed = copy(tool)
             indexed['tool_name'] = key
@@ -525,8 +498,7 @@ class ToolManager:
             for server_name in indexable_servers:
                 try:
                     if hasattr(self.servers, 'get_tools_for_server'):
-                        tool_list = await self.servers.get_tools_for_server(
-                            server_name)
+                        tool_list = await self.servers.get_tools_for_server(server_name)
                     else:
                         live_mcps = await self.servers.get_tools()
                         tool_list = live_mcps.get(server_name, [])
@@ -539,8 +511,7 @@ class ToolManager:
                     failures.append((server_name, exc))
                     continue
                 if tool_list:
-                    self._extend_mcp_tool_index(self.servers, server_name,
-                                                tool_list)
+                    self._extend_mcp_tool_index(self.servers, server_name, tool_list)
         return failures
 
     async def index_extra_tool(self, tool_ins: ToolBase) -> None:
@@ -557,12 +528,13 @@ class ToolManager:
                 key = self._build_index_key(server_name, tool['tool_name'])
                 existing = self._tool_index.get(key)
                 if existing is not None:
-                    if existing[
-                            0] is not tool_ins or existing[1] != server_name:
+                    if existing[0] is not tool_ins or existing[1] != server_name:
                         logger.warning(
-                            'Tool name collision on %r: keeping owner from %r, '
-                            'ignoring new from %r', key, existing[1],
-                            server_name)
+                            'Tool name collision on %r: keeping owner from %r, ignoring new from %r',
+                            key,
+                            existing[1],
+                            server_name,
+                        )
                     continue
                 indexed = copy(tool)
                 indexed['tool_name'] = key
@@ -576,8 +548,7 @@ class ToolManager:
         if self.servers is not None and not self._skip_mcp_reindex:
             mcps = await self.servers.get_tools()
             for server_name, tool_list in mcps.items():
-                self._extend_mcp_tool_index(self.servers, server_name,
-                                            tool_list)
+                self._extend_mcp_tool_index(self.servers, server_name, tool_list)
         for extra_tool in self.extra_tools:
             await self.index_extra_tool(extra_tool)
 
@@ -585,7 +556,7 @@ class ToolManager:
         # Return tools in deterministic order to improve prompt/prefix cache hit rate
         # across process restarts and across different MCP tool listing orders.
         tools = [value[2] for value in self._tool_index.values()]
-        return sorted(tools, key=lambda t: (t.get('tool_name', ''), ))
+        return sorted(tools, key=lambda t: (t.get('tool_name', ''),))
 
     async def single_call_tool(self, tool_info: ToolCall):
         if self._concurrent_limiter is None:
@@ -593,8 +564,7 @@ class ToolManager:
                 self._init_lock = asyncio.Lock()
             async with self._init_lock:
                 if self._concurrent_limiter is None:
-                    self._concurrent_limiter = asyncio.Semaphore(
-                        MAX_CONCURRENT_TOOLS)
+                    self._concurrent_limiter = asyncio.Semaphore(MAX_CONCURRENT_TOOLS)
 
         async with self._concurrent_limiter:
             brief_info = json.dumps(tool_info, ensure_ascii=False)
@@ -611,8 +581,7 @@ class ToolManager:
                         tool_args = json.loads(tool_args)
                     except Exception:  # noqa
                         return f'The input {tool_args} is not a valid JSON, fix your arguments and try again'
-                resolved_name, resolution_note = self._resolve_tool_name(
-                    tool_name)
+                resolved_name, resolution_note = self._resolve_tool_name(tool_name)
                 if resolved_name is None:
                     return {
                         'result': self._unknown_tool_message(tool_name),
@@ -628,57 +597,47 @@ class ToolManager:
                 # index; leaving a quoted number quoted just moves the failure
                 # to the tool, which reports it in terms of its own validator.
                 if isinstance(tool_args, dict):
-                    coerced = coerce_arguments(
-                        tool_args, (tool_spec or {}).get('parameters'))
+                    coerced = coerce_arguments(tool_args, (tool_spec or {}).get('parameters'))
                     if coerced is not tool_args:
                         tool_args = coerced
                         tool_info['arguments'] = tool_args
 
                 # --- MCP availability (before SafetyGuard / PreToolUse) ---
-                if (tool_ins is self.servers
-                        and self.mcp_callable_check is not None
-                        and not self.mcp_callable_check(server_name)):
+                if (
+                    tool_ins is self.servers
+                    and self.mcp_callable_check is not None
+                    and not self.mcp_callable_check(server_name)
+                ):
                     detail = (
                         self.mcp_unavailable_detail(server_name)
-                        if self.mcp_unavailable_detail is not None else {
+                        if self.mcp_unavailable_detail is not None
+                        else {
                             'success': False,
                             'error': 'mcp_unavailable',
                             'server_name': server_name,
-                            'message':
-                            f'MCP server {server_name} is not callable',
-                        })
+                            'message': f'MCP server {server_name} is not callable',
+                        }
+                    )
                     return json.dumps(detail, ensure_ascii=False)
 
                 # --- Permission checks ---
-                args_dict = dict(tool_args) if isinstance(tool_args,
-                                                          dict) else {}
+                args_dict = dict(tool_args) if isinstance(tool_args, dict) else {}
                 safety_force_decision = None
                 if self._safety_guard is not None:
                     from ms_agent.permission.ask_resolver import resolve_ask
-                    safety_decision = self._safety_guard.check(
-                        tool_name, args_dict)
+
+                    safety_decision = self._safety_guard.check(tool_name, args_dict)
                     if safety_decision.action == 'deny':
-                        return {
-                            'result':
-                            f'Blocked by safety policy: {safety_decision.reason}',
-                            'is_error': True
-                        }
+                        return {'result': f'Blocked by safety policy: {safety_decision.reason}', 'is_error': True}
                     if safety_decision.action == 'ask':
-                        resolved = resolve_ask(safety_decision,
-                                               self._permission_mode,
-                                               self._read_policy)
+                        resolved = resolve_ask(safety_decision, self._permission_mode, self._read_policy)
                         if resolved.action == 'deny':
-                            return {
-                                'result':
-                                f'Blocked by safety policy: {resolved.reason}',
-                                'is_error': True
-                            }
+                            return {'result': f'Blocked by safety policy: {resolved.reason}', 'is_error': True}
                         if resolved.action == 'ask':
                             if self._permission_enforcer is None:
                                 return {
-                                    'result':
-                                    f'Blocked by safety policy (requires confirmation): {resolved.reason}',
-                                    'is_error': True
+                                    'result': f'Blocked by safety policy (requires confirmation): {resolved.reason}',
+                                    'is_error': True,
                                 }
                             # interactive mode: force the enforcer to confirm with
                             # the user; whitelist/memory must not bypass a safety
@@ -686,22 +645,21 @@ class ToolManager:
                             # user can reasonably settle once for a project,
                             # where an ask that ignores their answer is just an
                             # ask they learn to click through.
-                            from ms_agent.permission.ask_resolver import \
-                                REMEMBERABLE_ASK_CATEGORIES
-                            from ms_agent.permission.enforcer import \
-                                PermissionDecision
+                            from ms_agent.permission.ask_resolver import REMEMBERABLE_ASK_CATEGORIES
+                            from ms_agent.permission.enforcer import PermissionDecision
+
                             safety_force_decision = PermissionDecision(
                                 action='ask',
                                 reason=resolved.reason,
-                                rememberable=(resolved.category
-                                              in REMEMBERABLE_ASK_CATEGORIES))
+                                rememberable=(resolved.category in REMEMBERABLE_ASK_CATEGORIES),
+                            )
 
                 # --- PreToolUse hooks ---
                 hook_result = None
                 pre_attachments: list = []
                 if self._hook_runtime is not None and not self._hook_runtime.is_empty:
-                    from ms_agent.utils.workspace_context import \
-                        resolve_workspace_root
+                    from ms_agent.utils.workspace_context import resolve_workspace_root
+
                     project_path = str(resolve_workspace_root(self.config))
                     hook_result, pre_attachments = await self._hook_runtime.run_pre_tool_use(
                         tool_name=tool_name,
@@ -713,8 +671,7 @@ class ToolManager:
                         args_dict = dict(hook_result.updated_args)
                         tool_info['arguments'] = tool_args
 
-                from ms_agent.hooks.permission_resolve import \
-                    resolve_hook_permission_decision
+                from ms_agent.hooks.permission_resolve import resolve_hook_permission_decision
 
                 perm_out = await resolve_hook_permission_decision(
                     hook_result=hook_result,
@@ -731,16 +688,12 @@ class ToolManager:
                 if isinstance(perm_out, str):
                     return perm_out
                 if perm_out.action == 'deny':
-                    return {
-                        'result': f'Tool call denied: {perm_out.reason}',
-                        'is_error': True
-                    }
+                    return {'result': f'Tool call denied: {perm_out.reason}', 'is_error': True}
                 if perm_out.updated_args is not None:
                     tool_args = perm_out.updated_args
                     tool_info['arguments'] = tool_args
 
-                raw_args = dict(tool_args) if isinstance(tool_args,
-                                                         dict) else {}
+                raw_args = dict(tool_args) if isinstance(tool_args, dict) else {}
                 wait_sec = effective_tool_wait_seconds(
                     raw_args,
                     default_sec=self.tool_call_timeout,
@@ -751,22 +704,22 @@ class ToolManager:
                     call_args = dict(tool_args or {})
                     call_id = tool_info.get('id') or str(uuid.uuid4())
                     call_args['__call_id'] = call_id
-                elif isinstance(tool_ins,
-                                LocalCodeExecutionTool) and tool_name.endswith(
-                                    f'{self.TOOL_SPLITER}shell_executor'):
+                elif isinstance(tool_ins, LocalCodeExecutionTool) and tool_name.endswith(
+                    f'{self.TOOL_SPLITER}shell_executor'
+                ):
                     call_args = dict(tool_args or {})
-                    call_args['__call_id'] = tool_info.get('id') or str(
-                        uuid.uuid4())
+                    call_args['__call_id'] = tool_info.get('id') or str(uuid.uuid4())
                     # Align subprocess wait with the host wait (after cap) so inner
                     # ``communicate`` does not expire before the outer ``wait_for``.
                     call_args['timeout'] = int(math.ceil(wait_sec))
                 response = await asyncio.wait_for(
                     tool_ins.call_tool(
                         server_name,
-                        tool_name=self._registered_tool_suffix(
-                            tool_name, self.TOOL_SPLITER),
-                        tool_args=call_args),
-                    timeout=wait_sec)
+                        tool_name=self._registered_tool_suffix(tool_name, self.TOOL_SPLITER),
+                        tool_args=call_args,
+                    ),
+                    timeout=wait_sec,
+                )
 
                 # Truncate excessively long tool outputs to prevent context
                 # window explosion — unless the tool declared its own budget or
@@ -774,8 +727,7 @@ class ToolManager:
                 if isinstance(response, str):
                     response = _truncate_tool_output(response, tool_ins)
 
-                if (self.mcp_success_handler is not None
-                        and tool_ins is self.servers):
+                if self.mcp_success_handler is not None and tool_ins is self.servers:
                     await self.mcp_success_handler(server_name)
 
                 if resolution_note:
@@ -784,8 +736,7 @@ class ToolManager:
                     # of costing it a failed round to discover.
                     if isinstance(response, dict):
                         response = dict(response)
-                        response['result'] = (
-                            f'{resolution_note}\n{response.get("result", "")}')
+                        response['result'] = f'{resolution_note}\n{response.get("result", "")}'
                     else:
                         response = f'{resolution_note}\n{response}'
 
@@ -793,9 +744,12 @@ class ToolManager:
                 hook_attachments = list(pre_attachments)
                 if self._hook_runtime is not None and not self._hook_runtime.is_empty:
                     response_text = (
-                        response if isinstance(response, str) else
-                        str(response.get('result', response)) if isinstance(
-                            response, dict) else str(response))
+                        response
+                        if isinstance(response, str)
+                        else str(response.get('result', response))
+                        if isinstance(response, dict)
+                        else str(response)
+                    )
                     _, post_attachments = await self._hook_runtime.run_post_tool_use(
                         tool_name=tool_name,
                         tool_args=args_dict,
@@ -815,6 +769,7 @@ class ToolManager:
                 return response
             except asyncio.TimeoutError:
                 import traceback
+
                 logger.warning(traceback.format_exc())
                 tn = tool_info.get('tool_name', '(unknown)')
                 timeout_msg = (
@@ -822,70 +777,66 @@ class ToolManager:
                     f'Default limit is {self.tool_call_timeout:.0f}s; '
                     f'set numeric field "timeout" in the tool arguments to wait longer '
                     f'(seconds, maximum {self.tool_call_timeout_max:.0f}s). '
-                    f'Original call (truncated): {brief_info}')
+                    f'Original call (truncated): {brief_info}'
+                )
                 if tool_ins is not None and tool_ins is self.servers:
                     await self._report_mcp_failure(
                         server_name,
                         'call_tool',
                         timeout_msg,
-                        tool_name=self._registered_tool_suffix(
-                            tool_info.get('tool_name', ''), self.TOOL_SPLITER),
+                        tool_name=self._registered_tool_suffix(tool_info.get('tool_name', ''), self.TOOL_SPLITER),
                         exc=asyncio.TimeoutError(timeout_msg),
                     )
                 # Keep the structured {result, is_error} shape the tool-result
                 # parser (llm/utils.py) and the webui error marking rely on, while
                 # folding in upstream #917's recovery guidance as result text.
                 return {
-                    'result':
-                    (f'{timeout_msg}\n'
-                     'Recovery: (1) add a "timeout" field with a larger value in '
-                     f'seconds (max {self.tool_call_timeout_max:.0f}s), (2) break '
-                     'the task into smaller steps, or (3) simplify the command/input.'
-                     ),
-                    'is_error':
-                    True,
+                    'result': (
+                        f'{timeout_msg}\n'
+                        'Recovery: (1) add a "timeout" field with a larger value in '
+                        f'seconds (max {self.tool_call_timeout_max:.0f}s), (2) break '
+                        'the task into smaller steps, or (3) simplify the command/input.'
+                    ),
+                    'is_error': True,
                 }
             except Exception as e:
                 import traceback
+
                 tb_str = traceback.format_exc()
                 logger.warning(tb_str)
                 exc_type_name = type(e).__name__
                 exc_msg = str(e) or '(no error message)'
                 tn = tool_info.get('tool_name', '(unknown)')
                 tb_lines = tb_str.strip().splitlines()
-                tb_tail = '\n'.join(
-                    tb_lines[-6:]) if len(tb_lines) > 6 else '\n'.join(
-                        tb_lines)
+                tb_tail = '\n'.join(tb_lines[-6:]) if len(tb_lines) > 6 else '\n'.join(tb_lines)
                 if tool_ins is not None and tool_ins is self.servers:
                     await self._report_mcp_failure(
                         server_name,
                         'call_tool',
                         str(e),
-                        tool_name=self._registered_tool_suffix(
-                            tool_info.get('tool_name', ''), self.TOOL_SPLITER),
+                        tool_name=self._registered_tool_suffix(tool_info.get('tool_name', ''), self.TOOL_SPLITER),
                         exc=e,
                     )
                 # Keep our structured {result, is_error} shape; carry upstream
                 # #917's richer diagnostics (type, message, call info, traceback
                 # tail, recovery hint) inside the result text the model reads.
                 return {
-                    'result':
-                    (f'Tool "{tn}" raised {exc_type_name}: {exc_msg}\n'
-                     f'Call (truncated): {brief_info}\n'
-                     f'Traceback (tail):\n{tb_tail}\n'
-                     'Recovery: review the error and traceback above, check your '
-                     'input parameters, verify prerequisites (files, dependencies, '
-                     'running services), and retry with corrected arguments or a '
-                     'different approach.'),
-                    'is_error':
-                    True,
+                    'result': (
+                        f'Tool "{tn}" raised {exc_type_name}: {exc_msg}\n'
+                        f'Call (truncated): {brief_info}\n'
+                        f'Traceback (tail):\n{tb_tail}\n'
+                        'Recovery: review the error and traceback above, check your '
+                        'input parameters, verify prerequisites (files, dependencies, '
+                        'running services), and retry with corrected arguments or a '
+                        'different approach.'
+                    ),
+                    'is_error': True,
                 }
 
     async def parallel_call_tool(
         self,
         tool_list: List[ToolCall],
-        on_result: Optional[Callable[[int, ToolCall, Any, float],
-                                     None]] = None,
+        on_result: Optional[Callable[[int, ToolCall, Any, float], None]] = None,
     ):
         """Run a round's tool calls concurrently, in call order in the result.
 

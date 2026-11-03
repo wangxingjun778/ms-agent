@@ -10,6 +10,7 @@ Performance: Playwright ``Browser`` must be used from the creating thread only.
 We keep **one browser per thread** (e.g. each ``ThreadPoolExecutor`` worker) and
 reuse it across URLs instead of launching Chromium for every fetch.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -36,9 +37,9 @@ def _chromium_launch_args() -> List[str]:
         '--blink-settings=imagesEnabled=false',
     ]
     if os.getenv('MS_AGENT_PLAYWRIGHT_NO_SANDBOX', '').lower() in (
-            '1',
-            'true',
-            'yes',
+        '1',
+        'true',
+        'yes',
     ):
         args.extend(('--no-sandbox', '--disable-setuid-sandbox'))
     return args
@@ -179,9 +180,7 @@ def looks_like_spa_shell_html(raw_html: str) -> bool:
     if not raw_html or len(raw_html) < 80:
         return False
     low = raw_html.lower()
-    if any(
-            x in low for x in ('enable javascript', 'javascript is required',
-                               'you need to enable javascript')):
+    if any(x in low for x in ('enable javascript', 'javascript is required', 'you need to enable javascript')):
         return True
     if re.search(r'<div[^>]+\bid=["\']root["\'][^>]*>\s*</div>', low):
         return True

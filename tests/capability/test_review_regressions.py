@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Regression coverage for capability adapters, without external model calls."""
+
 import asyncio
 import json
 import os
@@ -12,24 +13,21 @@ import pytest
 
 from ms_agent.capabilities import create_registry
 from ms_agent.capabilities.async_task import AsyncTaskManager
-from ms_agent.capabilities.wrappers import (agent_delegate, lsp_code_server,
-                                            web_search)
+from ms_agent.capabilities.wrappers import agent_delegate, lsp_code_server, web_search
 
 
 def test_delegate_missing_config_does_not_fall_back_or_download(tmp_path):
     from ms_agent.config.config import Config
 
     with patch.object(Config, 'from_task') as load:
-        with pytest.raises(
-                FileNotFoundError, match='Agent config file not found'):
+        with pytest.raises(FileNotFoundError, match='Agent config file not found'):
             agent_delegate._build_agent_config(str(tmp_path / 'missing.yaml'))
         load.assert_not_called()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('cancelled', [False, True])
-async def test_delegate_config_credentials_stdout_and_cleanup(
-        monkeypatch, tmp_path, cancelled):
+async def test_delegate_config_credentials_stdout_and_cleanup(monkeypatch, tmp_path, cancelled):
     """Configured providers must work without unrelated environment keys."""
     from ms_agent.agent import llm_agent
 
@@ -38,9 +36,8 @@ async def test_delegate_config_credentials_stdout_and_cleanup(
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / 'agent.yaml'
     config_path.write_text(
-        'llm:\n  service: anthropic\n  model: test-model\n'
-        '  api_key: test-config-key\n',
-        encoding='utf-8')
+        'llm:\n  service: anthropic\n  model: test-model\n  api_key: test-config-key\n', encoding='utf-8'
+    )
     stdout = sys.stdout
     cleaned = []
 
@@ -86,19 +83,15 @@ async def test_background_delegate_accepts_provider_configuration(monkeypatch):
 
     monkeypatch.setattr(agent_delegate, '_run_agent', run_agent)
     result = await create_registry().invoke(
-        'submit_agent_task', {
-            'query': 'test',
-            'config_path': 'custom-provider.yaml'
-        })
+        'submit_agent_task', {'query': 'test', 'config_path': 'custom-provider.yaml'}
+    )
     task = manager.get(result['task_id'])
     await task._asyncio_task
-    assert manager.get_result(
-        task.task_id)['result']['response'] == ('configured provider result')
+    assert manager.get_result(task.task_id)['result']['response'] == ('configured provider result')
 
 
 @pytest.mark.asyncio
-async def test_research_submit_accepts_configured_credentials(
-        monkeypatch, tmp_path):
+async def test_research_submit_accepts_configured_credentials(monkeypatch, tmp_path):
     from ms_agent.capabilities.wrappers import deep_research
 
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
@@ -113,11 +106,8 @@ async def test_research_submit_accepts_configured_credentials(
 
     monkeypatch.setattr(deep_research, '_background_research', research)
     result = await create_registry().invoke(
-        'submit_research_task', {
-            'query': 'test',
-            'config_path': str(config),
-            'output_dir': str(tmp_path / 'result')
-        })
+        'submit_research_task', {'query': 'test', 'config_path': str(config), 'output_dir': str(tmp_path / 'result')}
+    )
     task = manager.get(result['task_id'])
     await task._asyncio_task
     assert manager.get_result(task.task_id)['status'] == 'completed'
@@ -132,29 +122,22 @@ async def test_exa_accepts_single_key_or_key_pool(monkeypatch, key_name):
     initialized = []
 
     class Engine:
-
         @staticmethod
         def build_request_from_args(**kwargs):
             return kwargs
 
         def search(self, request):
             assert request == {'query': 'test', 'num_results': 1}
-            return SimpleNamespace(to_list=lambda: [{
-                'title': 'test result',
-                'url': 'https://example.com',
-                'summary': 'test summary'
-            }])
+            return SimpleNamespace(
+                to_list=lambda: [{'title': 'test result', 'url': 'https://example.com', 'summary': 'test summary'}]
+            )
 
     def get_engine(engine_type):
         initialized.append(engine_type)
         return Engine()
 
     monkeypatch.setattr(web_search, '_get_engine', get_engine)
-    result = await create_registry().invoke('web_search', {
-        'query': 'test',
-        'engine_type': ' ExA ',
-        'num_results': 1
-    })
+    result = await create_registry().invoke('web_search', {'query': 'test', 'engine_type': ' ExA ', 'num_results': 1})
     assert result['status'] == 'ok'
     assert result['engine'] == 'exa'
     assert result['count'] == 1
@@ -166,21 +149,17 @@ async def test_exa_missing_credentials_lists_both_options(monkeypatch):
     monkeypatch.delenv('EXA_API_KEY', raising=False)
     monkeypatch.setenv('EXA_API_KEYS', '')
     with patch.object(web_search, '_get_engine') as initialize:
-        result = await create_registry().invoke('web_search', {
-            'query': 'test',
-            'engine_type': 'exa'
-        })
+        result = await create_registry().invoke('web_search', {'query': 'test', 'engine_type': 'exa'})
     initialize.assert_not_called()
     assert 'EXA_API_KEY' in result['error']
     assert 'EXA_API_KEYS' in result['error']
 
 
 @pytest.mark.parametrize('available', [True, False])
-def test_typescript_preflight_checks_npx_not_global_server(
-        monkeypatch, available):
+def test_typescript_preflight_checks_npx_not_global_server(monkeypatch, available):
     monkeypatch.setattr(
-        lsp_code_server.shutil, 'which', lambda name: '/test/bin/npx'
-        if name == 'npx' and available else None)
+        lsp_code_server.shutil, 'which', lambda name: '/test/bin/npx' if name == 'npx' and available else None
+    )
     result = lsp_code_server._check_language_backend('typescript')
     if available:
         assert result is None
@@ -190,13 +169,9 @@ def test_typescript_preflight_checks_npx_not_global_server(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('capability',
-                         ['lsp_check_directory', 'lsp_update_and_check'])
-async def test_typescript_local_install_reaches_backend(
-        monkeypatch, tmp_path, capability):
-    monkeypatch.setattr(
-        lsp_code_server.shutil, 'which', lambda name: '/test/bin/npx'
-        if name == 'npx' else None)
+@pytest.mark.parametrize('capability', ['lsp_check_directory', 'lsp_update_and_check'])
+async def test_typescript_local_install_reaches_backend(monkeypatch, tmp_path, capability):
+    monkeypatch.setattr(lsp_code_server.shutil, 'which', lambda name: '/test/bin/npx' if name == 'npx' else None)
     calls = []
 
     async def call_tool(server_name, *, tool_name, tool_args):
@@ -220,9 +195,10 @@ async def test_typescript_local_install_reaches_backend(
 
 
 def test_java_backend_uses_supported_install_locations():
-    with patch.object(lsp_code_server.shutil, 'which', return_value=None), \
-            patch.object(lsp_code_server.os.path, 'isfile',
-                         side_effect=lambda path: path == '/opt/homebrew/bin/jdtls'):
+    with (
+        patch.object(lsp_code_server.shutil, 'which', return_value=None),
+        patch.object(lsp_code_server.os.path, 'isfile', side_effect=lambda path: path == '/opt/homebrew/bin/jdtls'),
+    ):
         assert lsp_code_server._check_language_backend('java') is None
 
 
@@ -232,7 +208,7 @@ async def test_mcp_stdio_survives_concurrent_tool_output(tmp_path):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    script = '''
+    script = """
 import asyncio
 from ms_agent.capabilities import CapabilityDescriptor, CapabilityRegistry
 from ms_agent.capabilities import mcp_server
@@ -248,22 +224,18 @@ registry.register(CapabilityDescriptor(
                   'required': ['value']}), noisy)
 mcp_server.create_registry = lambda: registry
 mcp_server.main()
-'''
+"""
     repo = str(Path(__file__).resolve().parents[2])
     params = StdioServerParameters(
         command=sys.executable,
         args=['-c', script],
-        env={
-            **os.environ, 'PYTHONPATH': repo,
-            'MS_AGENT_HOME': str(tmp_path / 'home')
-        })
+        env={**os.environ, 'PYTHONPATH': repo, 'MS_AGENT_HOME': str(tmp_path / 'home')},
+    )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            results = await asyncio.gather(
-                *(session.call_tool('noisy', {'value': i}) for i in range(3)))
-            assert [json.loads(r.content[0].text)['value']
-                    for r in results] == [0, 1, 2]
+            results = await asyncio.gather(*(session.call_tool('noisy', {'value': i}) for i in range(3)))
+            assert [json.loads(r.content[0].text)['value'] for r in results] == [0, 1, 2]
             assert not any(r.isError for r in results)
             assert len((await session.list_tools()).tools) == 1
 
@@ -282,12 +254,12 @@ async def test_http_handler_does_not_replace_stdout():
 
 def test_http_server_honors_port(monkeypatch):
     from mcp.server import fastmcp
+
     from ms_agent.capabilities import mcp_server
 
     recorded = {}
 
     class Server:
-
         def __init__(self, name, **kwargs):
             recorded.update(kwargs)
 
@@ -299,9 +271,7 @@ def test_http_server_honors_port(monkeypatch):
 
     monkeypatch.setattr(fastmcp, 'FastMCP', Server)
     monkeypatch.setattr(mcp_server, '_load_env', lambda _: None)
-    monkeypatch.setattr(
-        sys, 'argv',
-        ['mcp_server', '--transport', 'streamable-http', '--port', '9876'])
+    monkeypatch.setattr(sys, 'argv', ['mcp_server', '--transport', 'streamable-http', '--port', '9876'])
     mcp_server.main()
     assert recorded['port'] == 9876
     assert recorded['transport'] == 'streamable-http'

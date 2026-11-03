@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from omegaconf import DictConfig
 from typing import Any, AsyncGenerator, List, Union
+
+from omegaconf import DictConfig
 
 from ms_agent.agent.llm_agent import LLMAgent
 from ms_agent.llm.utils import Message
@@ -23,23 +24,19 @@ class ReporterAgent(LLMAgent):
     5. Assemble final reports
     """
 
-    def __init__(self,
-                 config: DictConfig = DictConfig({}),
-                 tag: str = DEFAULT_TAG,
-                 trust_remote_code: bool = False,
-                 **kwargs):
+    def __init__(
+        self, config: DictConfig = DictConfig({}), tag: str = DEFAULT_TAG, trust_remote_code: bool = False, **kwargs
+    ):
         super().__init__(config, tag, trust_remote_code, **kwargs)
 
         # Reporter-specific configuration
         self._reports_dir = 'reports'
-        if hasattr(config, 'tools') and hasattr(config.tools,
-                                                'report_generator'):
+        if hasattr(config, 'tools') and hasattr(config.tools, 'report_generator'):
             report_cfg = config.tools.report_generator
             self._reports_dir = getattr(report_cfg, 'reports_dir', 'reports')
 
     async def run(
-            self, inputs: Union[str, List[str], List[Message],
-                                List[List[Message]]], **kwargs
+        self, inputs: Union[str, List[str], List[Message], List[List[Message]]], **kwargs
     ) -> Union[List[Message], AsyncGenerator[List[Message], Any]]:
         # Add context about the reporter's role
         if isinstance(inputs, str):
@@ -51,9 +48,7 @@ class ReporterAgent(LLMAgent):
             if os.path.exists(evidence_dir):
                 evidence_index = os.path.join(evidence_dir, 'index.json')
                 if os.path.exists(evidence_index):
-                    logger.info(
-                        f'ReporterAgent: Evidence index found at {evidence_index}'
-                    )
+                    logger.info(f'ReporterAgent: Evidence index found at {evidence_index}')
 
             inputs = enhanced_input
 

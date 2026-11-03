@@ -2,6 +2,7 @@ import json
 import threading
 
 import pytest
+
 from ms_agent.project.store import JSONFileStore
 
 
@@ -36,8 +37,7 @@ class TestJSONFileStore:
     def test_concurrent_writes_neither_fail_nor_corrupt(self, tmp_path):
         store = JSONFileStore(tmp_path / 'project.json')
         writers = 6
-        payloads = {i: {'id': f'w{i}', 'pad': str(i) * 100000}
-                    for i in range(writers)}
+        payloads = {i: {'id': f'w{i}', 'pad': str(i) * 100000} for i in range(writers)}
         failures: list[BaseException] = []
         reads: list[str] = []
         start = threading.Barrier(writers)
@@ -53,8 +53,7 @@ class TestJSONFileStore:
                 except BaseException as exc:  # noqa: B902 - reported verbatim
                     failures.append(exc)
 
-        threads = [threading.Thread(target=hammer, args=(i,))
-                   for i in range(writers)]
+        threads = [threading.Thread(target=hammer, args=(i,)) for i in range(writers)]
         for t in threads:
             t.start()
         for t in threads:
@@ -62,8 +61,7 @@ class TestJSONFileStore:
 
         assert not failures, f'{len(failures)} failed: {failures[:3]}'
         assert len(reads) == writers * 20
-        assert json.loads((tmp_path / 'project.json').read_text(
-            encoding='utf-8')) in payloads.values()
+        assert json.loads((tmp_path / 'project.json').read_text(encoding='utf-8')) in payloads.values()
         assert sorted(p.name for p in tmp_path.iterdir()) == ['project.json']
 
     def test_creates_parent_dirs(self, tmp_path):

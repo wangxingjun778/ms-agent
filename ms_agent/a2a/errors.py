@@ -16,40 +16,33 @@ class A2AServerError(Exception):
 
 
 class TaskNotFoundError(A2AServerError):
-
     def __init__(self, task_id: str):
         super().__init__(-32001, 'Task not found', {'taskId': task_id})
 
 
 class AgentLoadError(A2AServerError):
-
     def __init__(self, detail: str):
         super().__init__(-32002, 'Failed to load agent', {'detail': detail})
 
 
 class LLMError(A2AServerError):
-
     def __init__(self, detail: str):
         super().__init__(-32003, 'LLM generation failed', {'detail': detail})
 
 
 class RateLimitError(A2AServerError):
-
     def __init__(self, detail: str = ''):
         super().__init__(-32004, 'Rate limit exceeded', {'detail': detail})
 
 
 class ConfigError(A2AServerError):
-
     def __init__(self, detail: str):
         super().__init__(-32005, 'Invalid configuration', {'detail': detail})
 
 
 class MaxTasksError(A2AServerError):
-
     def __init__(self, max_tasks: int):
-        super().__init__(-32006, 'Maximum concurrent tasks reached',
-                         {'max': max_tasks})
+        super().__init__(-32006, 'Maximum concurrent tasks reached', {'max': max_tasks})
 
 
 _EXCEPTION_MAP: list[tuple[type, int, str]] = [
@@ -73,10 +66,4 @@ def wrap_a2a_error(exc: Exception) -> dict:
         if isinstance(exc, exc_type):
             return {'code': code, 'message': msg, 'data': {'detail': str(exc)}}
 
-    return {
-        'code': -32603,
-        'message': 'Internal error',
-        'data': {
-            'detail': str(exc)
-        }
-    }
+    return {'code': -32603, 'message': 'Internal error', 'data': {'detail': str(exc)}}

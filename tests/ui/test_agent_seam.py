@@ -5,19 +5,18 @@ Pins the seam contract: with an event sink the agent emits semantic
 AgentEvents; with no sink the code path is byte-identical to the pre-change
 stdout behavior (CLI zero-regression).
 """
+
 from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
-from ms_agent.ui.events import (ContentDelta, ContentEnd, ReasoningDelta,
-                                ReasoningEnded, ReasoningStarted, RecordingSink)
+from ms_agent.ui.events import ContentDelta, ContentEnd, ReasoningDelta, ReasoningEnded, ReasoningStarted, RecordingSink
 
 
 def _agent(event_sink=None, reasoning_output='stdout'):
     """Partially construct an agent (bypass __init__) with just the seam deps."""
     a = LLMAgent.__new__(LLMAgent)
     a._event_sink = event_sink
-    a.config = OmegaConf.create(
-        {'generation_config': {'reasoning_output': reasoning_output}})
+    a.config = OmegaConf.create({'generation_config': {'reasoning_output': reasoning_output}})
     return a
 
 
@@ -39,8 +38,7 @@ def test_sink_receives_reasoning_events():
     a._emit_reasoning_start()
     a._emit_reasoning_delta('thinking...')
     a._emit_reasoning_end()
-    assert sink.events == [
-        ReasoningStarted(), ReasoningDelta('thinking...'), ReasoningEnded()]
+    assert sink.events == [ReasoningStarted(), ReasoningDelta('thinking...'), ReasoningEnded()]
 
 
 # ── no-sink path: byte-identical to current CLI behavior ──────────────────

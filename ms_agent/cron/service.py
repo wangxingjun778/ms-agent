@@ -1,4 +1,5 @@
 """CronService: top-level orchestrator with PID management and lifecycle."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,8 +15,7 @@ from ms_agent.cron.notify import build_hooks_from_spec
 from ms_agent.cron.parser import compute_next_run
 from ms_agent.cron.repository import JsonJobRepository
 from ms_agent.cron.scheduler import AsyncScheduler
-from ms_agent.cron.types import (CronJobSpec, CronJobState, ExecutionResult,
-                                 RunRecord)
+from ms_agent.cron.types import CronJobSpec, CronJobState, ExecutionResult, RunRecord
 
 DEFAULT_WORKSPACE = os.path.expanduser('~/.ms_agent/cron')
 DEFAULT_TICK_INTERVAL = 60
@@ -78,11 +78,10 @@ class CronService:
 
     def __init__(self, workspace: Union[str, Path, None] = None):
         from ms_agent.config.env import Env
+
         Env.load_dotenv_into_environ()
 
-        ws_path = Path(
-            workspace
-            or os.environ.get('MS_AGENT_CRON_WORKSPACE', DEFAULT_WORKSPACE))
+        ws_path = Path(workspace or os.environ.get('MS_AGENT_CRON_WORKSPACE', DEFAULT_WORKSPACE))
         ws_path.mkdir(parents=True, exist_ok=True)
 
         self._workspace = ws_path
@@ -106,8 +105,7 @@ class CronService:
         self._running = False
         self._background_tasks: set[asyncio.Task] = set()
 
-        self.on_job_complete: List[Callable[[CronJobSpec, ExecutionResult],
-                                            Awaitable[None]]] = []
+        self.on_job_complete: List[Callable[[CronJobSpec, ExecutionResult], Awaitable[None]]] = []
         self.on_job_start: List[Callable[[CronJobSpec], Awaitable[None]]] = []
 
     @property
@@ -194,8 +192,7 @@ class CronService:
     def create_job_from_spec(self, spec: CronJobSpec) -> CronJobSpec:
         return self._manager.create_job_from_spec(spec)
 
-    def update_job(self, job_id: str,
-                   updates: Dict[str, Any]) -> Optional[CronJobSpec]:
+    def update_job(self, job_id: str, updates: Dict[str, Any]) -> Optional[CronJobSpec]:
         pair = self._manager.get_job(job_id)
         if pair is None:
             return None
@@ -218,14 +215,10 @@ class CronService:
     def trigger_job(self, job_id: str) -> bool:
         return self._manager.trigger_job(job_id)
 
-    def list_jobs(
-        self,
-        include_disabled: bool = False
-    ) -> List[Tuple[CronJobSpec, CronJobState]]:
+    def list_jobs(self, include_disabled: bool = False) -> List[Tuple[CronJobSpec, CronJobState]]:
         return self._manager.list_jobs(include_disabled=include_disabled)
 
-    def get_job(self,
-                job_id: str) -> Optional[Tuple[CronJobSpec, CronJobState]]:
+    def get_job(self, job_id: str) -> Optional[Tuple[CronJobSpec, CronJobState]]:
         return self._manager.get_job(job_id)
 
     # === Output ===
@@ -255,8 +248,7 @@ class CronService:
 
     # === Scheduler Callbacks ===
 
-    async def _on_due_jobs(
-            self, due: List[Tuple[CronJobSpec, CronJobState]]) -> None:
+    async def _on_due_jobs(self, due: List[Tuple[CronJobSpec, CronJobState]]) -> None:
         """Called by scheduler when jobs are due.
 
         Fire-and-forget: spawn tasks but do NOT await them, so the scheduler
@@ -270,8 +262,7 @@ class CronService:
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
 
-    async def _execute_job(self, job: CronJobSpec,
-                           state: CronJobState) -> None:
+    async def _execute_job(self, job: CronJobSpec, state: CronJobState) -> None:
         self._manager.mark_running(job.id)
 
         for cb in self.on_job_start:
@@ -299,8 +290,9 @@ class CronService:
 
         # Phase 2: per-job notify hooks
         notify_hooks = build_hooks_from_spec(job.notify)
-        should_notify = (not result.success and (job.notify is None or job.notify.on_error)) or \
-                        (result.success and job.notify is not None and job.notify.on_success)
+        should_notify = (not result.success and (job.notify is None or job.notify.on_error)) or (
+            result.success and job.notify is not None and job.notify.on_success
+        )
         if should_notify:
             for hook in notify_hooks:
                 try:
@@ -323,6 +315,7 @@ class CronService:
 
         if job.project:
             from ms_agent.config import Config
+
             project_path = resolve_project_path(job.project)
             try:
                 config = Config.from_task(project_path)
@@ -338,10 +331,7 @@ class CronService:
 
         existing_cbs = getattr(config, 'callbacks', None)
         if existing_cbs:
-            safe_cbs = [
-                cb for cb in existing_cbs if cb != 'input_callback'
-                and not str(cb).endswith('input_callback')
-            ]
+            safe_cbs = [cb for cb in existing_cbs if cb != 'input_callback' and not str(cb).endswith('input_callback')]
             OmegaConf.update(config, 'callbacks', safe_cbs, merge=False)
         else:
             OmegaConf.update(config, 'callbacks', [], merge=False)
@@ -349,16 +339,8 @@ class CronService:
         if getattr(config, 'max_chat_round', None) is None:
             OmegaConf.update(config, 'max_chat_round', 50, merge=True)
 
-        OmegaConf.update(
-            config,
-            'session_log.dir',
-            str(self._workspace / 'sessions'),
-            merge=True)
-        OmegaConf.update(
-            config,
-            'output_dir',
-            str(self._workspace / 'output' / job.id),
-            merge=True)
+        OmegaConf.update(config, 'session_log.dir', str(self._workspace / 'sessions'), merge=True)
+        OmegaConf.update(config, 'output_dir', str(self._workspace / 'output' / job.id), merge=True)
 
         if job.session_mode == 'persistent':
             OmegaConf.update(config, 'load_cache', True, merge=True)

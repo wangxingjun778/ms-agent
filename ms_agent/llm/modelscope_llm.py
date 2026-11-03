@@ -6,13 +6,12 @@ from ms_agent.utils.constants import get_service_config
 
 
 class ModelScope(OpenAI):
-
     def __init__(self, config: DictConfig):
-        assert hasattr(
-            config.llm, 'modelscope_api_key'
-        ) and config.llm.modelscope_api_key is not None, 'Please provide `modelscope_api_key` in env or cmd.'
+        assert hasattr(config.llm, 'modelscope_api_key') and config.llm.modelscope_api_key is not None, (
+            'Please provide `modelscope_api_key` in env or cmd.'
+        )
         super().__init__(
             config,
-            base_url=config.llm.modelscope_base_url
-            or get_service_config('modelscope').base_url,
-            api_key=config.llm.modelscope_api_key)
+            base_url=config.llm.modelscope_base_url or get_service_config('modelscope').base_url,
+            api_key=config.llm.modelscope_api_key,
+        )

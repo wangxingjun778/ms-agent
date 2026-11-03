@@ -4,6 +4,7 @@ Smoke tests for the snapshot utility and LLMAgent rollback interface.
 
 No network, no LLM — all tests run fully offline using tempfile directories.
 """
+
 import os
 import sys
 import tempfile
@@ -14,16 +15,16 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from ms_agent.utils.snapshot import (
+from ms_agent.utils.snapshot import (  # noqa: E402
     list_snapshots,
     restore_snapshot,
     take_snapshot,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write(path: str, content: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -40,8 +41,8 @@ def _read(path: str) -> str:
 # snapshot utility tests
 # ---------------------------------------------------------------------------
 
-class TestTakeSnapshot(unittest.TestCase):
 
+class TestTakeSnapshot(unittest.TestCase):
     def test_empty_dir_returns_none(self):
         """Nothing to commit → None."""
         with tempfile.TemporaryDirectory() as td:
@@ -85,7 +86,6 @@ class TestTakeSnapshot(unittest.TestCase):
 
 
 class TestListSnapshots(unittest.TestCase):
-
     def test_no_repo_returns_empty(self):
         with tempfile.TemporaryDirectory() as td:
             self.assertEqual(list_snapshots(td), [])
@@ -125,7 +125,6 @@ class TestListSnapshots(unittest.TestCase):
 
 
 class TestRestoreSnapshot(unittest.TestCase):
-
     def test_no_repo_returns_false(self):
         with tempfile.TemporaryDirectory() as td:
             ok, mc = restore_snapshot(td, 'abc1234')
@@ -135,8 +134,7 @@ class TestRestoreSnapshot(unittest.TestCase):
     def test_restore_without_git_returns_false(self):
         with tempfile.TemporaryDirectory() as td:
             os.makedirs(os.path.join(td, '.ms_agent_snapshots'))
-            with patch('ms_agent.utils.snapshot._git',
-                       side_effect=FileNotFoundError('git')):
+            with patch('ms_agent.utils.snapshot._git', side_effect=FileNotFoundError('git')):
                 ok, mc = restore_snapshot(td, 'abc1234')
             self.assertFalse(ok)
             self.assertEqual(mc, 0)
@@ -189,6 +187,7 @@ class TestRestoreSnapshot(unittest.TestCase):
 # LLMAgent interface tests
 # ---------------------------------------------------------------------------
 
+
 class TestLLMAgentSnapshotInterface(unittest.TestCase):
     """
     Tests for LLMAgent.list_snapshots() and LLMAgent.rollback().
@@ -198,11 +197,15 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
 
     def _make_agent(self, output_dir: str):
         from omegaconf import OmegaConf
+
         from ms_agent.agent.llm_agent import LLMAgent
-        cfg = OmegaConf.create({
-            'llm': {'model': 'fake', 'api_key': 'fake', 'model_server': 'openai'},
-            'output_dir': output_dir,
-        })
+
+        cfg = OmegaConf.create(
+            {
+                'llm': {'model': 'fake', 'api_key': 'fake', 'model_server': 'openai'},
+                'output_dir': output_dir,
+            }
+        )
         agent = LLMAgent(cfg, tag='smoke-test')
         return agent
 
@@ -223,6 +226,7 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
 
     def test_rollback_restores_files_and_truncates_history(self):
         from omegaconf import OmegaConf
+
         from ms_agent.agent.llm_agent import LLMAgent
         from ms_agent.llm.utils import Message
         from ms_agent.utils import save_history
@@ -261,6 +265,7 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
 
             # History should be truncated to message_count=2
             from ms_agent.utils import read_history
+
             _, saved = read_history(td, 'smoke-test')
             self.assertIsNotNone(saved)
             self.assertEqual(len(saved), 2)
@@ -313,11 +318,15 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             agent = self._make_agent(td)
             save_history(
-                td, 'smoke-test', agent.config, [
+                td,
+                'smoke-test',
+                agent.config,
+                [
                     Message(role='system', content='sys'),
                     Message(role='user', content='task1'),
                     Message(role='assistant', content='stale'),
-                ])
+                ],
+            )
             h = take_snapshot(td, 'snap', message_count=1)
             self.assertIsNotNone(h)
 
@@ -344,6 +353,7 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
     def test_on_task_begin_auto_snapshots(self):
         """Explicit opt-in still takes a snapshot before a task."""
         import asyncio
+
         from ms_agent.llm.utils import Message
 
         with tempfile.TemporaryDirectory() as td:
@@ -366,6 +376,7 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
 
     def test_on_task_begin_skips_snapshots_by_default(self):
         import asyncio
+
         from ms_agent.llm.utils import Message
 
         with tempfile.TemporaryDirectory() as td:
@@ -377,10 +388,10 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
 
     def test_snapshot_defaults_and_explicit_boolean_forms(self):
         from omegaconf import OmegaConf
+
         from ms_agent.agent.llm_agent import LLMAgent
 
-        cases = [({}, False), ({'ms_agent_subagent': True}, False),
-                 ({'enable_snapshots': None}, False)]
+        cases = [({}, False), ({'ms_agent_subagent': True}, False), ({'enable_snapshots': None}, False)]
         for value in (True, 'true', 'yes', '1'):
             cases.append(({'enable_snapshots': value}, True))
             cases.append(({'enable_snapshots': value, 'ms_agent_subagent': True}, True))
@@ -395,17 +406,21 @@ class TestLLMAgentSnapshotInterface(unittest.TestCase):
     def test_on_task_begin_no_snapshot_when_disabled(self):
         """enable_snapshots=False suppresses automatic snapshot."""
         import asyncio
+
         from omegaconf import OmegaConf
+
         from ms_agent.agent.llm_agent import LLMAgent
         from ms_agent.llm.utils import Message
 
         with tempfile.TemporaryDirectory() as td:
             _write(os.path.join(td, 'work.txt'), 'v1')
-            cfg = OmegaConf.create({
-                'llm': {'model': 'fake', 'api_key': 'fake', 'model_server': 'openai'},
-                'output_dir': td,
-                'enable_snapshots': False,
-            })
+            cfg = OmegaConf.create(
+                {
+                    'llm': {'model': 'fake', 'api_key': 'fake', 'model_server': 'openai'},
+                    'output_dir': td,
+                    'enable_snapshots': False,
+                }
+            )
             agent = LLMAgent(cfg, tag='smoke-test')
             messages = [
                 Message(role='system', content='sys'),

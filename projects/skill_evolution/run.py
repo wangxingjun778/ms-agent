@@ -1,7 +1,7 @@
 import asyncio
 
-from tasks.base import BaseDataset, BaseEvaluator, BaseRolloutEnv
 from skill_evolution_workflow import SkillEvolutionWorkflow
+from tasks.base import BaseDataset, BaseEvaluator, BaseRolloutEnv
 
 
 async def run_workflow(
@@ -28,21 +28,21 @@ async def run_workflow(
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     from tasks.searchqa import SearchQADataset, SearchQAEvaluator, SearchQARolloutEnv
 
-    train_set = SearchQADataset(data_path="../../../data/minimal_searchqa_split/train/items.json", is_train=True)
-    val_set = SearchQADataset(data_path="../../../data/minimal_searchqa_split/val/items.json", is_train=False)
-    test_set = SearchQADataset(data_path="../../../data/minimal_searchqa_split/test/items.json", is_train=False)
+    train_set = SearchQADataset(data_path='../../../data/minimal_searchqa_split/train/items.json', is_train=True)
+    val_set = SearchQADataset(data_path='../../../data/minimal_searchqa_split/val/items.json', is_train=False)
+    test_set = SearchQADataset(data_path='../../../data/minimal_searchqa_split/test/items.json', is_train=False)
     rollout_env = SearchQARolloutEnv()
     evaluator = SearchQAEvaluator()
 
-    config_file = "./config.yaml"
+    config_file = './config.yaml'
 
     coroutine = run_workflow(
         config_file=config_file,
-        init_local_skills_path="../../../results/msagent_searchqa_qwen36flash/init_skills",
-        workdir="../../../results/msagent_searchqa_qwen36flash/workdir",
+        init_local_skills_path='../../../results/msagent_searchqa_qwen36flash/init_skills',
+        workdir='../../../results/msagent_searchqa_qwen36flash/workdir',
         train_set=train_set,
         val_set=val_set,
         test_set=test_set,

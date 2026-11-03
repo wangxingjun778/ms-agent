@@ -1,9 +1,7 @@
-# flake8: noqa
-# isort: skip_file
-# yapf: disable
 import asyncio
 import base64
 import html
+import json
 import logging
 import os
 import re
@@ -18,15 +16,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
-import json
 import markdown
+from omegaconf import DictConfig
+
 from ms_agent.agent.loader import AgentLoader
 from ms_agent.config import Config
 from ms_agent.tools import search_engine as search_engine_module
 from ms_agent.tools.search.search_base import SearchEngineType
 from ms_agent.utils.logger import get_logger
 from ms_agent.workflow.dag_workflow import DagWorkflow
-from omegaconf import DictConfig
 
 logger = get_logger()
 
@@ -34,7 +32,6 @@ _fin_log_context = threading.local()
 
 
 class _FinLogContextFilter(logging.Filter):
-
     def filter(self, record):
         context_val = getattr(_fin_log_context, 'value', '')
         if context_val:
@@ -43,9 +40,7 @@ class _FinLogContextFilter(logging.Filter):
 
 
 _FIN_LOG_FILTER = _FinLogContextFilter()
-if not any(
-        isinstance(f, _FinLogContextFilter)
-        for f in getattr(logger, 'filters', [])):
+if not any(isinstance(f, _FinLogContextFilter) for f in getattr(logger, 'filters', [])):
     logger.addFilter(_FIN_LOG_FILTER)
 
 
@@ -114,6 +109,7 @@ def _resolve_fin_research_config_dir() -> Path:
     # 4) Optional: packaged as resources inside the installed ms_agent wheel
     try:
         import importlib.resources as resources  # py3.9+
+
         pkg_dir = resources.files('ms_agent.projects.fin_research')
         # Some resource backends return an abstract Traversable; convert to Path when possible.
         try:
@@ -136,35 +132,30 @@ def _resolve_fin_research_config_dir() -> Path:
 FIN_RESEARCH_CONFIG_DIR = _resolve_fin_research_config_dir()
 SEARCH_ENGINE_OVERRIDE_ENV = 'FIN_RESEARCH_SEARCH_ENGINE'
 _default_workdir = PROJECT_ROOT / 'temp_workspace'
-BASE_WORKDIR = Path(os.environ.get('FIN_RESEARCH_WORKDIR',
-                                   str(_default_workdir)))
+BASE_WORKDIR = Path(os.environ.get('FIN_RESEARCH_WORKDIR', str(_default_workdir)))
 
-GRADIO_DEFAULT_CONCURRENCY_LIMIT = int(
-    os.environ.get('GRADIO_DEFAULT_CONCURRENCY_LIMIT', '3'))
+GRADIO_DEFAULT_CONCURRENCY_LIMIT = int(os.environ.get('GRADIO_DEFAULT_CONCURRENCY_LIMIT', '3'))
 # Maximum number of concurrent FinResearch tasks allowed globally.
-FIN_MAX_CONCURRENT_TASKS = int(
-    os.environ.get('FIN_MAX_CONCURRENT_TASKS', '3'))
+FIN_MAX_CONCURRENT_TASKS = int(os.environ.get('FIN_MAX_CONCURRENT_TASKS', '3'))
 LOCAL_MODE = os.environ.get('LOCAL_MODE', 'true').lower() == 'true'
 
 FIN_STATUS_TIMER_SIGNAL_ID = 'fin-status-timer-signal'
 DEFAULT_TIMER_SIGNAL = json.dumps({'start': 0, 'elapsed': 0})
 
-AGENT_SEQUENCE = [
-    'orchestrator', 'searcher', 'collector', 'analyst', 'aggregator'
-]
+AGENT_SEQUENCE = ['orchestrator', 'searcher', 'collector', 'analyst', 'aggregator']
 AGENT_LABELS = {
     'orchestrator': 'Orchestrator - 解析任务并拆解计划',
     'searcher': 'Searcher - 舆情与资讯深度研究',
     'collector': 'Collector - 结构化数据采集',
     'analyst': 'Analyst - 量化与可视化分析',
-    'aggregator': 'Aggregator - 汇总生成综合报告'
+    'aggregator': 'Aggregator - 汇总生成综合报告',
 }
 AGENT_DUTIES = {
     'orchestrator': '解析任务并创建研究计划',
     'searcher': '进行舆情/新闻/资料搜索与梳理',
     'collector': '采集并整理结构化数据',
     'analyst': '执行量化与可视化分析',
-    'aggregator': '汇总并生成综合报告'
+    'aggregator': '汇总并生成综合报告',
 }
 
 SAFE_USER_ID_PATTERN = re.compile(r'[^a-zA-Z0-9._-]')
@@ -225,11 +216,7 @@ class UserStatusManager:
             if user_id in self.active_users:
                 info = self.active_users[user_id]
                 elapsed = time.time() - info['start_time']
-                return {
-                    'status': info['status'],
-                    'elapsed_time': elapsed,
-                    'is_active': True
-                }
+                return {'status': info['status'], 'elapsed_time': elapsed, 'is_active': True}
         return {'status': 'idle', 'elapsed_time': 0, 'is_active': False}
 
     def get_active_task_count(self) -> int:
@@ -239,11 +226,7 @@ class UserStatusManager:
 
     def start_user_task(self, user_id: str, task_id: str = ''):
         with self.lock:
-            self.active_users[user_id] = {
-                'start_time': time.time(),
-                'status': 'running',
-                'task_id': task_id
-            }
+            self.active_users[user_id] = {'start_time': time.time(), 'status': 'running', 'task_id': task_id}
             logger.info(
                 f'FinResearch task started - User: {user_id[:8]}***, Task: {task_id}, Active users: {len(self.active_users)}'
             )
@@ -252,9 +235,7 @@ class UserStatusManager:
         with self.lock:
             if user_id in self.active_users:
                 del self.active_users[user_id]
-                logger.info(
-                    f'FinResearch task finished - User: {user_id[:8]}***, Remaining: {len(self.active_users)}'
-                )
+                logger.info(f'FinResearch task finished - User: {user_id[:8]}***, Remaining: {len(self.active_users)}')
 
     def is_user_running(self, user_id: str) -> bool:
         """Check if user has an active task running."""
@@ -284,8 +265,7 @@ class CancellationManager:
         self._flags: Dict[str, Dict[str, threading.Event]] = {}
         self._lock = threading.Lock()
 
-    def create_for_task(self, user_id: str,
-                        task_id: str) -> threading.Event:
+    def create_for_task(self, user_id: str, task_id: str) -> threading.Event:
         """Create a cancellation flag for the given user task."""
         with self._lock:
             user_map = self._flags.setdefault(user_id, {})
@@ -342,9 +322,7 @@ def check_user_auth(request: gr.Request) -> Tuple[bool, str]:
     return True, user_id
 
 
-def resolve_user_id_for_request(request: Optional[gr.Request],
-                                *,
-                                local_mode: bool) -> Tuple[bool, str]:
+def resolve_user_id_for_request(request: Optional[gr.Request], *, local_mode: bool) -> Tuple[bool, str]:
     """Return (is_ok, user_id_or_error)."""
     if not local_mode:
         return check_user_auth(request)
@@ -387,8 +365,7 @@ def save_user_session_snapshot(user_id: str, data: Dict[str, Any]):
         with open(session_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
-        logger.exception('Failed to save FinResearch session snapshot for user=%s',
-                         user_id[:8] + '***')
+        logger.exception('Failed to save FinResearch session snapshot for user=%s', user_id[:8] + '***')
 
 
 def load_user_session_snapshot(user_id: str) -> Optional[Dict[str, Any]]:
@@ -400,25 +377,25 @@ def load_user_session_snapshot(user_id: str) -> Optional[Dict[str, Any]]:
         with open(session_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
-        logger.exception('Failed to load FinResearch session snapshot for user=%s',
-                         user_id[:8] + '***')
+        logger.exception('Failed to load FinResearch session snapshot for user=%s', user_id[:8] + '***')
         return None
 
 
 def build_fin_prompt(
-        goal: str,
-        primary_tickers: str,
-        benchmark_tickers: str,
-        time_horizon: str,
-        markets: str,
-        focus_areas: List[str],
-        extra_notes: str,
-        output_language: str,
-        macro_view: str,
-        analysis_depth: int,
-        deliverable_style: str,
-        include_sentiment: bool,
-        sentiment_weight: int) -> str:
+    goal: str,
+    primary_tickers: str,
+    benchmark_tickers: str,
+    time_horizon: str,
+    markets: str,
+    focus_areas: List[str],
+    extra_notes: str,
+    output_language: str,
+    macro_view: str,
+    analysis_depth: int,
+    deliverable_style: str,
+    include_sentiment: bool,
+    sentiment_weight: int,
+) -> str:
     goal = (goal or '').strip()
     if not goal:
         raise ValueError('请输入研究目标 | Research goal cannot be empty.')
@@ -435,15 +412,13 @@ def build_fin_prompt(
     if primary_tickers.strip():
         sections.append(f'Target tickers or instruments: {primary_tickers.strip()}')
     if benchmark_tickers.strip():
-        sections.append(
-            f'Benchmark / peer set to reference: {benchmark_tickers.strip()}')
+        sections.append(f'Benchmark / peer set to reference: {benchmark_tickers.strip()}')
     if time_horizon.strip():
         sections.append(f'Analysis window / guidance horizon: {time_horizon.strip()}')
     if markets.strip():
         sections.append(f'Market / region focus: {markets.strip()}')
     if focus_areas:
-        sections.append(
-            f'Priority analytical pillars: {", ".join(focus_areas)}')
+        sections.append(f'Priority analytical pillars: {", ".join(focus_areas)}')
     if macro_view:
         sections.append(f'Macro sensitivity preference: {macro_view}')
     if extra_notes.strip():
@@ -451,33 +426,29 @@ def build_fin_prompt(
 
     instructions = [
         f'Desired deliverable style: {deliverable_style or "Balanced"}',
-        f'Analytical depth target (1-5): {analysis_depth}'
+        f'Analytical depth target (1-5): {analysis_depth}',
     ]
     if output_language:
-        instructions.append(
-            f'Write the full report in {output_language}, including tables and summaries.'
-        )
-    instructions.append(
-        'Integrate sandboxed quantitative analysis with qualitative reasoning.')
+        instructions.append(f'Write the full report in {output_language}, including tables and summaries.')
+    instructions.append('Integrate sandboxed quantitative analysis with qualitative reasoning.')
 
     if include_sentiment:
         instructions.append(
             f'Include a multi-source sentiment & news deep dive; sentiment emphasis level: {sentiment_weight}/5.'
         )
     else:
-        instructions.append(
-            'Skip the public sentiment/searcher agent and rely only on structured financial data.'
-        )
+        instructions.append('Skip the public sentiment/searcher agent and rely only on structured financial data.')
 
     prompt = (
         'Please conduct a comprehensive financial research project following the structured plan below.\n\n'
-        + '\n\n'.join(sections) + '\n\nExecution directives:\n- ' +
-        '\n- '.join(instructions))
+        + '\n\n'.join(sections)
+        + '\n\nExecution directives:\n- '
+        + '\n- '.join(instructions)
+    )
     return prompt
 
 
-def convert_markdown_images_to_base64(markdown_content: str,
-                                      workdir: str) -> str:
+def convert_markdown_images_to_base64(markdown_content: str, workdir: str) -> str:
     pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
     def replace_image(match):
@@ -497,14 +468,16 @@ def convert_markdown_images_to_base64(markdown_content: str,
                     '.gif': 'image/gif',
                     '.bmp': 'image/bmp',
                     '.webp': 'image/webp',
-                    '.svg': 'image/svg+xml'
+                    '.svg': 'image/svg+xml',
                 }
                 mime_type = mime_types.get(ext, 'image/png')
                 file_size = os.path.getsize(full_path)
                 if file_size > 5 * 1024 * 1024:
-                    return (f'**🖼️ 图片过大: {alt_text or os.path.basename(image_path)}**\n'
-                            f'- 路径: `{image_path}`\n'
-                            f'- 大小: {file_size / (1024 * 1024):.2f} MB (>5MB)\n')
+                    return (
+                        f'**🖼️ 图片过大: {alt_text or os.path.basename(image_path)}**\n'
+                        f'- 路径: `{image_path}`\n'
+                        f'- 大小: {file_size / (1024 * 1024):.2f} MB (>5MB)\n'
+                    )
                 with open(full_path, 'rb') as img_file:
                     base64_data = base64.b64encode(img_file.read()).decode('utf-8')
                 data_url = f'data:{mime_type};base64,{base64_data}'
@@ -517,22 +490,22 @@ def convert_markdown_images_to_base64(markdown_content: str,
     return re.sub(pattern, replace_image, markdown_content)
 
 
-def convert_markdown_images_to_file_info(markdown_content: str,
-                                         workdir: str) -> str:
+def convert_markdown_images_to_file_info(markdown_content: str, workdir: str) -> str:
     pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
     def replace_image(match):
         alt_text = match.group(1)
         image_path = match.group(2)
-        full_path = os.path.join(workdir, image_path) if not os.path.isabs(
-            image_path) else image_path
+        full_path = os.path.join(workdir, image_path) if not os.path.isabs(image_path) else image_path
         if os.path.exists(full_path):
             size_mb = os.path.getsize(full_path) / (1024 * 1024)
             ext = os.path.splitext(full_path)[1].upper()
-            return (f'**🖼️ 图片文件: {alt_text or os.path.basename(image_path)}**\n'
-                    f'- 路径: `{image_path}`\n'
-                    f'- 大小: {size_mb:.2f} MB\n'
-                    f'- 格式: {ext}\n')
+            return (
+                f'**🖼️ 图片文件: {alt_text or os.path.basename(image_path)}**\n'
+                f'- 路径: `{image_path}`\n'
+                f'- 大小: {size_mb:.2f} MB\n'
+                f'- 格式: {ext}\n'
+            )
         return f'**❌ 图片文件不存在: {alt_text or image_path}**\n'
 
     return re.sub(pattern, replace_image, markdown_content)
@@ -610,12 +583,12 @@ MARKDOWN_TABLE_STYLE_BLOCK = """
 }
 """
 
-_TABLE_WRAPPER_PATTERN = re.compile(r'(<table\b.*?</table>)',
-                                    flags=re.IGNORECASE | re.DOTALL)
+_TABLE_WRAPPER_PATTERN = re.compile(r'(<table\b.*?</table>)', flags=re.IGNORECASE | re.DOTALL)
 
 
 def _wrap_tables_with_container(html_content: str) -> str:
     """Ensure markdown tables are wrapped for styling/scrolling."""
+
     def _inject_wrapper(match: re.Match) -> str:
         table_html = match.group(1)
         if 'fin-table-wrapper' in table_html:
@@ -625,8 +598,7 @@ def _wrap_tables_with_container(html_content: str) -> str:
     return _TABLE_WRAPPER_PATTERN.sub(_inject_wrapper, html_content)
 
 
-def _render_markdown_html_core(markdown_content: str,
-                               add_permalink: bool = True) -> Tuple[str, str]:
+def _render_markdown_html_core(markdown_content: str, add_permalink: bool = True) -> Tuple[str, str]:
     latex_placeholders = {}
     placeholder_counter = 0
 
@@ -638,32 +610,27 @@ def _render_markdown_html_core(markdown_content: str,
         return placeholder
 
     protected_content = markdown_content
-    protected_content = re.sub(r'\$\$([^$]+?)\$\$', protect_latex,
-                               protected_content, flags=re.DOTALL)
-    protected_content = re.sub(r'(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)',
-                               protect_latex, protected_content)
-    protected_content = re.sub(r'\\\[([^\\]+?)\\\]', protect_latex,
-                               protected_content, flags=re.DOTALL)
-    protected_content = re.sub(r'\\\(([^\\]+?)\\\)', protect_latex,
-                               protected_content, flags=re.DOTALL)
+    protected_content = re.sub(r'\$\$([^$]+?)\$\$', protect_latex, protected_content, flags=re.DOTALL)
+    protected_content = re.sub(r'(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)', protect_latex, protected_content)
+    protected_content = re.sub(r'\\\[([^\\]+?)\\\]', protect_latex, protected_content, flags=re.DOTALL)
+    protected_content = re.sub(r'\\\(([^\\]+?)\\\)', protect_latex, protected_content, flags=re.DOTALL)
 
     extensions = [
-        'markdown.extensions.extra', 'markdown.extensions.codehilite',
-        'markdown.extensions.toc', 'markdown.extensions.tables',
-        'markdown.extensions.fenced_code', 'markdown.extensions.nl2br'
+        'markdown.extensions.extra',
+        'markdown.extensions.codehilite',
+        'markdown.extensions.toc',
+        'markdown.extensions.tables',
+        'markdown.extensions.fenced_code',
+        'markdown.extensions.nl2br',
     ]
     toc_config: Dict[str, Any] = {'permalink': True}
     if not add_permalink:
         toc_config['permalink'] = False
     extension_configs = {
-        'markdown.extensions.codehilite': {
-            'css_class': 'highlight',
-            'use_pygments': True
-        },
-        'markdown.extensions.toc': toc_config
+        'markdown.extensions.codehilite': {'css_class': 'highlight', 'use_pygments': True},
+        'markdown.extensions.toc': toc_config,
     }
-    md = markdown.Markdown(
-        extensions=extensions, extension_configs=extension_configs)
+    md = markdown.Markdown(extensions=extensions, extension_configs=extension_configs)
     html_content = md.convert(protected_content)
     for placeholder, latex_formula in latex_placeholders.items():
         html_content = html_content.replace(placeholder, latex_formula)
@@ -723,8 +690,7 @@ def convert_markdown_to_html(markdown_content: str) -> str:
     return _build_inline_markdown_html(html_content, container_id)
 
 
-def build_exportable_report_html(markdown_content: str,
-                                 title: str = 'FinResearch 综合报告') -> str:
+def build_exportable_report_html(markdown_content: str, title: str = 'FinResearch 综合报告') -> str:
     effective_title = (title or '').strip() or 'FinResearch 综合报告'
     safe_title = html.escape(effective_title, quote=True)
     markdown_for_render = markdown_content
@@ -734,8 +700,7 @@ def build_exportable_report_html(markdown_content: str,
         heading_match = re.match(r'#\s+(.+)', first_line.strip())
         if heading_match and heading_match.group(1).strip() == effective_title:
             markdown_for_render = remainder.lstrip('\r\n')
-    html_content, container_id = _render_markdown_html_core(
-        markdown_for_render, add_permalink=False)
+    html_content, container_id = _render_markdown_html_core(markdown_for_render, add_permalink=False)
     generated_ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     base_css = """
     :root {
@@ -933,8 +898,7 @@ def read_plan_file(workdir: str) -> str:
         return '⚠️ plan.json 读取失败'
 
 
-def read_markdown_report(workdir: str,
-                         filename: str) -> Tuple[str, str, str]:
+def read_markdown_report(workdir: str, filename: str) -> Tuple[str, str, str]:
     report_path = Path(workdir) / filename
     if not report_path.exists():
         return '', '', f'未找到 {filename}'
@@ -942,12 +906,10 @@ def read_markdown_report(workdir: str,
         with open(report_path, 'r', encoding='utf-8') as f:
             markdown_content = f.read()
         try:
-            processed_markdown = convert_markdown_images_to_base64(
-                markdown_content, workdir)
+            processed_markdown = convert_markdown_images_to_base64(markdown_content, workdir)
         except Exception as e:
             logger.info(f'Base64 conversion failed: {e}')
-            processed_markdown = convert_markdown_images_to_file_info(
-                markdown_content, workdir)
+            processed_markdown = convert_markdown_images_to_file_info(markdown_content, workdir)
 
         if LOCAL_MODE:
             return processed_markdown, processed_markdown, ''
@@ -986,13 +948,15 @@ def ensure_workdir(path: Path):
 
 
 class FinResearchWorkflowRunner:
-    def __init__(self,
-                 workdir: str,
-                 include_sentiment: bool = True,
-                 search_depth: int = 1,
-                 search_breadth: int = 3,
-                 search_api_key: Optional[str] = None,
-                 cancel_event: Optional[threading.Event] = None):
+    def __init__(
+        self,
+        workdir: str,
+        include_sentiment: bool = True,
+        search_depth: int = 1,
+        search_breadth: int = 3,
+        search_api_key: Optional[str] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ):
         self.workdir = workdir
         self.include_sentiment = include_sentiment
         self.search_depth = search_depth
@@ -1025,9 +989,7 @@ class FinResearchWorkflowRunner:
                     if preferred_engine is None:
                         preferred_engine = SearchEngineType.SERPAPI.value
                 else:
-                    logger.warning(
-                        f'Unsupported search engine prefix "{engine}" provided; ignoring entry.'
-                    )
+                    logger.warning(f'Unsupported search engine prefix "{engine}" provided; ignoring entry.')
             else:
                 # No prefix -> set both for backward compatibility
                 overrides['EXA_API_KEY'] = entry
@@ -1066,8 +1028,7 @@ class FinResearchWorkflowRunner:
             else:
                 os.environ[key] = prev
 
-    def _prepare_config(self,
-                        env_overrides: Dict[str, str]) -> Config:
+    def _prepare_config(self, env_overrides: Dict[str, str]) -> Config:
         config = Config.from_task(str(FIN_RESEARCH_CONFIG_DIR), env_overrides)
         if not self.include_sentiment:
             if 'searcher' in config:
@@ -1107,7 +1068,8 @@ class FinResearchWorkflowRunner:
                 trust_remote_code=True,
                 load_cache=False,
                 status_callback=status_callback,
-                cancel_event=self.cancel_event)
+                cancel_event=self.cancel_event,
+            )
 
             async def _execute():
                 return await workflow.run(user_prompt)
@@ -1127,9 +1089,7 @@ class FinResearchWorkflowRunner:
             search_engine_module.set_search_env_overrides(None)
 
 
-def format_result_summary(workdir: str, include_sentiment: bool,
-                          output_language: str,
-                          focus_areas: List[str]) -> str:
+def format_result_summary(workdir: str, include_sentiment: bool, output_language: str, focus_areas: List[str]) -> str:
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lines = [
         '✅ FinResearch 工作流执行完成！',
@@ -1142,8 +1102,7 @@ def format_result_summary(workdir: str, include_sentiment: bool,
     return '\n'.join(lines)
 
 
-def collect_fin_reports(workdir: str,
-                        include_sentiment: bool) -> Dict[str, Dict[str, str]]:
+def collect_fin_reports(workdir: str, include_sentiment: bool) -> Dict[str, Dict[str, str]]:
     reports = {}
     plan_text = read_plan_file(workdir)
     plan_path = Path(workdir) / 'plan.json'
@@ -1155,23 +1114,21 @@ def collect_fin_reports(workdir: str,
         'markdown': final_md,
         'html': final_html,
         'error': final_err,
-        'path': str(final_path) if final_path.exists() else ''
+        'path': str(final_path) if final_path.exists() else '',
     }
 
-    analysis_md, analysis_html, analysis_err = read_markdown_report(
-        workdir, 'analysis_report.md')
+    analysis_md, analysis_html, analysis_err = read_markdown_report(workdir, 'analysis_report.md')
     analysis_path = Path(workdir) / 'analysis_report.md'
     reports['analysis'] = {
         'markdown': analysis_md,
         'html': analysis_html,
         'error': analysis_err,
-        'path': str(analysis_path) if analysis_path.exists() else ''
+        'path': str(analysis_path) if analysis_path.exists() else '',
     }
 
     sentiment_md, sentiment_html, sentiment_err = ('', '', '')
     if include_sentiment:
-        sentiment_md, sentiment_html, sentiment_err = read_markdown_report(
-            workdir, 'sentiment_report.md')
+        sentiment_md, sentiment_html, sentiment_err = read_markdown_report(workdir, 'sentiment_report.md')
         sentiment_path = Path(workdir) / 'sentiment_report.md'
     else:
         sentiment_md = '舆情模块已关闭，本次未执行搜索工作流。'
@@ -1180,14 +1137,13 @@ def collect_fin_reports(workdir: str,
         'markdown': sentiment_md,
         'html': sentiment_html,
         'error': sentiment_err,
-        'path': str(sentiment_path) if sentiment_path.exists() else ''
+        'path': str(sentiment_path) if sentiment_path.exists() else '',
     }
     reports['resources'] = list_output_files(workdir)
     return reports
 
 
-def ensure_exportable_report_html(workdir_path: Path,
-                                  markdown_name: str = 'report.md') -> Optional[Path]:
+def ensure_exportable_report_html(workdir_path: Path, markdown_name: str = 'report.md') -> Optional[Path]:
     report_path = workdir_path / markdown_name
     if not report_path.exists():
         return None
@@ -1198,15 +1154,11 @@ def ensure_exportable_report_html(workdir_path: Path,
         logger.exception('Failed to read markdown report for HTML export')
         return None
 
-    heading_match = re.search(r'^\s*#\s+(.+)$',
-                              markdown_content,
-                              flags=re.MULTILINE)
-    export_title = heading_match.group(1).strip(
-    ) if heading_match else 'FinResearch 综合报告'
+    heading_match = re.search(r'^\s*#\s+(.+)$', markdown_content, flags=re.MULTILINE)
+    export_title = heading_match.group(1).strip() if heading_match else 'FinResearch 综合报告'
 
     try:
-        html_doc = build_exportable_report_html(markdown_content,
-                                                title=export_title)
+        html_doc = build_exportable_report_html(markdown_content, title=export_title)
         html_path = report_path.with_suffix('.html')
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_doc)
@@ -1240,8 +1192,7 @@ def prepare_report_download_package(workdir: str) -> Optional[str]:
     added_entry = False
 
     try:
-        with zipfile.ZipFile(bundle_path, 'w',
-                             compression=zipfile.ZIP_DEFLATED) as bundle:
+        with zipfile.ZipFile(bundle_path, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
             for name in allowed_items:
                 src = workdir_path / name
                 if not src.exists():
@@ -1254,9 +1205,7 @@ def prepare_report_download_package(workdir: str) -> Optional[str]:
                     has_file = False
                     for file_path in src.rglob('*'):
                         if file_path.is_file():
-                            bundle.write(file_path,
-                                         arcname=str(
-                                             file_path.relative_to(workdir_path)))
+                            bundle.write(file_path, arcname=str(file_path.relative_to(workdir_path)))
                             added_entry = True
                             has_file = True
                     if not has_file:
@@ -1285,12 +1234,8 @@ def build_download_state(file_path: Optional[str]) -> Dict[str, Any]:
 
 
 def run_fin_research_workflow(
-        research_goal,
-        search_depth,
-        search_breadth,
-        search_api_key,
-        request: gr.Request,
-        progress=gr.Progress()):
+    research_goal, search_depth, search_breadth, search_api_key, request: gr.Request, progress=gr.Progress()
+):
     user_id = None
     task_workdir = None
     task_id = None
@@ -1298,8 +1243,7 @@ def run_fin_research_workflow(
     context_installed = False
     try:
         local_mode = LOCAL_MODE
-        ok, user_id_or_error = resolve_user_id_for_request(
-            request, local_mode=local_mode)
+        ok, user_id_or_error = resolve_user_id_for_request(request, local_mode=local_mode)
         disabled_dl = build_download_state(None)
         if not ok:
             # Authentication failed - stream a single failure state.
@@ -1382,10 +1326,7 @@ def run_fin_research_workflow(
 
         progress(0.05, desc='验证输入...')
         if not research_goal or not research_goal.strip():
-            message = (
-                '❌ 输入错误：请填写研究目标。\n\n'
-                '❌ Input error: Research goal cannot be empty.'
-            )
+            message = '❌ 输入错误：请填写研究目标。\n\n❌ Input error: Research goal cannot be empty.'
             yield (
                 DEFAULT_TIMER_SIGNAL,
                 message,
@@ -1433,8 +1374,7 @@ def run_fin_research_workflow(
             return
 
         search_api_key = (search_api_key or '').strip()
-        extra_notes = (f'请按照以下舆情搜索参数执行深度研究：depth={search_depth}, '
-                       f'breadth={search_breadth}。')
+        extra_notes = f'请按照以下舆情搜索参数执行深度研究：depth={search_depth}, breadth={search_breadth}。'
         # Currently only use the research goal to build the prompt
         fin_prompt = build_fin_prompt(
             research_goal,
@@ -1449,7 +1389,8 @@ def run_fin_research_workflow(
             analysis_depth=4,
             deliverable_style='Balanced',
             include_sentiment=True,
-            sentiment_weight=3)
+            sentiment_weight=3,
+        )
 
         progress(0.1, desc='创建工作目录...')
         task_workdir = create_task_workdir(user_id)
@@ -1467,12 +1408,10 @@ def run_fin_research_workflow(
         status_tracker = StatusTracker(include_searcher=True)
 
         def build_timer_signal(elapsed_seconds: Optional[int] = None) -> str:
-            elapsed_val = (elapsed_seconds if elapsed_seconds is not None else
-                           int(time.time() - status_tracker.start_time))
-            return json.dumps({
-                'start': int(status_tracker.start_time),
-                'elapsed': max(0, elapsed_val)
-            })
+            elapsed_val = (
+                elapsed_seconds if elapsed_seconds is not None else int(time.time() - status_tracker.start_time)
+            )
+            return json.dumps({'start': int(status_tracker.start_time), 'elapsed': max(0, elapsed_val)})
 
         runner = FinResearchWorkflowRunner(
             workdir=task_workdir,
@@ -1480,15 +1419,18 @@ def run_fin_research_workflow(
             search_depth=search_depth,
             search_breadth=search_breadth,
             search_api_key=search_api_key or None,
-            cancel_event=cancel_event)
+            cancel_event=cancel_event,
+        )
         # Run in background to stream status updates
         run_exc: List[Optional[BaseException]] = [None]
+
         def _bg_run():
             try:
                 with _task_log_context(task_log_label):
                     runner.run(fin_prompt, status_callback=status_tracker.update)
             except BaseException as e:
                 run_exc[0] = e
+
         bg_thread = threading.Thread(target=_bg_run, daemon=True)
         bg_thread.start()
 
@@ -1529,9 +1471,7 @@ def run_fin_research_workflow(
                     last_rev = status_tracker.revision
                 last_emit_ts = now_ts
                 elapsed_now = int(now_ts - status_tracker.start_time)
-                status_html = (
-                    status_tracker.render(elapsed_seconds=elapsed_now)
-                    if revision_changed else gr.update())
+                status_html = status_tracker.render(elapsed_seconds=elapsed_now) if revision_changed else gr.update()
                 yield (
                     build_timer_signal(elapsed_now),
                     status_html,
@@ -1562,19 +1502,13 @@ def run_fin_research_workflow(
         progress(1.0, desc='完成')
 
         if LOCAL_MODE:
-            final_report_value = reports['final']['markdown'] or reports[
-                'final']['error']
-            analysis_value = reports['analysis']['markdown'] or reports[
-                'analysis']['error']
-            sentiment_value = reports['sentiment']['markdown'] or reports[
-                'sentiment']['error']
+            final_report_value = reports['final']['markdown'] or reports['final']['error']
+            analysis_value = reports['analysis']['markdown'] or reports['analysis']['error']
+            sentiment_value = reports['sentiment']['markdown'] or reports['sentiment']['error']
         else:
-            final_report_value = reports['final']['html'] or reports['final'][
-                'error']
-            analysis_value = reports['analysis']['html'] or reports[
-                'analysis']['error']
-            sentiment_value = reports['sentiment']['html'] or reports[
-                'sentiment']['error']
+            final_report_value = reports['final']['html'] or reports['final']['error']
+            analysis_value = reports['analysis']['html'] or reports['analysis']['error']
+            sentiment_value = reports['sentiment']['html'] or reports['sentiment']['error']
 
         # Prepare download button values - only set if file exists
         final_download_path = None
@@ -1583,15 +1517,22 @@ def run_fin_research_workflow(
             final_download_path = bundle_path
         elif report_file_path and Path(report_file_path).exists():
             final_download_path = report_file_path
-        analysis_download_path = reports['analysis']['path'] if reports[
-            'analysis']['path'] and Path(
-                reports['analysis']['path']).exists() else None
-        sentiment_download_path = reports['sentiment']['path'] if reports[
-            'sentiment']['path'] and Path(
-                reports['sentiment']['path']).exists() else None
+        analysis_download_path = (
+            reports['analysis']['path']
+            if reports['analysis']['path'] and Path(reports['analysis']['path']).exists()
+            else None
+        )
+        sentiment_download_path = (
+            reports['sentiment']['path']
+            if reports['sentiment']['path'] and Path(reports['sentiment']['path']).exists()
+            else None
+        )
 
-        final_status_label = '✅ Ready (.zip)' if final_download_path and bundle_path and final_download_path == bundle_path else (
-            '✅ Ready' if final_download_path else '')
+        final_status_label = (
+            '✅ Ready (.zip)'
+            if final_download_path and bundle_path and final_download_path == bundle_path
+            else ('✅ Ready' if final_download_path else '')
+        )
         analysis_status_label = '✅ Ready' if analysis_download_path else ''
         sentiment_status_label = '✅ Ready' if sentiment_download_path else ''
 
@@ -1628,15 +1569,13 @@ def run_fin_research_workflow(
             build_download_state(analysis_download_path),
             build_download_state(sentiment_download_path),
         )
-    except Exception as e:
+    except Exception:
         logger.exception(
             'FinResearch workflow failed for user=%s',
             (user_id[:8] + '***') if isinstance(user_id, str) else 'unknown',
         )
-        final_elapsed = int(time.time() - status_tracker.start_time
-                            ) if 'status_tracker' in locals() else 0
-        timer_payload = (build_timer_signal(final_elapsed)
-                         if 'status_tracker' in locals() else DEFAULT_TIMER_SIGNAL)
+        final_elapsed = int(time.time() - status_tracker.start_time) if 'status_tracker' in locals() else 0
+        timer_payload = build_timer_signal(final_elapsed) if 'status_tracker' in locals() else DEFAULT_TIMER_SIGNAL
         disabled_dl = build_download_state(None)
         message = (
             '❌ 执行失败：系统在处理金融研究任务时遇到异常，请稍后重试或联系管理员。\n\n'
@@ -1674,13 +1613,9 @@ def run_fin_research_workflow(
 def reload_last_fin_result(request: gr.Request):
     """Reload the most recent finished FinResearch result for the current user."""
     disabled_dl = build_download_state(None)
-    ok, user_id_or_error = resolve_user_id_for_request(
-        request, local_mode=LOCAL_MODE)
+    ok, user_id_or_error = resolve_user_id_for_request(request, local_mode=LOCAL_MODE)
     if not ok:
-        message = (
-            '❌ 认证失败：无法获取历史报告。\n\n'
-            '❌ Authentication required to reload the last FinResearch report.'
-        )
+        message = '❌ 认证失败：无法获取历史报告。\n\n❌ Authentication required to reload the last FinResearch report.'
         return (
             DEFAULT_TIMER_SIGNAL,
             f'<div class="status-banner warn-banner">{message}</div>',
@@ -1699,11 +1634,7 @@ def reload_last_fin_result(request: gr.Request):
     user_id = user_id_or_error
     snapshot = load_user_session_snapshot(user_id)
     if not snapshot:
-        info_html = (
-            '<div class="status-banner warn-banner">'
-            '⚠️ 尚未找到历史研究报告，请先执行一次任务。'
-            '</div>'
-        )
+        info_html = '<div class="status-banner warn-banner">⚠️ 尚未找到历史研究报告，请先执行一次任务。</div>'
         return (
             DEFAULT_TIMER_SIGNAL,
             info_html,
@@ -1736,9 +1667,7 @@ def reload_last_fin_result(request: gr.Request):
     timer_signal = snapshot.get('timer_signal', DEFAULT_TIMER_SIGNAL)
 
     final_status_label = snapshot.get('final_status_label', '✅ Ready')
-    final_status_output = (
-        f'{final_status_label}\n\n> ♻️ 最近完成时间：{timestamp_label}'
-    )
+    final_status_output = f'{final_status_label}\n\n> ♻️ 最近完成时间：{timestamp_label}'
     analysis_status_label = snapshot.get('analysis_status_label', '✅ Ready')
     sentiment_status_label = snapshot.get('sentiment_status_label', '✅ Ready')
 
@@ -1748,10 +1677,8 @@ def reload_last_fin_result(request: gr.Request):
     resources_output = snapshot.get('resources_output') or '📂 历史输出目录为空或已清理。'
 
     final_download_path = _path_if_exists(snapshot.get('final_download_path'))
-    analysis_download_path = _path_if_exists(
-        snapshot.get('analysis_download_path'))
-    sentiment_download_path = _path_if_exists(
-        snapshot.get('sentiment_download_path'))
+    analysis_download_path = _path_if_exists(snapshot.get('analysis_download_path'))
+    sentiment_download_path = _path_if_exists(snapshot.get('sentiment_download_path'))
 
     return (
         timer_signal,
@@ -1771,8 +1698,7 @@ def reload_last_fin_result(request: gr.Request):
 
 def clear_user_workspace(request: gr.Request):
     try:
-        ok, user_id_or_error = resolve_user_id_for_request(
-            request, local_mode=LOCAL_MODE)
+        ok, user_id_or_error = resolve_user_id_for_request(request, local_mode=LOCAL_MODE)
         disabled_dl = build_download_state(None)
         if not ok:
             return (
@@ -1787,7 +1713,8 @@ def clear_user_workspace(request: gr.Request):
                 '未能列出输出文件',
                 disabled_dl,
                 disabled_dl,
-                disabled_dl)
+                disabled_dl,
+            )
         user_id = user_id_or_error
 
         # If the user has an active task, mark it as cancelled so that the
@@ -1815,10 +1742,7 @@ def clear_user_workspace(request: gr.Request):
                 '🧹 The running FinResearch task has been cancelled and the workspace has been cleared.'
             )
         else:
-            status_text = (
-                '✅ 工作空间已清理。准备好下一次任务。\n\n'
-                '✅ Workspace cleared. Ready for the next task.'
-            )
+            status_text = '✅ 工作空间已清理。准备好下一次任务。\n\n✅ Workspace cleared. Ready for the next task.'
 
         return (
             DEFAULT_TIMER_SIGNAL,
@@ -1832,7 +1756,8 @@ def clear_user_workspace(request: gr.Request):
             '📂 输出文件已清空',
             disabled_dl,
             disabled_dl,
-            disabled_dl)
+            disabled_dl,
+        )
     except Exception as e:
         logger.exception('Failed to clear workspace')
         disabled_dl = build_download_state(None)
@@ -1848,11 +1773,11 @@ def clear_user_workspace(request: gr.Request):
             '未能列出输出文件',
             disabled_dl,
             disabled_dl,
-            disabled_dl)
+            disabled_dl,
+        )
 
 
 class StatusTracker:
-
     def __init__(self, include_searcher: bool = True):
         self.include_searcher = include_searcher
         self.messages: List[Dict[str, str]] = []
@@ -1870,13 +1795,15 @@ class StatusTracker:
             self.current_agent = label
             self.current_agent_key = agent
             # Add a "working" message
-            self.messages.append({
-                'time': timestamp,
-                'agent': label,
-                'status': 'working',
-                'content': AGENT_DUTIES.get(agent, '正在执行任务'),
-                'raw': ''
-            })
+            self.messages.append(
+                {
+                    'time': timestamp,
+                    'agent': label,
+                    'status': 'working',
+                    'content': AGENT_DUTIES.get(agent, '正在执行任务'),
+                    'raw': '',
+                }
+            )
             self.revision += 1
         else:
             # Update the last message with completion status and output
@@ -1951,11 +1878,11 @@ class StatusTracker:
             ''')
 
         if not messages_html:
-            messages_html.append('''
+            messages_html.append("""
             <div class="agent-message waiting">
                 <div class="agent-content">⏳ 等待执行...</div>
             </div>
-            ''')
+            """)
 
         auto_scroll_js = """
         <script>
@@ -1997,7 +1924,6 @@ class StatusTracker:
 
 
 class TrackedDagWorkflow(DagWorkflow):
-
     def __init__(self, *args, status_callback=None, cancel_event=None, **kwargs):
         self.status_callback = status_callback
         self.cancel_event = cancel_event
@@ -2018,15 +1944,13 @@ class TrackedDagWorkflow(DagWorkflow):
                 task_input = inputs
             else:
                 parent_outs = [outputs[p] for p in self.parents[task]]
-                task_input = parent_outs if len(parent_outs) > 1 else parent_outs[
-                    0]
+                task_input = parent_outs if len(parent_outs) > 1 else parent_outs[0]
 
             if self.status_callback:
                 self.status_callback(task, 'start', '')
 
             task_info = getattr(self.config, task)
-            agent_cfg_path = os.path.join(self.config.local_dir,
-                                          task_info.agent_config)
+            agent_cfg_path = os.path.join(self.config.local_dir, task_info.agent_config)
             if not hasattr(task_info, 'agent'):
                 task_info.agent = DictConfig({})
             init_args = getattr(task_info.agent, 'kwargs', {})
@@ -2059,6 +1983,7 @@ class TrackedDagWorkflow(DagWorkflow):
 
                 def find_path_in_text(text: str) -> Optional[str]:
                     import re as _re
+
                     m = _re.search(r'([^\s\'"]+\.(?:md|json|txt|csv|html))', text or '')
                     return m.group(1) if m else None
 
@@ -2126,8 +2051,8 @@ class TrackedDagWorkflow(DagWorkflow):
                             raw_full = preview
                     elif task == 'analyst':
                         if messages_list and len(messages_list) >= 2:
-                            last_msg = get_msg_content(messages_list[-1])      # path to report
-                            second_last = get_msg_content(messages_list[-2])   # report content (likely)
+                            last_msg = get_msg_content(messages_list[-1])  # path to report
+                            second_last = get_msg_content(messages_list[-2])  # report content (likely)
                             preview = f'{last_msg}\n\n{second_last}'
                             raw_full = preview
                         elif messages_list and len(messages_list) >= 1:
@@ -2161,17 +2086,15 @@ class TrackedDagWorkflow(DagWorkflow):
 
                 self.status_callback(task, 'end', f'{preview}||RAW||{raw_full}')
 
-        terminals = [
-            t for t in self.config.keys() if t not in self.graph and t in self.nodes
-        ]
+        terminals = [t for t in self.config.keys() if t not in self.graph and t in self.nodes]
         return {t: outputs[t] for t in terminals}
 
 
 def create_interface():
     with gr.Blocks(
-            title='FinResearch Workflow App',
-            theme=gr.themes.Soft(),
-            css="""
+        title='FinResearch Workflow App',
+        theme=gr.themes.Soft(),
+        css="""
         /* Container optimization */
         .gradio-container {
             max-width: 1600px !important;
@@ -2976,7 +2899,8 @@ def create_interface():
             background: #020617;
             color: #e5e7eb;
         }
-    """) as demo:
+    """,
+    ) as demo:
         gr.HTML("""
         <div class="main-header">
             <h1>📊 FinResearch 金融深度研究</h1>
@@ -3060,8 +2984,7 @@ def create_interface():
         })();
         </script>
         """
-        gr.HTML(timer_script.replace('__TIMER_SIGNAL_ID__',
-                                     FIN_STATUS_TIMER_SIGNAL_ID))
+        gr.HTML(timer_script.replace('__TIMER_SIGNAL_ID__', FIN_STATUS_TIMER_SIGNAL_ID))
 
         with gr.Row(elem_classes=['fin-top-row']):
             with gr.Column(scale=1, min_width=0, elem_classes=['input-column']):
@@ -3071,58 +2994,34 @@ def create_interface():
                     label='研究目标 | Research Goal',
                     placeholder='例如：分析宁德时代近四个季度的盈利能力与行业政策影响...\n\nExample: Analyze the profitability and policy impact of CATL over the past four quarters...',
                     lines=7,
-                    max_lines=10
+                    max_lines=10,
                 )
 
                 gr.HTML('<h3 class="section-header">🔍 舆情搜索配置 | Search Settings</h3>')
 
                 with gr.Row(elem_classes=['search-config-row']):
-                    search_depth = gr.Number(
-                        label='搜索深度 | Depth',
-                        value=1,
-                        precision=0,
-                        minimum=1,
-                        maximum=3
-                    )
-                    search_breadth = gr.Number(
-                        label='搜索宽度 | Breadth',
-                        value=3,
-                        precision=0,
-                        minimum=1,
-                        maximum=6
-                    )
+                    search_depth = gr.Number(label='搜索深度 | Depth', value=1, precision=0, minimum=1, maximum=3)
+                    search_breadth = gr.Number(label='搜索宽度 | Breadth', value=3, precision=0, minimum=1, maximum=6)
 
                 search_api_key = gr.Textbox(
                     label='搜索引擎 API Key (可选 | Optional)',
                     placeholder='输入格式：exa:xxx 或 serpapi:xxx',
-                    type='password'
+                    type='password',
                 )
 
                 with gr.Row(elem_classes=['action-row', 'action-row-single']):
-                    run_btn = gr.Button(
-                        '🚀 启动深度研究 | Launch',
-                        variant='primary',
-                        size='lg'
-                    )
+                    run_btn = gr.Button('🚀 启动深度研究 | Launch', variant='primary', size='lg')
                 with gr.Row(elem_classes=['action-row']):
                     with gr.Column(scale=1):
-                        clear_btn = gr.Button(
-                            '🧹 清理工作区 | Clear',
-                            variant='primary',
-                            size='lg'
-                        )
+                        clear_btn = gr.Button('🧹 清理工作区 | Clear', variant='primary', size='lg')
                     with gr.Column(scale=1):
-                        reload_btn = gr.Button(
-                            '🔄 重载最近报告 | Reload',
-                            variant='primary',
-                            size='lg'
-                        )
+                        reload_btn = gr.Button('🔄 重载最近报告 | Reload', variant='primary', size='lg')
 
             with gr.Column(scale=1, min_width=0, elem_classes=['status-column']):
                 gr.HTML('<h3 class="section-header">📡 执行状态 | Execution Status</h3>')
 
                 status_output = gr.HTML(
-                    value='''
+                    value="""
                     <div class="status-container">
                         <div class="status-header">
                             <span class="status-title">执行状态</span>
@@ -3134,13 +3033,12 @@ def create_interface():
                             </div>
                         </div>
                     </div>
-                    ''',
-                    elem_classes=['status-scroll-container']
+                    """,
+                    elem_classes=['status-scroll-container'],
                 )
                 status_timer_signal = gr.HTML(
-                    value=DEFAULT_TIMER_SIGNAL,
-                    visible=False,
-                    elem_id=FIN_STATUS_TIMER_SIGNAL_ID)
+                    value=DEFAULT_TIMER_SIGNAL, visible=False, elem_id=FIN_STATUS_TIMER_SIGNAL_ID
+                )
 
         gr.HTML('<h3 class="section-header stacked">📑 研究结果 | Research Outputs</h3>')
 
@@ -3150,29 +3048,23 @@ def create_interface():
                 gr.HTML('<div class="sub-section-header primary">⚙️ 过程报告 | Process Reports</div>')
                 with gr.Tabs(elem_classes=['process-tabs']):
                     with gr.Tab('📈 数据分析', id=0):
-                        analysis_status_output = gr.Markdown(
-                            '', elem_classes=['report-status'])
+                        analysis_status_output = gr.Markdown('', elem_classes=['report-status'])
                         if local_mode:
                             analysis_report_output = gr.Markdown(elem_classes=['report-panel'])
                         else:
                             analysis_report_output = gr.HTML(elem_classes=['report-panel', 'fin-html-report'])
                         analysis_download = gr.DownloadButton(
-                            label='⬇️ 下载数据分析报告 | Download Analysis Report',
-                            value=None,
-                            interactive=False
+                            label='⬇️ 下载数据分析报告 | Download Analysis Report', value=None, interactive=False
                         )
 
                     with gr.Tab('📰 舆情洞察', id=1):
-                        sentiment_status_output = gr.Markdown(
-                            '', elem_classes=['report-status'])
+                        sentiment_status_output = gr.Markdown('', elem_classes=['report-status'])
                         if local_mode:
                             sentiment_report_output = gr.Markdown(elem_classes=['report-panel'])
                         else:
                             sentiment_report_output = gr.HTML(elem_classes=['report-panel', 'fin-html-report'])
                         sentiment_download = gr.DownloadButton(
-                            label='⬇️ 下载舆情分析报告 | Download Sentiment Report',
-                            value=None,
-                            interactive=False
+                            label='⬇️ 下载舆情分析报告 | Download Sentiment Report', value=None, interactive=False
                         )
 
                     with gr.Tab('📁 输出文件', id=2):
@@ -3182,23 +3074,18 @@ def create_interface():
                             max_lines=25,
                             interactive=False,
                             show_copy_button=True,
-                            elem_classes=['resources-box', 'report-panel']
+                            elem_classes=['resources-box', 'report-panel'],
                         )
 
             with gr.Column(scale=4, elem_classes=['final-column']):
-                gr.HTML(
-                    '<div class="sub-section-header primary">📊 综合报告 | Final Report</div>'
-                )
-                final_status_output = gr.Markdown(
-                    '', elem_classes=['report-status'])
+                gr.HTML('<div class="sub-section-header primary">📊 综合报告 | Final Report</div>')
+                final_status_output = gr.Markdown('', elem_classes=['report-status'])
                 if local_mode:
                     final_report_output = gr.Markdown(elem_classes=['final-report-panel'])
                 else:
                     final_report_output = gr.HTML(elem_classes=['final-report-panel', 'fin-html-report'])
                 final_download = gr.DownloadButton(
-                    label='⬇️ 下载综合报告压缩包 (.zip) | Download Final Report Package',
-                    value=None,
-                    interactive=False
+                    label='⬇️ 下载综合报告压缩包 (.zip) | Download Final Report Package', value=None, interactive=False
                 )
 
         # 使用说明
@@ -3272,47 +3159,69 @@ def create_interface():
                 ],
             ],
             inputs=[research_goal, search_depth, search_breadth],
-            label='📚 示例 | Examples'
+            label='📚 示例 | Examples',
         )
 
         run_btn.click(
             fn=run_fin_research_workflow,
             inputs=[research_goal, search_depth, search_breadth, search_api_key],
             outputs=[
-                status_timer_signal, status_output, final_status_output, final_report_output,
-                analysis_status_output, analysis_report_output,
-                sentiment_status_output, sentiment_report_output,
-                resources_output, final_download, analysis_download,
-                sentiment_download
+                status_timer_signal,
+                status_output,
+                final_status_output,
+                final_report_output,
+                analysis_status_output,
+                analysis_report_output,
+                sentiment_status_output,
+                sentiment_report_output,
+                resources_output,
+                final_download,
+                analysis_download,
+                sentiment_download,
             ],
-            show_progress=False)
+            show_progress=False,
+        )
 
         reload_btn.click(
             fn=reload_last_fin_result,
             outputs=[
-                status_timer_signal, status_output, final_status_output, final_report_output,
-                analysis_status_output, analysis_report_output,
-                sentiment_status_output, sentiment_report_output,
-                resources_output, final_download, analysis_download,
-                sentiment_download
-            ])
+                status_timer_signal,
+                status_output,
+                final_status_output,
+                final_report_output,
+                analysis_status_output,
+                analysis_report_output,
+                sentiment_status_output,
+                sentiment_report_output,
+                resources_output,
+                final_download,
+                analysis_download,
+                sentiment_download,
+            ],
+        )
 
         clear_btn.click(
             fn=clear_user_workspace,
             outputs=[
-                status_timer_signal, status_output, final_status_output, final_report_output,
-                analysis_status_output, analysis_report_output,
-                sentiment_status_output, sentiment_report_output,
-                resources_output, final_download, analysis_download,
-                sentiment_download
-            ])
+                status_timer_signal,
+                status_output,
+                final_status_output,
+                final_report_output,
+                analysis_status_output,
+                analysis_report_output,
+                sentiment_status_output,
+                sentiment_report_output,
+                resources_output,
+                final_download,
+                analysis_download,
+                sentiment_download,
+            ],
+        )
 
     return demo
 
 
-def launch_server(server_name: Optional[str] = '0.0.0.0',
-                  server_port: Optional[int] = 7860,
-                  share: bool = False):
+def launch_server(server_name: Optional[str] = '0.0.0.0', server_port: Optional[int] = 7860, share: bool = False):
     demo = create_interface()
     demo.queue(default_concurrency_limit=GRADIO_DEFAULT_CONCURRENCY_LIMIT)
     demo.launch(server_name=server_name, server_port=server_port, share=share)

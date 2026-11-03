@@ -10,6 +10,7 @@ Key design:
 - maybe_refresh_system_prompt() rebuilds messages[0] when state changed
 - Version tracking avoids unnecessary rebuilds
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
 
 
 class SkillRuntime:
-
     def __init__(
         self,
         catalog: 'SkillCatalog',
@@ -91,18 +91,20 @@ class SkillRuntime:
         result: List[Dict[str, Any]] = []
         for sid in sorted(self._catalog._skills):
             skill = self._catalog._skills[sid]
-            result.append({
-                'skill_id': sid,
-                'name': skill.name,
-                'description': skill.description,
-                'enabled': sid not in self._catalog._disabled_skills,
-                'tags': skill.tags,
-                'has_scripts': bool(skill.scripts),
-                'version': skill.version,
-                'origin': getattr(skill, '_origin', 'config'),
-                'plugin_id': getattr(skill, '_plugin_id', None),
-                'capability': getattr(skill, '_capability', None),
-            })
+            result.append(
+                {
+                    'skill_id': sid,
+                    'name': skill.name,
+                    'description': skill.description,
+                    'enabled': sid not in self._catalog._disabled_skills,
+                    'tags': skill.tags,
+                    'has_scripts': bool(skill.scripts),
+                    'version': skill.version,
+                    'origin': getattr(skill, '_origin', 'config'),
+                    'plugin_id': getattr(skill, '_plugin_id', None),
+                    'capability': getattr(skill, '_capability', None),
+                }
+            )
         return result
 
     # -- prompt refresh --
@@ -130,8 +132,7 @@ class SkillRuntime:
         if self.head_refresh_enabled:
             return self._injector.build_skill_prompt_section()
         if self._frozen_skill_section is None:
-            self._frozen_skill_section = \
-                self._injector.build_skill_prompt_section()
+            self._frozen_skill_section = self._injector.build_skill_prompt_section()
         return self._frozen_skill_section
 
     def maybe_refresh_system_prompt(self, messages: list) -> bool:
@@ -204,8 +205,5 @@ class SkillRuntime:
 
     def _surface(self):
         catalog = self._catalog
-        inventory = {
-            sid: (skill.name, skill.description, skill.version)
-            for sid, skill in catalog._skills.items()
-        }
+        inventory = {sid: (skill.name, skill.description, skill.version) for sid, skill in catalog._skills.items()}
         return (inventory, frozenset(catalog._disabled_skills))

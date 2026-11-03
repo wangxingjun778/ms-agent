@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import httpx
 import os
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from ms_agent.utils.logger import get_logger
 
@@ -19,17 +20,13 @@ class A2AClientManager:
 
     def __init__(self, a2a_agents_config: dict | None = None):
         self._config: Dict[str, dict] = a2a_agents_config or {}
-        self._http_clients: Dict[tuple[tuple[str, str], ...],
-                                 httpx.AsyncClient] = {}
+        self._http_clients: Dict[tuple[tuple[str, str], ...], httpx.AsyncClient] = {}
 
-    def _get_http_client(
-            self,
-            headers: Optional[Dict[str, str]] = None) -> httpx.AsyncClient:
+    def _get_http_client(self, headers: Optional[Dict[str, str]] = None) -> httpx.AsyncClient:
         client_key = tuple(sorted((headers or {}).items()))
         http_client = self._http_clients.get(client_key)
         if http_client is None or http_client.is_closed:
-            http_client = httpx.AsyncClient(
-                timeout=300.0, headers=dict(client_key))
+            http_client = httpx.AsyncClient(timeout=300.0, headers=dict(client_key))
             self._http_clients[client_key] = http_client
         return http_client
 
@@ -62,8 +59,7 @@ class A2AClientManager:
             resolver = A2ACardResolver(httpx_client=http_client, base_url=url)
             card = await resolver.get_agent_card()
 
-            factory = ClientFactory(
-                config=ClientConfig(httpx_client=http_client))
+            factory = ClientFactory(config=ClientConfig(httpx_client=http_client))
             client = factory.create(card)
 
             message = create_text_message_object(content=query)
@@ -90,8 +86,8 @@ class A2AClientManager:
                                 if hasattr(part_obj, 'text'):
                                     result_parts.append(part_obj.text)
                     if task and hasattr(task, 'artifacts'):
-                        for artifact in (task.artifacts or []):
-                            for part in (artifact.parts or []):
+                        for artifact in task.artifacts or []:
+                            for part in artifact.parts or []:
                                 part_obj = part
                                 if hasattr(part, 'root'):
                                     part_obj = part.root
@@ -101,8 +97,7 @@ class A2AClientManager:
             return '\n'.join(result_parts) if result_parts else '(no output)'
 
         except Exception as e:
-            logger.error(
-                'A2A call to %s failed: %s', agent_name, e, exc_info=True)
+            logger.error('A2A call to %s failed: %s', agent_name, e, exc_info=True)
             return f'Error calling A2A agent "{agent_name}": {e}'
 
     @staticmethod

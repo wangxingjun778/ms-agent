@@ -4,6 +4,7 @@
 Validates the arrow-key / number-key / enter / cancel logic without a real
 terminal, so the permission menu's behavior is regression-guarded.
 """
+
 import asyncio
 
 from prompt_toolkit.application import create_app_session

@@ -24,6 +24,7 @@ Ordering follows Anthropic's guidance (image-then-text reads best) and each imag
 is introduced by its own ``Image N: <filename>`` text block, which is what lets a
 follow-up question say "the second image" and land on the right one.
 """
+
 from __future__ import annotations
 
 import base64
@@ -46,8 +47,7 @@ logger = get_logger()
 SUPPORTED_MEDIA_TYPES = frozenset({'image/png', 'image/jpeg', 'image/webp'})
 
 #: Transcoded to PNG rather than rejected.
-TRANSCODE_MEDIA_TYPES = frozenset(
-    {'image/gif', 'image/bmp', 'image/tiff', 'image/heic', 'image/heif'})
+TRANSCODE_MEDIA_TYPES = frozenset({'image/gif', 'image/bmp', 'image/tiff', 'image/heic', 'image/heif'})
 
 #: Flat per-image token cost for the LOCAL context estimator. Not a billing
 #: figure — the providers charge by patch count off the pixel dimensions
@@ -92,9 +92,7 @@ class VisionOptions:
     workspace_root: str = ''
 
     @classmethod
-    def from_config(cls,
-                    config: Any,
-                    workspace_root: str = '') -> 'VisionOptions':
+    def from_config(cls, config: Any, workspace_root: str = '') -> 'VisionOptions':
         """Build from an agent ``config`` (``llm.vision`` block, all optional)."""
         vision = None
         llm = getattr(config, 'llm', None)
@@ -139,8 +137,7 @@ def _guess_media_type(path: str, declared: str = '') -> str:
     return guessed.lower() if guessed.startswith('image/') else ''
 
 
-def image_refs(attachments: Optional[Sequence[Dict[str, Any]]],
-               opts: Optional[VisionOptions] = None) -> List[ImageRef]:
+def image_refs(attachments: Optional[Sequence[Dict[str, Any]]], opts: Optional[VisionOptions] = None) -> List[ImageRef]:
     """The image attachments of a message, in order, as normalized refs.
 
     Non-image entries and entries whose type this build cannot render are
@@ -159,19 +156,19 @@ def image_refs(attachments: Optional[Sequence[Dict[str, Any]]],
             continue
         media_type = _guess_media_type(path, str(item.get('media_type') or ''))
         if not media_type:
-            logger.warning(
-                '[vision] attachment %s has no recognizable image type; skipped',
-                path)
+            logger.warning('[vision] attachment %s has no recognizable image type; skipped', path)
             continue
         label = str(item.get('label') or '')
         refs.append(ImageRef(path=path, media_type=media_type, label=label))
     if opts.max_images and len(refs) > opts.max_images:
         dropped = len(refs) - opts.max_images
         logger.info(
-            '[vision] %d image(s) dropped from context (max_images=%d); '
-            'the most recent %d are kept', dropped, opts.max_images,
-            opts.max_images)
-        refs = refs[-opts.max_images:]
+            '[vision] %d image(s) dropped from context (max_images=%d); the most recent %d are kept',
+            dropped,
+            opts.max_images,
+            opts.max_images,
+        )
+        refs = refs[-opts.max_images :]
     return refs
 
 
@@ -190,6 +187,7 @@ def _encode(data: bytes) -> str:
 def _pil():
     try:
         from PIL import Image  # noqa: F401
+
         return Image
     except ImportError:  # pragma: no cover - pillow is a base dependency
         return None
@@ -204,8 +202,7 @@ _JPEG_QUALITIES = (85, 75, 60, 45)
 _PNG_BUDGET = 1_500_000
 
 
-def _shrink(raw: bytes, media_type: str,
-            opts: VisionOptions) -> Tuple[str, str]:
+def _shrink(raw: bytes, media_type: str, opts: VisionOptions) -> Tuple[str, str]:
     """Return ``(base64, media_type)`` within ``opts`` limits.
 
     Proactive rather than send-and-retry: Anthropic silently downsamples instead
@@ -217,8 +214,7 @@ def _shrink(raw: bytes, media_type: str,
     needs_transcode = media_type not in SUPPORTED_MEDIA_TYPES
     if Image is None:
         if needs_transcode:
-            raise ValueError(
-                f'{media_type} needs transcoding but Pillow is unavailable')
+            raise ValueError(f'{media_type} needs transcoding but Pillow is unavailable')
         return encoded, media_type
 
     with Image.open(io.BytesIO(raw)) as img:
@@ -229,18 +225,14 @@ def _shrink(raw: bytes, media_type: str,
             pass
         width, height = img.size
         oversize = max(width, height) > opts.max_edge
-        if not needs_transcode and not oversize and len(
-                encoded) <= opts.max_bytes:
+        if not needs_transcode and not oversize and len(encoded) <= opts.max_bytes:
             return encoded, media_type
 
-        has_alpha = img.mode in ('RGBA', 'LA') or (img.mode == 'P' and
-                                                   'transparency' in img.info)
+        has_alpha = img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info)
         frame = img.convert('RGBA' if has_alpha else 'RGB')
         if oversize:
             scale = opts.max_edge / float(max(width, height))
-            frame = frame.resize(
-                (max(1, round(width * scale)), max(1, round(height * scale))),
-                Image.LANCZOS)
+            frame = frame.resize((max(1, round(width * scale)), max(1, round(height * scale))), Image.LANCZOS)
 
         # PNG first when it is likely to both fit and matter: transparency must
         # not be flattened, and the images users attach to a chat are mostly
@@ -268,8 +260,7 @@ def _shrink(raw: bytes, media_type: str,
                 candidates.append((png, 'image/png'))
         for quality in _JPEG_QUALITIES:
             buf = io.BytesIO()
-            frame.convert('RGB').save(
-                buf, format='JPEG', quality=quality, optimize=True)
+            frame.convert('RGB').save(buf, format='JPEG', quality=quality, optimize=True)
             candidates.append((_encode(buf.getvalue()), 'image/jpeg'))
         if not prefer_png:
             # Lossless last resort for a big image the ladder could not fit.
@@ -288,21 +279,20 @@ def _shrink(raw: bytes, media_type: str,
             edge = int(edge * 0.6)
             scale = edge / float(max(frame.size))
             small = frame.convert('RGB').resize(
-                (max(1, round(frame.size[0] * scale)),
-                 max(1, round(frame.size[1] * scale))), Image.LANCZOS)
+                (max(1, round(frame.size[0] * scale)), max(1, round(frame.size[1] * scale))), Image.LANCZOS
+            )
             buf = io.BytesIO()
             small.save(buf, format='JPEG', quality=60, optimize=True)
             encoded_candidate = _encode(buf.getvalue())
             if len(encoded_candidate) <= opts.max_bytes:
                 return encoded_candidate, 'image/jpeg'
-        raise ValueError(
-            f'cannot bring image under {opts.max_bytes} base64 bytes')
+        raise ValueError(f'cannot bring image under {opts.max_bytes} base64 bytes')
 
 
 @lru_cache(maxsize=64)
-def _load_cached(abs_path: str, mtime: float, size: int, media_type: str,
-                 max_edge: int, max_bytes: int,
-                 transcode: bool) -> Tuple[str, str]:
+def _load_cached(
+    abs_path: str, mtime: float, size: int, media_type: str, max_edge: int, max_bytes: int, transcode: bool
+) -> Tuple[str, str]:
     """``(base64, media_type)``, memoized on the file identity + encode params.
 
     The whole history is re-sent every round, so without this the same image is
@@ -312,13 +302,11 @@ def _load_cached(abs_path: str, mtime: float, size: int, media_type: str,
         raw = handle.read()
     if media_type in TRANSCODE_MEDIA_TYPES and not transcode:
         raise ValueError(f'{media_type} is not accepted and transcode is off')
-    opts = VisionOptions(
-        max_edge=max_edge, max_bytes=max_bytes, transcode=transcode)
+    opts = VisionOptions(max_edge=max_edge, max_bytes=max_bytes, transcode=transcode)
     return _shrink(raw, media_type, opts)
 
 
-def load_image(ref: ImageRef,
-               opts: VisionOptions) -> Optional[Tuple[str, str]]:
+def load_image(ref: ImageRef, opts: VisionOptions) -> Optional[Tuple[str, str]]:
     """``(base64, media_type)`` for one ref, or None when it cannot be sent.
 
     Never raises: a missing file or an un-encodable image must degrade to a text
@@ -331,9 +319,9 @@ def load_image(ref: ImageRef,
         logger.warning('[vision] cannot read %s: %s', abs_path, exc)
         return None
     try:
-        return _load_cached(abs_path, stat.st_mtime, stat.st_size,
-                            ref.media_type, opts.max_edge, opts.max_bytes,
-                            opts.transcode)
+        return _load_cached(
+            abs_path, stat.st_mtime, stat.st_size, ref.media_type, opts.max_edge, opts.max_bytes, opts.transcode
+        )
     except Exception as exc:  # encode/transcode failure
         logger.warning('[vision] cannot encode %s: %s', abs_path, exc)
         return None
@@ -431,14 +419,10 @@ def _delivery_note(delivery: ImageDelivery) -> str:
         return f'[{head} — could not be read or decoded as an image.]'
 
     why = {
-        REASON_SWITCH_OFF:
-        'image understanding is off for this model',
-        REASON_ENDPOINT_REJECTED:
-        'the endpoint rejected image content',
-        REASON_TOO_LARGE:
-        'it stayed above the endpoint size limit after downscaling',
-        REASON_SHAPE_REJECTED:
-        'the endpoint accepts fewer images per request',
+        REASON_SWITCH_OFF: 'image understanding is off for this model',
+        REASON_ENDPOINT_REJECTED: 'the endpoint rejected image content',
+        REASON_TOO_LARGE: 'it stayed above the endpoint size limit after downscaling',
+        REASON_SHAPE_REJECTED: 'the endpoint accepts fewer images per request',
     }.get(delivery.reason, 'it could not be sent')
 
     parts = [f'[{head} — not sent with this request: {why}.']
@@ -448,15 +432,15 @@ def _delivery_note(delivery: ImageDelivery) -> str:
     # off the filename, and wrong (the picture also held an orange square). The
     # name has to stay so the user can refer to it; saying plainly that it is
     # not a description is what keeps it from being treated as one.
-    parts.append('Do not guess or infer its contents; its filename is not a '
-                 'description of it.')
+    parts.append('Do not guess or infer its contents; its filename is not a description of it.')
     if delivery.reason == REASON_SWITCH_OFF:
-        parts.append('Reading it with a file tool cannot show it either while '
-                     'image understanding is off.')
+        parts.append('Reading it with a file tool cannot show it either while image understanding is off.')
     if delivery.prior == DELIVERED:
-        parts.append('Earlier replies describing it were written while it was '
-                     'being sent; those descriptions can be relied on, but you '
-                     'did not receive the image this time.')
+        parts.append(
+            'Earlier replies describing it were written while it was '
+            'being sent; those descriptions can be relied on, but you '
+            'did not receive the image this time.'
+        )
     parts.append(f'The file is in the workspace at "{delivery.path}".]')
     return ' '.join(parts)
 
@@ -486,11 +470,12 @@ def _delivered_label(delivery: ImageDelivery) -> str:
     """
     head = f'Image {delivery.index}: {delivery.filename}'
     if delivery.prior in (DEGRADED, UNREADABLE):
-        return (f'{head} — attached to this message, so look at it directly '
-                '(no file tool needed); earlier replies were written without '
-                'it.')
-    return (f'{head} — attached to this message, so look at it directly '
-            '(no file tool needed).')
+        return (
+            f'{head} — attached to this message, so look at it directly '
+            '(no file tool needed); earlier replies were written without '
+            'it.'
+        )
+    return f'{head} — attached to this message, so look at it directly (no file tool needed).'
 
 
 def _label_block(delivery: ImageDelivery) -> Dict[str, str]:
@@ -503,8 +488,7 @@ def _degrade(text: str, deliveries: Sequence[ImageDelivery]) -> str:
     return f'{joined}\n\n{text}' if text else joined
 
 
-def image_index(numbering: Optional[Dict[str, int]], path: str,
-                fallback: int) -> int:
+def image_index(numbering: Optional[Dict[str, int]], path: str, fallback: int) -> int:
     """The ordinal for one picture, stable for the whole request.
 
     Numbered by IDENTITY (its workspace path), not by how many image blocks have
@@ -527,14 +511,15 @@ def image_index(numbering: Optional[Dict[str, int]], path: str,
     return numbering.setdefault(str(path or ''), len(numbering) + 1)
 
 
-def plan_deliveries(refs: Sequence[ImageRef],
-                    *,
-                    state: str,
-                    reason: str,
-                    index_base: int = 1,
-                    numbering: Optional[Dict[str, int]] = None,
-                    priors: Optional[Sequence[str]] = None
-                    ) -> List[ImageDelivery]:
+def plan_deliveries(
+    refs: Sequence[ImageRef],
+    *,
+    state: str,
+    reason: str,
+    index_base: int = 1,
+    numbering: Optional[Dict[str, int]] = None,
+    priors: Optional[Sequence[str]] = None,
+) -> List[ImageDelivery]:
     """Build one :class:`ImageDelivery` per ref. See :func:`image_index`."""
     priors = list(priors or [])
     out: List[ImageDelivery] = []
@@ -546,15 +531,23 @@ def plan_deliveries(refs: Sequence[ImageRef],
                 index=image_index(numbering, ref.path, index_base + offset),
                 state=state,
                 reason=reason if state != DELIVERED else '',
-                prior=priors[offset] if offset < len(priors) else ''))
+                prior=priors[offset] if offset < len(priors) else '',
+            )
+        )
     return out
 
 
-def _build_content(text: Any, attachments: Optional[Sequence[Dict[str, Any]]],
-                   opts: VisionOptions, vision_supported: bool, reason: str,
-                   index_base: int, priors: Optional[Sequence[str]], emit,
-                   numbering: Optional[Dict[str, int]] = None
-                   ) -> Tuple[Any, List[ImageDelivery]]:
+def _build_content(
+    text: Any,
+    attachments: Optional[Sequence[Dict[str, Any]]],
+    opts: VisionOptions,
+    vision_supported: bool,
+    reason: str,
+    index_base: int,
+    priors: Optional[Sequence[str]],
+    emit,
+    numbering: Optional[Dict[str, int]] = None,
+) -> Tuple[Any, List[ImageDelivery]]:
     """Shared body of the two transports' content builders.
 
     ``emit(encoded, media_type)`` produces the provider-native image block; the
@@ -575,7 +568,8 @@ def _build_content(text: Any, attachments: Optional[Sequence[Dict[str, Any]]],
             reason=reason or REASON_SWITCH_OFF,
             index_base=index_base,
             numbering=numbering,
-            priors=priors)
+            priors=priors,
+        )
         return _degrade(tail_text, deliveries), deliveries
 
     blocks: List[Dict[str, Any]] = []
@@ -585,22 +579,21 @@ def _build_content(text: Any, attachments: Optional[Sequence[Dict[str, Any]]],
         prior = priors[offset] if priors and offset < len(priors) else ''
         loaded = load_image(ref, opts)
         if loaded is None:
-            delivery = plan_deliveries([ref],
-                                       state=UNREADABLE,
-                                       reason=REASON_UNREADABLE,
-                                       index_base=index_base + offset,
-                                       numbering=numbering,
-                                       priors=[prior])[0]
+            delivery = plan_deliveries(
+                [ref],
+                state=UNREADABLE,
+                reason=REASON_UNREADABLE,
+                index_base=index_base + offset,
+                numbering=numbering,
+                priors=[prior],
+            )[0]
             unreadable.append(delivery)
             deliveries.append(delivery)
             continue
         encoded, media_type = loaded
-        delivery = plan_deliveries([ref],
-                                   state=DELIVERED,
-                                   reason='',
-                                   index_base=index_base + offset,
-                                   numbering=numbering,
-                                   priors=[prior])[0]
+        delivery = plan_deliveries(
+            [ref], state=DELIVERED, reason='', index_base=index_base + offset, numbering=numbering, priors=[prior]
+        )[0]
         deliveries.append(delivery)
         blocks.append(_label_block(delivery))
         blocks.append(emit(encoded, media_type))
@@ -615,15 +608,16 @@ def _build_content(text: Any, attachments: Optional[Sequence[Dict[str, Any]]],
     return blocks, deliveries
 
 
-def openai_content(text: Any,
-                   attachments: Optional[Sequence[Dict[str, Any]]],
-                   opts: VisionOptions,
-                   vision_supported: bool = True,
-                   reason: str = REASON_SWITCH_OFF,
-                   index_base: int = 1,
-                   numbering: Optional[Dict[str, int]] = None,
-                   priors: Optional[Sequence[str]] = None
-                   ) -> Tuple[Any, List[ImageDelivery]]:
+def openai_content(
+    text: Any,
+    attachments: Optional[Sequence[Dict[str, Any]]],
+    opts: VisionOptions,
+    vision_supported: bool = True,
+    reason: str = REASON_SWITCH_OFF,
+    index_base: int = 1,
+    numbering: Optional[Dict[str, int]] = None,
+    priors: Optional[Sequence[str]] = None,
+) -> Tuple[Any, List[ImageDelivery]]:
     """``(content, deliveries)`` for an OpenAI-compatible user message.
 
     Returns a plain string when there is nothing to attach — keeping the
@@ -636,26 +630,24 @@ def openai_content(text: Any,
     """
 
     def emit(encoded: str, media_type: str) -> Dict[str, Any]:
-        image_url: Dict[str, Any] = {
-            'url': f'data:{media_type};base64,{encoded}'
-        }
+        image_url: Dict[str, Any] = {'url': f'data:{media_type};base64,{encoded}'}
         if opts.detail and opts.detail != 'auto':
             image_url['detail'] = opts.detail
         return {'type': 'image_url', 'image_url': image_url}
 
-    return _build_content(text, attachments, opts, vision_supported, reason,
-                          index_base, priors, emit, numbering)
+    return _build_content(text, attachments, opts, vision_supported, reason, index_base, priors, emit, numbering)
 
 
-def anthropic_content(text: Any,
-                      attachments: Optional[Sequence[Dict[str, Any]]],
-                      opts: VisionOptions,
-                      vision_supported: bool = True,
-                      reason: str = REASON_SWITCH_OFF,
-                      index_base: int = 1,
-                      numbering: Optional[Dict[str, int]] = None,
-                      priors: Optional[Sequence[str]] = None
-                      ) -> Tuple[Any, List[ImageDelivery]]:
+def anthropic_content(
+    text: Any,
+    attachments: Optional[Sequence[Dict[str, Any]]],
+    opts: VisionOptions,
+    vision_supported: bool = True,
+    reason: str = REASON_SWITCH_OFF,
+    index_base: int = 1,
+    numbering: Optional[Dict[str, int]] = None,
+    priors: Optional[Sequence[str]] = None,
+) -> Tuple[Any, List[ImageDelivery]]:
     """Same contract as :func:`openai_content`; only the block shape differs."""
 
     def emit(encoded: str, media_type: str) -> Dict[str, Any]:
@@ -668,8 +660,7 @@ def anthropic_content(text: Any,
             },
         }
 
-    return _build_content(text, attachments, opts, vision_supported, reason,
-                          index_base, priors, emit, numbering)
+    return _build_content(text, attachments, opts, vision_supported, reason, index_base, priors, emit, numbering)
 
 
 def has_image_blocks(content: Any) -> bool:
@@ -698,8 +689,7 @@ def _read_image_block(item: Dict[str, Any]) -> Optional[Tuple[bytes, str]]:
     kind = item.get('type')
     try:
         if kind in ('image_url', 'input_image'):
-            url = (item.get('image_url') or {}).get('url') or item.get(
-                'image_url') or ''
+            url = (item.get('image_url') or {}).get('url') or item.get('image_url') or ''
             match = _DATA_URI.match(url if isinstance(url, str) else '')
             if not match:
                 return None  # a remote URL: nothing local to re-encode
@@ -708,31 +698,24 @@ def _read_image_block(item: Dict[str, Any]) -> Optional[Tuple[bytes, str]]:
             source = item.get('source') or {}
             if source.get('type') != 'base64':
                 return None
-            return base64.b64decode(source.get('data') or ''), str(
-                source.get('media_type') or 'image/png')
+            return base64.b64decode(source.get('data') or ''), str(source.get('media_type') or 'image/png')
     except Exception:  # noqa: BLE001 — an unreadable block just cannot shrink
         return None
     return None
 
 
-def _write_image_block(item: Dict[str, Any], encoded: str,
-                       media_type: str) -> Dict[str, Any]:
+def _write_image_block(item: Dict[str, Any], encoded: str, media_type: str) -> Dict[str, Any]:
     kind = item.get('type')
     if kind in ('image_url', 'input_image'):
         image_url = dict(item.get('image_url') or {})
         image_url['url'] = f'data:{media_type};base64,{encoded}'
         return {**item, 'image_url': image_url}
     source = dict(item.get('source') or {})
-    source.update({
-        'type': 'base64',
-        'media_type': media_type,
-        'data': encoded
-    })
+    source.update({'type': 'base64', 'media_type': media_type, 'data': encoded})
     return {**item, 'source': source}
 
 
-def shrink_images_in_messages(messages: Any,
-                              max_edge: int) -> Tuple[Any, bool]:
+def shrink_images_in_messages(messages: Any, max_edge: int) -> Tuple[Any, bool]:
     """``(messages, changed)`` with every inline image re-encoded under ``max_edge``.
 
     Operates on the ALREADY-BUILT provider payload rather than on the original
@@ -770,8 +753,7 @@ def shrink_images_in_messages(messages: Any,
                         continue
                 encoded, new_type = _shrink(raw, media_type, opts)
             except Exception as exc:  # noqa: BLE001
-                logger.warning('[vision] could not re-encode an image at '
-                               'max_edge=%d: %s', max_edge, exc)
+                logger.warning('[vision] could not re-encode an image at max_edge=%d: %s', max_edge, exc)
                 blocks.append(item)
                 continue
             blocks.append(_write_image_block(item, encoded, new_type))
@@ -786,8 +768,7 @@ def shrink_images_in_messages(messages: Any,
 
 #: Marker left in place of an image dropped to satisfy a batch-shape complaint.
 #: Says what happened and nothing else — the model is not asked to relay it.
-DROPPED_FOR_SHAPE = ('[image not sent this turn: the endpoint accepts fewer '
-                     'images per request]')
+DROPPED_FOR_SHAPE = '[image not sent this turn: the endpoint accepts fewer images per request]'
 
 
 def drop_images_in_messages(messages: Any, keep: int = 1) -> Tuple[Any, bool]:
@@ -805,9 +786,7 @@ def drop_images_in_messages(messages: Any, keep: int = 1) -> Tuple[Any, bool]:
         if not isinstance(content, list):
             continue
         for b_idx, item in enumerate(content):
-            if isinstance(item, dict) and item.get('type') in ('image_url',
-                                                               'image',
-                                                               'input_image'):
+            if isinstance(item, dict) and item.get('type') in ('image_url', 'image', 'input_image'):
                 positions.append((m_idx, b_idx))
     if len(positions) <= keep:
         return messages, False
@@ -819,10 +798,7 @@ def drop_images_in_messages(messages: Any, keep: int = 1) -> Tuple[Any, bool]:
             out.append(message)
             continue
         blocks = [
-            {
-                'type': 'text',
-                'text': DROPPED_FOR_SHAPE
-            } if (m_idx, b_idx) in doomed else item
+            {'type': 'text', 'text': DROPPED_FOR_SHAPE} if (m_idx, b_idx) in doomed else item
             for b_idx, item in enumerate(content)
         ]
         out.append({**message, 'content': blocks})
@@ -841,7 +817,8 @@ def drop_images_in_messages(messages: Any, keep: int = 1) -> Tuple[Any, bool]:
 REASON_REFUSED = (
     'not sent with this request: the endpoint rejected image content. '
     'Do not guess or infer its contents. The file was uploaded and is in the '
-    'workspace under the name shown above.')
+    'workspace under the name shown above.'
+)
 
 
 def strip_image_blocks(content: Any) -> Any:
@@ -925,12 +902,11 @@ TOOL_MEDIA_PROMPT = 'Images returned by the tool call above:'
 #: nothing contradicts it — measured: a model reported that a file had been
 #: "returned as an image" in a turn where the image was dropped before sending.
 TOOL_MEDIA_WITHHELD = (
-    '[The image(s) this tool returned were not sent with this request. Do not '
-    'guess or infer their contents.]')
+    '[The image(s) this tool returned were not sent with this request. Do not guess or infer their contents.]'
+)
 
 
-def tool_media_withheld(attachments: Sequence[Dict[str, Any]],
-                        opts: VisionOptions, vision_supported: bool) -> bool:
+def tool_media_withheld(attachments: Sequence[Dict[str, Any]], opts: VisionOptions, vision_supported: bool) -> bool:
     """True when a tool produced images that this request will not carry."""
     if vision_supported and opts.enabled:
         return False
@@ -938,10 +914,11 @@ def tool_media_withheld(attachments: Sequence[Dict[str, Any]],
 
 
 def openai_tool_media_message(
-        attachments: Sequence[Dict[str, Any]],
-        opts: VisionOptions,
-        vision_supported: bool = True,
-        numbering: Optional[Dict[str, int]] = None) -> Optional[Dict[str, Any]]:
+    attachments: Sequence[Dict[str, Any]],
+    opts: VisionOptions,
+    vision_supported: bool = True,
+    numbering: Optional[Dict[str, int]] = None,
+) -> Optional[Dict[str, Any]]:
     """A synthetic user message carrying a tool result's images, or None.
 
     Returns None when there is nothing to show — no images, images disabled, or
@@ -953,22 +930,18 @@ def openai_tool_media_message(
     refs = image_refs(attachments, opts)
     if not refs or not (opts.enabled and vision_supported):
         return None
-    content, _ = openai_content(
-        TOOL_MEDIA_PROMPT,
-        attachments,
-        opts,
-        vision_supported=True,
-        numbering=numbering)
+    content, _ = openai_content(TOOL_MEDIA_PROMPT, attachments, opts, vision_supported=True, numbering=numbering)
     if not isinstance(content, list):
         return None  # every image failed to load; the tool text already says so
     return {'role': 'user', 'content': content}
 
 
-def anthropic_tool_result_blocks(attachments: Sequence[Dict[str, Any]],
-                                 opts: VisionOptions,
-                                 vision_supported: bool = True,
-                                 numbering: Optional[Dict[str, int]] = None
-                                 ) -> List[Dict[str, Any]]:
+def anthropic_tool_result_blocks(
+    attachments: Sequence[Dict[str, Any]],
+    opts: VisionOptions,
+    vision_supported: bool = True,
+    numbering: Optional[Dict[str, int]] = None,
+) -> List[Dict[str, Any]]:
     """Image blocks to nest INSIDE an Anthropic ``tool_result``.
 
     Anthropic allows image blocks in tool_result content, so the image can stay
@@ -984,18 +957,16 @@ def anthropic_tool_result_blocks(attachments: Sequence[Dict[str, Any]],
         if loaded is None:
             continue
         encoded, media_type = loaded
-        delivery = plan_deliveries([ref],
-                                   state=DELIVERED,
-                                   reason='',
-                                   index_base=offset + 1,
-                                   numbering=numbering)[0]
+        delivery = plan_deliveries([ref], state=DELIVERED, reason='', index_base=offset + 1, numbering=numbering)[0]
         blocks.append(_label_block(delivery))
-        blocks.append({
-            'type': 'image',
-            'source': {
-                'type': 'base64',
-                'media_type': media_type,
-                'data': encoded,
-            },
-        })
+        blocks.append(
+            {
+                'type': 'image',
+                'source': {
+                    'type': 'base64',
+                    'media_type': media_type,
+                    'data': encoded,
+                },
+            }
+        )
     return blocks

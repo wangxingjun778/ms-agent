@@ -29,6 +29,7 @@ context length, so the wording generalises.
 Mirrors ``prompting/workspace_files.render_update_notice`` — same shape, same
 voice, same reason for existing ("the files changed — you did not misremember").
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -49,8 +50,7 @@ def _parse(signature: str) -> tuple:
     return model, images == 'images:on'
 
 
-def render_capability_change_notice(previous: str,
-                                    current: str) -> Optional[str]:
+def render_capability_change_notice(previous: str, current: str) -> Optional[str]:
     """The ``<system-reminder>`` for a mid-conversation capability change.
 
     ``None`` when nothing that matters moved.
@@ -59,18 +59,20 @@ def render_capability_change_notice(previous: str,
     new_model, new_images = _parse(current)
     changes = []
     if old_model and new_model and old_model != new_model:
-        changes.append(f'earlier turns were answered by "{old_model}", this '
-                       f'turn by "{new_model}"')
+        changes.append(f'earlier turns were answered by "{old_model}", this turn by "{new_model}"')
     if old_images != new_images:
         changes.append(
             f'image understanding is now {"on" if new_images else "off"}, so '
-            f'images {"are sent again" if new_images else "are no longer sent"}')
+            f'images {"are sent again" if new_images else "are no longer sent"}'
+        )
     if not changes:
         return None
-    return ('<system-reminder>\n'
-            f'{MODEL_SWITCH_MARKER}: {"; ".join(changes)}. Earlier replies were '
-            'produced under the previous setup — treat them as sound unless you '
-            'have positive evidence otherwise, and do not retract them merely '
-            'because you cannot reproduce them now. Do not mention this unless '
-            'the user asks.\n'
-            '</system-reminder>')
+    return (
+        '<system-reminder>\n'
+        f'{MODEL_SWITCH_MARKER}: {"; ".join(changes)}. Earlier replies were '
+        'produced under the previous setup — treat them as sound unless you '
+        'have positive evidence otherwise, and do not retract them merely '
+        'because you cannot reproduce them now. Do not mention this unless '
+        'the user asks.\n'
+        '</system-reminder>'
+    )

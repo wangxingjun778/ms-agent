@@ -7,6 +7,7 @@ the renderer draws from, and tool completions now arrive as each call finishes
 one call can open the next call's menu while the first is still executing, and
 its result would land inside the menu the user is reading.
 """
+
 from io import StringIO
 
 import pytest
@@ -29,17 +30,12 @@ def _renderer():
 async def test_sibling_completion_does_not_print_into_the_menu(monkeypatch):
     renderer, console = _renderer()
     handler = TUIPermissionHandler(console=console, renderer=renderer)
-    renderer.emit(
-        ToolCallStarted(
-            call_id='c1', name='file_system---read_file',
-            arguments={'path': 'a.txt'}))
+    renderer.emit(ToolCallStarted(call_id='c1', name='file_system---read_file', arguments={'path': 'a.txt'}))
     seen_during_menu = {}
 
     async def fake_menu(options, *, default=0, header=None):
         # A sibling call finishes while the user is deciding.
-        renderer.emit(
-            ToolCallCompleted(
-                call_id='c1', name='file_system---read_file', result='aaa'))
+        renderer.emit(ToolCallCompleted(call_id='c1', name='file_system---read_file', result='aaa'))
         seen_during_menu['out'] = console.file.getvalue()
         return 0  # "Allow once"
 
@@ -61,6 +57,5 @@ async def test_handler_without_a_renderer_still_works(monkeypatch):
         return 4  # "Deny"
 
     monkeypatch.setattr(permission_mod, 'select_async', fake_menu)
-    resp = await handler.ask('code_executor---shell', {'command': 'rm -rf /'},
-                             '')
+    resp = await handler.ask('code_executor---shell', {'command': 'rm -rf /'}, '')
     assert resp.action == PermissionAction.DENY

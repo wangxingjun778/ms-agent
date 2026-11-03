@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Skill search engine -- thin wrapper over the pluggable retriever framework."""
+
 from typing import List, Optional, Tuple
 
 from ms_agent.retriever.base import BaseRetriever
@@ -23,8 +24,7 @@ class SkillSearchEngine:
         self._catalog = catalog
         self._backend_name = backend
         self._kwargs = kwargs
-        self._retriever: BaseRetriever = self._build_retriever(
-            backend, **kwargs)
+        self._retriever: BaseRetriever = self._build_retriever(backend, **kwargs)
         self._index_version: int = -1
 
     # ------------------------------------------------------------------ #
@@ -46,6 +46,7 @@ class SkillSearchEngine:
             return BM25Retriever()
         elif backend == 'vector':
             from ms_agent.retriever.vector import VectorRetriever
+
             return VectorRetriever(embed_model=kwargs.get('embed_model'))
         elif backend == 'hybrid':
             from ms_agent.retriever.fusion import RRFFusion, WeightedFusion
@@ -59,12 +60,10 @@ class SkillSearchEngine:
             if fusion_name == 'rrf':
                 fusion = RRFFusion(k=kwargs.get('rrf_k', 60))
             else:
-                fusion = WeightedFusion(
-                    weights=kwargs.get('weights', [0.3, 0.7]))
+                fusion = WeightedFusion(weights=kwargs.get('weights', [0.3, 0.7]))
             return HybridRetriever([bm25, vector], fusion=fusion)
         else:
-            logger.warning(
-                f"Unknown search backend '{backend}', falling back to bm25")
+            logger.warning(f"Unknown search backend '{backend}', falling back to bm25")
             return BM25Retriever()
 
     def _ensure_indexed(self) -> None:
@@ -77,9 +76,7 @@ class SkillSearchEngine:
         docs: List[str] = []
         ids: List[str] = []
         for sid, skill in skills.items():
-            corpus = (f'{skill.name} {skill.description} '
-                      f"{' '.join(skill.tags or [])} "
-                      f'{skill.content[:500]}')
+            corpus = f'{skill.name} {skill.description} {" ".join(skill.tags or [])} {skill.content[:500]}'
             docs.append(corpus)
             ids.append(sid)
 

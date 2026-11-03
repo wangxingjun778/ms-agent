@@ -3,8 +3,9 @@ from __future__ import annotations
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from abc import ABC, abstractmethod
-from omegaconf import DictConfig
 from typing import Any, AsyncGenerator, List, Optional, Tuple, Union
+
+from omegaconf import DictConfig
 
 from ms_agent.llm import Message
 from ms_agent.utils import read_history, save_history
@@ -21,25 +22,21 @@ class Agent(ABC):
 
     retry_count = int(os.environ.get('AGENT_RETRY_COUNT', DEFAULT_RETRY_COUNT))
 
-    def __init__(self,
-                 config: DictConfig,
-                 tag: str,
-                 trust_remote_code: bool = False,
-                 **kwargs):
+    def __init__(self, config: DictConfig, tag: str, trust_remote_code: bool = False, **kwargs):
         """
-         Base class for all agents. Provides core functionality such as configuration loading,
-         lifecycle handling via external code, and defining the interface for agent execution.
+        Base class for all agents. Provides core functionality such as configuration loading,
+        lifecycle handling via external code, and defining the interface for agent execution.
 
-         The agent can be initialized either with a config object directly or by loading from a config directory or ID.
-         If external code (e.g., custom handlers) is involved, the agent must be explicitly trusted via
-         `trust_remote_code=True`.
+        The agent can be initialized either with a config object directly or by loading from a config directory or ID.
+        If external code (e.g., custom handlers) is involved, the agent must be explicitly trusted via
+        `trust_remote_code=True`.
 
-         Base class for all agents. Make sure your custom agents are derived from this class.
-         Args:
-             config (DictConfig): Pre-loaded configuration object.
-             tag (str): A custom tag for identifying this agent run.
-             trust_remote_code (bool): Whether to allow loading of external code (e.g., custom handler modules).
-         """
+        Base class for all agents. Make sure your custom agents are derived from this class.
+        Args:
+            config (DictConfig): Pre-loaded configuration object.
+            tag (str): A custom tag for identifying this agent run.
+            trust_remote_code (bool): Whether to allow loading of external code (e.g., custom handler modules).
+        """
         self.config = config
         self.tag = tag
         self.trust_remote_code = trust_remote_code
@@ -49,6 +46,7 @@ class Agent(ABC):
         self.output_dir = str(workspace_root)
         try:
             from omegaconf import open_dict
+
             with open_dict(self.config):
                 self.config.output_dir = self.output_dir
         except Exception:
@@ -67,6 +65,7 @@ class Agent(ABC):
                 from omegaconf import OmegaConf
 
                 from ms_agent.config.resolver import ConfigResolver
+
                 patch = ConfigResolver()._load_project_patch(self.output_dir)
                 if patch is not None:
                     self.config = OmegaConf.merge(self.config, patch)
@@ -75,7 +74,7 @@ class Agent(ABC):
 
     @abstractmethod
     async def run(
-            self, inputs: Union[str, List[Message]], **kwargs
+        self, inputs: Union[str, List[Message]], **kwargs
     ) -> Union[List[Message], AsyncGenerator[List[Message], Any]]:
         """
         Main method to execute the agent.
@@ -93,8 +92,7 @@ class Agent(ABC):
         """
         raise NotImplementedError()
 
-    def read_history(self, messages: Any,
-                     **kwargs) -> Tuple[DictConfig, List[Message]]:
+    def read_history(self, messages: Any, **kwargs) -> Tuple[DictConfig, List[Message]]:
         return read_history(self.output_dir, self.tag)
 
     def save_history(self, messages: Any, **kwargs):
@@ -105,10 +103,10 @@ class Agent(ABC):
     def list_snapshots(self) -> list:
         """Return snapshots for this agent's output_dir, most recent first."""
         from ms_agent.utils.snapshot import list_snapshots
+
         return list_snapshots(self.output_dir)
 
-    def rollback(self,
-                 commit_hash: str) -> tuple[bool, Optional[List['Message']]]:
+    def rollback(self, commit_hash: str) -> tuple[bool, Optional[List['Message']]]:
         """Restore output_dir to a previous snapshot and truncate history."""
         raise NotImplementedError()
 

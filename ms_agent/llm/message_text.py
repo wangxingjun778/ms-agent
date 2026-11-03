@@ -18,6 +18,7 @@ rather than to garbage.
 Mirrors hermes-agent's ``agent/message_content.py``, which exists for the same
 reason.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -25,17 +26,19 @@ from typing import Any, List
 
 #: Block kinds that carry no readable text. Listed rather than inferred so a new
 #: modality is a deliberate edit here instead of silently stringifying its bytes.
-_NON_TEXT_BLOCKS = frozenset({
-    'image',
-    'image_url',
-    'input_image',
-    'audio',
-    'input_audio',
-    'video',
-    'input_video',
-    'file',
-    'document',
-})
+_NON_TEXT_BLOCKS = frozenset(
+    {
+        'image',
+        'image_url',
+        'input_image',
+        'audio',
+        'input_audio',
+        'video',
+        'input_video',
+        'file',
+        'document',
+    }
+)
 
 #: Keys a text-bearing block may use, in preference order. ``content`` is last:
 #: it is the most generic and the most likely to hold something structured.

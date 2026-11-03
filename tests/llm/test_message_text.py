@@ -6,10 +6,10 @@ stores a Python repr or a guard skips the message. Both are silent, and two of
 those sites (WebUI session auto-naming, TUI session naming) PERSIST what they
 compute, so the garbage becomes permanent and user-visible.
 """
+
 import unittest
 
-from ms_agent.llm.message_text import (append_text, flatten_message_text,
-                                       prepend_text)
+from ms_agent.llm.message_text import append_text, flatten_message_text, prepend_text
 
 BLOCKS = [
     {'type': 'text', 'text': 'Image 1: a.png'},
@@ -19,7 +19,6 @@ BLOCKS = [
 
 
 class TestFlatten(unittest.TestCase):
-
     def test_string_passes_through_unchanged(self):
         # The common case must be byte-identical, so no existing behaviour moves.
         for value in ('hello', '', '  spaced  ', 'multi\nline'):
@@ -35,11 +34,20 @@ class TestFlatten(unittest.TestCase):
         self.assertNotIn('AAAA', out)
 
     def test_every_non_text_modality_contributes_nothing(self):
-        for kind in ('image', 'image_url', 'input_image', 'audio',
-                     'input_audio', 'video', 'input_video', 'file', 'document'):
+        for kind in (
+            'image',
+            'image_url',
+            'input_image',
+            'audio',
+            'input_audio',
+            'video',
+            'input_video',
+            'file',
+            'document',
+        ):
             self.assertEqual(
-                flatten_message_text([{'type': kind, 'data': 'x' * 100}]), '',
-                f'{kind} must not leak its payload')
+                flatten_message_text([{'type': kind, 'data': 'x' * 100}]), '', f'{kind} must not leak its payload'
+            )
 
     def test_anthropic_shaped_image_block(self):
         anthropic = [
@@ -52,13 +60,10 @@ class TestFlatten(unittest.TestCase):
         self.assertEqual(flatten_message_text(['a', 'b']), 'a\nb')
 
     def test_unknown_block_falls_back_to_its_text_field(self):
-        self.assertEqual(
-            flatten_message_text([{'type': 'weird', 'text': 'still text'}]),
-            'still text')
+        self.assertEqual(flatten_message_text([{'type': 'weird', 'text': 'still text'}]), 'still text')
 
     def test_custom_separator(self):
-        self.assertEqual(flatten_message_text(BLOCKS, sep=' | '),
-                         'Image 1: a.png | what is in it')
+        self.assertEqual(flatten_message_text(BLOCKS, sep=' | '), 'Image 1: a.png | what is in it')
 
     def test_never_raises_on_junk(self):
         for junk in (123, 4.5, True, object(), {'no': 'type'}):

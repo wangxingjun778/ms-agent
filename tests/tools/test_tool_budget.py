@@ -12,10 +12,12 @@ results silently rendered with no sources. The protocol under test is the fix:
 a tool declares its own budget (or declares that it bounds itself) and the
 generic path leaves it alone.
 """
+
 import json
 import math
 
 import pytest
+
 from ms_agent.tools.base import SELF_MANAGED_OUTPUT, ToolBase
 from ms_agent.tools.tool_manager import _truncate_tool_output
 
@@ -30,6 +32,7 @@ class _Tool:
 
 
 # ----------------------------------------------------------- default behaviour
+
 
 def test_undeclared_tool_keeps_the_global_cap(monkeypatch):
     """Tools that say nothing must behave exactly as before the protocol."""
@@ -53,6 +56,7 @@ def test_base_class_default_is_the_global_cap():
 
 # ------------------------------------------------------------------- opt-outs
 
+
 def test_self_managed_tool_is_never_cut(monkeypatch):
     monkeypatch.setenv('MAX_TOOL_OUTPUT_LEN', '10')
     payload = 'y' * 5000
@@ -73,6 +77,7 @@ def test_budget_below_output_still_cuts():
 
 # ------------------------------------------------------------------ direction
 
+
 def test_keep_head_preserves_the_beginning():
     out = _truncate_tool_output('A' * 100 + 'B' * 100, _Tool(100, keep='head'))
     assert out.startswith('A' * 100)
@@ -91,17 +96,21 @@ def test_keep_both_is_the_default_shape():
 
 # ------------------------------------------------- the regression, end to end
 
+
 def _search_payload(n_rows: int, body_chars: int) -> dict:
     return {
         'status': 'ok',
         'query': '今日新闻',
         'engine': 'tavily',
         'count': n_rows,
-        'results': [{
-            'url': f'https://example.com/{i}',
-            'title': f'result {i}',
-            'content': '正' * body_chars,
-        } for i in range(n_rows)],
+        'results': [
+            {
+                'url': f'https://example.com/{i}',
+                'title': f'result {i}',
+                'content': '正' * body_chars,
+            }
+            for i in range(n_rows)
+        ],
     }
 
 
@@ -119,11 +128,11 @@ def test_web_search_declares_a_budget_and_stays_under_it():
     tool = WebSearchTool.__new__(WebSearchTool)
     tool._max_output_chars = 20000
 
-    payload = _search_payload(10, 5000)          # ~50k chars of bodies
+    payload = _search_payload(10, 5000)  # ~50k chars of bodies
     out = tool._bounded_json(payload)
 
     assert len(out) <= tool.max_output_chars
-    parsed = json.loads(out)                      # THE point: still parseable
+    parsed = json.loads(out)  # THE point: still parseable
     assert parsed['results'], 'evidence rows must survive'
     assert parsed['results'][0]['url'].startswith('https://')
     # And the generic path is now a no-op for it.

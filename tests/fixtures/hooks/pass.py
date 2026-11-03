@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pass-through hook for tests."""
+
 import json
 import sys
 

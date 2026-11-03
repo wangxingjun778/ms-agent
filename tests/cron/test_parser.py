@@ -1,7 +1,8 @@
 """Tests for ms_agent.cron.parser."""
+
 import pytest
 
-from ms_agent.cron.parser import parse_schedule, compute_next_run, advance_next_run
+from ms_agent.cron.parser import advance_next_run, compute_next_run, parse_schedule
 from ms_agent.cron.types import CronSchedule
 
 

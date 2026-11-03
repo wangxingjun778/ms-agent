@@ -1,4 +1,5 @@
 """Cooperating writers preserve data, including across independent processes."""
+
 import json
 import multiprocessing
 import shutil
@@ -8,8 +9,8 @@ from threading import Barrier
 
 import pytest
 
-from ms_agent.config.model_settings import ModelSettingsManager
 from ms_agent.config.mcp_manager import MCPConfigManager
+from ms_agent.config.model_settings import ModelSettingsManager
 from ms_agent.personalization import PersonalizationSettings
 from ms_agent.project import ProjectManager
 from ms_agent.utils.file_lock import file_lock
@@ -80,6 +81,7 @@ def test_shared_settings_writers_merge_independent_fields(tmp_path):
             PersonalizationSettings(str(tmp_path)).update(memory_enabled=True)
         else:
             MCPConfigManager(tmp_path).add(str(index), {'command': 'echo'}, scope='global')
+
     with ThreadPoolExecutor(max_workers=12) as pool:
         list(pool.map(change, range(12)))
     data = read_json(tmp_path / 'settings.json')
@@ -116,9 +118,11 @@ def test_lock_reentry_timeout_and_process_exit(tmp_path, spawn):
 def test_invalid_settings_never_become_empty(tmp_path, content):
     path = tmp_path / 'settings.json'
     path.write_text(content)
-    for operation in (lambda: ModelSettingsManager(tmp_path).add_model('p', 'm'),
-                      lambda: PersonalizationSettings(str(tmp_path)).update(memory_enabled=True),
-                      lambda: MCPConfigManager(tmp_path).add('x', {'command': 'echo'}, scope='global')):
+    for operation in (
+        lambda: ModelSettingsManager(tmp_path).add_model('p', 'm'),
+        lambda: PersonalizationSettings(str(tmp_path)).update(memory_enabled=True),
+        lambda: MCPConfigManager(tmp_path).add('x', {'command': 'echo'}, scope='global'),
+    ):
         with pytest.raises(ValueError):
             operation()
         assert path.read_text() == content
@@ -148,8 +152,7 @@ def test_explicit_initialization_queries_and_missing_metadata(tmp_path):
     sessions = manager.session_manager(project, auto_initialize=False)
 
     def snapshot():
-        return {p: (p.read_bytes(), p.stat().st_mtime_ns)
-                for p in tmp_path.rglob('*') if p.is_file()}
+        return {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in tmp_path.rglob('*') if p.is_file()}
 
     before = snapshot()
     manager.list()
@@ -200,8 +203,10 @@ def test_open_folder_and_partial_project_changes(tmp_path):
     data['future_field'] = 42
     metadata.write(data)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(manager.update, project.id, name='Changed'),
-                   pool.submit(manager.update, project.id, memory_enabled=True)]
+        futures = [
+            pool.submit(manager.update, project.id, name='Changed'),
+            pool.submit(manager.update, project.id, memory_enabled=True),
+        ]
         for future in futures:
             future.result()
     saved = manager.get(project.id)

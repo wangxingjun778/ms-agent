@@ -22,6 +22,7 @@ Behavioral contract (docs: prompt-context design-final §2.1/§3/§5.4):
   ``.bak`` and a non-pristine sidecar so upgrades never clobber user content.
 - **mtime cache** so the per-round system-prompt rebuild does no repeat IO.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -30,8 +31,8 @@ import re
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from ms_agent.prompting.builtin import (HOME_FILE_TEMPLATES, TEMPLATE_VERSION)
 from ms_agent.project.paths import global_home, local_internal_dir
+from ms_agent.prompting.builtin import HOME_FILE_TEMPLATES, TEMPLATE_VERSION
 from ms_agent.utils.atomic_file import atomic_write_text
 from ms_agent.utils.file_lock import locked
 from ms_agent.utils.json_store import read_json
@@ -44,8 +45,7 @@ MAX_FILE_CHARS = 20_000
 
 _FRONTMATTER_RE = re.compile(r'^\s*---\s*\n.*?\n---\s*\n?', re.DOTALL)
 _HTML_COMMENT_RE = re.compile(r'<!--.*?-->', re.DOTALL)
-_CALL_ME_RE = re.compile(r'^\s*[-*]\s*\**\s*Call me\s*\**\s*[:：]\s*(.*)$',
-                         re.IGNORECASE)
+_CALL_ME_RE = re.compile(r'^\s*[-*]\s*\**\s*Call me\s*\**\s*[:：]\s*(.*)$', re.IGNORECASE)
 
 #: name -> sidecar filename (records what the framework materialized).
 _SIDECAR_NAMES = {
@@ -119,9 +119,7 @@ def _capped(body: str, path: Path) -> str:
         return body
     if str(path) not in _warned_truncate:
         _warned_truncate.add(str(path))
-        logger.warning(
-            f'[workspace_files] {path} exceeds {MAX_FILE_CHARS} chars; '
-            f'truncating its injected content')
+        logger.warning(f'[workspace_files] {path} exceeds {MAX_FILE_CHARS} chars; truncating its injected content')
     return body[:MAX_FILE_CHARS] + '\n\n[...truncated: file exceeds limit...]'
 
 
@@ -143,8 +141,7 @@ def _load_sidecar(home: Path, name: str) -> Optional[dict]:
 
 def _save_sidecar(home: Path, name: str, data: dict) -> None:
     try:
-        atomic_write_text(
-            _sidecar_path(home, name), json.dumps(data, indent=1))
+        atomic_write_text(_sidecar_path(home, name), json.dumps(data, indent=1))
     except OSError as e:  # sidecar failures must never break the agent
         logger.warning(f'[workspace_files] cannot write sidecar for {name}: {e}')
 
@@ -163,31 +160,41 @@ def _ensure_one(home: Path, name: str, template: str) -> None:
         except OSError as e:
             logger.warning(f'[workspace_files] cannot materialize {name}: {e}')
             return
-        _save_sidecar(home, name, {
-            'template_version': TEMPLATE_VERSION,
-            'sha256': _sha256(template),
-            'pristine': True,
-        })
+        _save_sidecar(
+            home,
+            name,
+            {
+                'template_version': TEMPLATE_VERSION,
+                'sha256': _sha256(template),
+                'pristine': True,
+            },
+        )
         logger.info(f'[workspace_files] materialized default {name} in {home}')
         return
     # Existing file: silent upgrade only when pristine (hash matches what we
     # wrote) and the built-in template moved forward.
-    if (sidecar and sidecar.get('pristine')
-            and sidecar.get('template_version', 0) < TEMPLATE_VERSION
-            and _sha256(_read_raw(path)) == sidecar.get('sha256')):
+    if (
+        sidecar
+        and sidecar.get('pristine')
+        and sidecar.get('template_version', 0) < TEMPLATE_VERSION
+        and _sha256(_read_raw(path)) == sidecar.get('sha256')
+    ):
         try:
             atomic_write_text(path.with_name(name + '.bak'), _read_raw(path))
             atomic_write_text(path, template)
         except OSError as e:
             logger.warning(f'[workspace_files] cannot upgrade {name}: {e}')
             return
-        _save_sidecar(home, name, {
-            'template_version': TEMPLATE_VERSION,
-            'sha256': _sha256(template),
-            'pristine': True,
-        })
-        logger.info(f'[workspace_files] upgraded pristine {name} to '
-                    f'template v{TEMPLATE_VERSION}')
+        _save_sidecar(
+            home,
+            name,
+            {
+                'template_version': TEMPLATE_VERSION,
+                'sha256': _sha256(template),
+                'pristine': True,
+            },
+        )
+        logger.info(f'[workspace_files] upgraded pristine {name} to template v{TEMPLATE_VERSION}')
 
 
 def _is_new_format(raw: str) -> bool:
@@ -243,14 +250,17 @@ def _rebuild_legacy_profile(home: Path) -> None:
         # pipeline treats plain text as free region, injection is unaffected.
         logger.warning(f'[workspace_files] profile rebuild skipped: {e}')
         return
-    _save_sidecar(home, 'PROFILE.md', {
-        'template_version': TEMPLATE_VERSION,
-        'sha256': _sha256(rebuilt),
-        'pristine': False,
-        'rebuilt_from': src.name,
-    })
-    logger.info(f'[workspace_files] rebuilt legacy {src.name} -> PROFILE.md '
-                f'(backup: PROFILE.md.bak)')
+    _save_sidecar(
+        home,
+        'PROFILE.md',
+        {
+            'template_version': TEMPLATE_VERSION,
+            'sha256': _sha256(rebuilt),
+            'pristine': False,
+            'rebuilt_from': src.name,
+        },
+    )
+    logger.info(f'[workspace_files] rebuilt legacy {src.name} -> PROFILE.md (backup: PROFILE.md.bak)')
 
 
 @locked(lambda home=None: (home or global_home()) / '.prompt-files')
@@ -267,8 +277,7 @@ def ensure_home_files(home: Optional[Path] = None) -> None:
     _rebuild_legacy_profile(home)
     for name, template in HOME_FILE_TEMPLATES.items():
         _ensure_one(home, name, template)
-    if all((home / name).exists() or _sidecar_path(home, name).exists()
-           for name in HOME_FILE_TEMPLATES):
+    if all((home / name).exists() or _sidecar_path(home, name).exists() for name in HOME_FILE_TEMPLATES):
         _ensured_homes.add(key)
 
 
@@ -296,8 +305,7 @@ def _line_comment_flags(lines):
             before = line.split('<!--', 1)[0]
             flags.append(not before.strip())
         else:
-            flags.append(not stripped_spans.strip() and bool(
-                _HTML_COMMENT_RE.search(line)))
+            flags.append(not stripped_spans.strip() and bool(_HTML_COMMENT_RE.search(line)))
     return flags
 
 
@@ -381,8 +389,7 @@ def set_call_me(text: str, value: str) -> str:
         r1_lines.insert(1, f'- Call me: {value}\n')
         return r0 + ''.join(r1_lines) + r2
     block = f'# About Me\n- Call me: {value}\n'
-    sep_before = '' if (not r0 or r0.endswith('\n\n')) else (
-        '\n' if r0.endswith('\n') else '\n\n')
+    sep_before = '' if (not r0 or r0.endswith('\n\n')) else ('\n' if r0.endswith('\n') else '\n\n')
     sep_after = '\n' if r2.strip() else ''
     return r0 + sep_before + block + sep_after + r2
 
@@ -443,8 +450,7 @@ def global_instructions_block(legacy_fallback: str = '') -> str:
     return ''
 
 
-def project_instructions_block(work_dir: Optional[str],
-                               legacy_fallback: str = '') -> str:
+def project_instructions_block(work_dir: Optional[str], legacy_fallback: str = '') -> str:
     """Layer ④ body: shared slot then private slot, additive (never either-or)."""
     blocks = []
     if work_dir:
@@ -455,8 +461,7 @@ def project_instructions_block(work_dir: Optional[str],
         private = local_internal_dir(work_dir) / 'AGENTS.md'
         body = _capped(strip_for_injection(_read_raw(private)), private)
         if body:
-            blocks.append(
-                wrap_block('instructions', '.ms_agent/AGENTS.md', body))
+            blocks.append(wrap_block('instructions', '.ms_agent/AGENTS.md', body))
     if blocks:
         return '\n\n'.join(blocks)
     legacy = (legacy_fallback or '').strip()
@@ -496,8 +501,7 @@ def profile_block() -> str:
 #: Matches any <system-reminder> block (skill notices, recall attachments,
 #: update notices). Used to strip notices out of retrieval queries and
 #: display copies — the blocks are framework metadata, not user words.
-REMINDER_BLOCK_RE = re.compile(r'<system-reminder>.*?</system-reminder>\s*',
-                               re.DOTALL)
+REMINDER_BLOCK_RE = re.compile(r'<system-reminder>.*?</system-reminder>\s*', re.DOTALL)
 
 #: Stable first-line marker of a prompt-files update notice.
 UPDATE_NOTICE_MARKER = 'Workspace files behind your system prompt changed'
@@ -524,19 +528,20 @@ def head_source_fingerprints(work_dir: Optional[str] = None) -> Dict[str, str]:
     }
     if work_dir:
         sources['<project>/AGENTS.md'] = _body(Path(work_dir) / 'AGENTS.md')
-        sources['<project>/.ms_agent/AGENTS.md'] = _body(
-            local_internal_dir(work_dir) / 'AGENTS.md')
+        sources['<project>/.ms_agent/AGENTS.md'] = _body(local_internal_dir(work_dir) / 'AGENTS.md')
     return {label: _sha256(body) for label, body in sources.items()}
 
 
 def render_update_notice(changed: list) -> str:
     """The <system-reminder> announcing which head files changed."""
     files = ', '.join(changed)
-    return ('<system-reminder>\n'
-            f'{UPDATE_NOTICE_MARKER} mid-conversation: {files}.\n'
-            'Your system prompt has been refreshed in place and already '
-            'reflects the latest file content. Where it differs from what '
-            'earlier parts of this conversation assumed, the files changed — '
-            'you did not misremember. Do not mention this notice to the user '
-            'unless they ask about the change.\n'
-            '</system-reminder>')
+    return (
+        '<system-reminder>\n'
+        f'{UPDATE_NOTICE_MARKER} mid-conversation: {files}.\n'
+        'Your system prompt has been refreshed in place and already '
+        'reflects the latest file content. Where it differs from what '
+        'earlier parts of this conversation assumed, the files changed — '
+        'you did not misremember. Do not mention this notice to the user '
+        'unless they ask about the change.\n'
+        '</system-reminder>'
+    )

@@ -17,6 +17,7 @@ Or for non-streaming::
     async with AgentService(config) as svc:
         response = await svc.run_sync(request)
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,8 +84,7 @@ class AgentService:
                 await self._tool_registry.load_from_config(api_config_path)
             except FileNotFoundError:
                 logger.warning(
-                    'API tools config not found at %s; '
-                    'continuing without API tools',
+                    'API tools config not found at %s; continuing without API tools',
                     api_config_path,
                 )
             except Exception:  # noqa: BLE001
@@ -128,7 +128,8 @@ class AgentService:
         # Per-user session store
         session_base = str(
             self._config.get('session', {}).get(
-                'base_dir', '/tmp/ms_agent/sessions',
+                'base_dir',
+                '/tmp/ms_agent/sessions',
             ),
         )
         session_store = SessionStore(session_base, request.user_id)
@@ -137,7 +138,8 @@ class AgentService:
         # Per-user memory service
         memory_base = str(
             self._config.get('memory', {}).get(
-                'base_dir', '/tmp/ms_agent/memory',
+                'base_dir',
+                '/tmp/ms_agent/memory',
             ),
         )
         memory_service = MemoryService(memory_base, request.user_id)
@@ -189,9 +191,7 @@ class AgentService:
         events: List[StreamEvent] = []
         async for event in self.run(request):
             events.append(event)
-        session_id = request.session_id or (
-            events[0].data.get('session_id', '') if events else ''
-        )
+        session_id = request.session_id or (events[0].data.get('session_id', '') if events else '')
         return AgentResponse.from_events(session_id, events)
 
     # ------------------------------------------------------------------

@@ -8,6 +8,7 @@ prefix-cache reuse at that point and made the model's own history inconsistent
 with what it had seen. Durable attachment keeps every request a strict
 prefix-extension of the previous one.
 """
+
 import asyncio
 
 from ms_agent.llm.utils import Message
@@ -26,14 +27,12 @@ def _backend(monkeypatch, tmp_path, results):
     )
     backend = mem0_adapter.Mem0Backend(cfg)
     backend._mem0 = object()  # skip start(); search is stubbed below
-    monkeypatch.setattr(mem0_adapter, '_mem0_search',
-                        lambda m0, query, user_id, top_k=10: results)
+    monkeypatch.setattr(mem0_adapter, '_mem0_search', lambda m0, query, user_id, top_k=10: results)
     return backend
 
 
 def test_recall_block_wraps_and_frames(monkeypatch, tmp_path):
-    backend = _backend(monkeypatch, tmp_path,
-                       [{'memory': '用户偏好深色主题。'}])
+    backend = _backend(monkeypatch, tmp_path, [{'memory': '用户偏好深色主题。'}])
     block = asyncio.run(backend.recall_block('我的主题偏好？'))
     assert block.startswith('<system-reminder>')
     assert block.endswith('</system-reminder>')
@@ -68,14 +67,18 @@ def test_ingestion_strips_injected_blocks(monkeypatch, tmp_path):
             return {'results': []}
 
     backend._mem0 = FakeMem0()
-    msgs = [{
-        'role': 'user',
-        'content': ('直接回答。\n\n<system-reminder>\nRelevant long-term '
-                    'memories...\n- 旧记忆\n</system-reminder>'),
-    }, {
-        'role': 'assistant',
-        'content': '好的。',
-    }]
+    msgs = [
+        {
+            'role': 'user',
+            'content': (
+                '直接回答。\n\n<system-reminder>\nRelevant long-term memories...\n- 旧记忆\n</system-reminder>'
+            ),
+        },
+        {
+            'role': 'assistant',
+            'content': '好的。',
+        },
+    ]
     asyncio.run(backend.on_messages(msgs))
     assert captured['convo'][0]['content'] == '直接回答。'
     assert '旧记忆' not in str(captured['convo'])
@@ -87,8 +90,7 @@ def test_agent_attaches_recall_to_new_user_turn(monkeypatch, tmp_path):
 
     from ms_agent.agent.llm_agent import LLMAgent
 
-    agent = LLMAgent(config=OmegaConf.create(
-        {'output_dir': str(tmp_path / 'w')}))
+    agent = LLMAgent(config=OmegaConf.create({'output_dir': str(tmp_path / 'w')}))
 
     class FakeOrchestrator:
         async def recall_block(self, query):
@@ -101,8 +103,7 @@ def test_agent_attaches_recall_to_new_user_turn(monkeypatch, tmp_path):
         Message(role='user', content='直接回答。'),
     ]
     asyncio.run(agent._attach_memory_recall(messages))
-    assert messages[1].content == (
-        '直接回答。\n\n<system-reminder>\n- F1\n</system-reminder>')
+    assert messages[1].content == ('直接回答。\n\n<system-reminder>\n- F1\n</system-reminder>')
     # idempotent: a second call must not double-attach
     asyncio.run(agent._attach_memory_recall(messages))
     assert messages[1].content.count('<system-reminder>') == 1

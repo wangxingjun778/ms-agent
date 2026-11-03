@@ -1,43 +1,49 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Normalized MCP configuration schema and merge helpers."""
+
 from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from omegaconf import DictConfig, ListConfig, OmegaConf
 from typing import Any, Dict, Literal, Optional
+
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 MCPSource = Literal['global', 'project', 'agent_yaml', 'plugin', 'session']
 
 # Connection-related fields kept when normalizing agent.yaml / JSON entries.
-MCP_CONNECTION_FIELDS = frozenset({
-    'enabled',
-    'transport',
-    'type',
-    'command',
-    'args',
-    'url',
-    'env',
-    'headers',
-    'timeout',
-    'include',
-    'exclude',
-    'source',
-    'meta',
-    'session_kwargs',
-    'httpx_client_factory',
-    'encoding',
-    'encoding_error_handler',
-    'sse_read_timeout',
-})
+MCP_CONNECTION_FIELDS = frozenset(
+    {
+        'enabled',
+        'transport',
+        'type',
+        'command',
+        'args',
+        'url',
+        'env',
+        'headers',
+        'timeout',
+        'include',
+        'exclude',
+        'source',
+        'meta',
+        'session_kwargs',
+        'httpx_client_factory',
+        'encoding',
+        'encoding_error_handler',
+        'sse_read_timeout',
+    }
+)
 
 # YAML / agent metadata stripped during normalization.
-MCP_STRIP_FIELDS = frozenset({
-    'mcp',
-    'implementation',
-    'trust_remote_code',
-    '_removed',
-})
+MCP_STRIP_FIELDS = frozenset(
+    {
+        'mcp',
+        'implementation',
+        'trust_remote_code',
+        '_removed',
+    }
+)
 
 
 @dataclass
@@ -50,11 +56,7 @@ class ResolvedMCPConfig:
         return {'mcpServers': copy.deepcopy(self.mcp_servers)}
 
     def enabled_servers(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            name: cfg
-            for name, cfg in self.mcp_servers.items()
-            if cfg.get('enabled', True)
-        }
+        return {name: cfg for name, cfg in self.mcp_servers.items() if cfg.get('enabled', True)}
 
 
 def _coerce_entry_dict(entry: Any) -> Optional[Dict[str, Any]]:
@@ -141,8 +143,7 @@ def merge_mcp_server_entry(
     return merged
 
 
-def merge_mcp_layers(
-        *layers: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def merge_mcp_layers(*layers: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Union merge by server name; later layers override earlier ones."""
     merged: Dict[str, Dict[str, Any]] = {}
     for layer in layers:
@@ -155,7 +156,8 @@ def merge_mcp_layers(
 
 
 def collect_builtin_tool_names(
-    agent_config: DictConfig | ListConfig | None, ) -> set[str]:
+    agent_config: DictConfig | ListConfig | None,
+) -> set[str]:
     """Names declared as built-in tools (``mcp: false``) in agent.yaml.
 
     These entries must not appear in merged ``mcpServers`` even when a lower
@@ -168,11 +170,7 @@ def collect_builtin_tool_names(
     container = OmegaConf.to_container(tools, resolve=True)
     if not isinstance(container, dict):
         return set()
-    return {
-        name
-        for name, entry in container.items()
-        if isinstance(entry, dict) and entry.get('mcp') is False
-    }
+    return {name for name, entry in container.items() if isinstance(entry, dict) and entry.get('mcp') is False}
 
 
 def connection_params_for_client(server: Dict[str, Any]) -> Dict[str, Any]:

@@ -5,6 +5,7 @@ All heavy imports (``faiss``, ``sentence_transformers``, ``numpy``) are
 **lazy-loaded** so that the module can be imported without pulling in
 large dependencies when only BM25 is needed.
 """
+
 from typing import List, Optional
 
 from .base import BaseRetriever, SearchResult
@@ -17,8 +18,7 @@ class VectorRetriever(BaseRetriever):
     and cached for the lifetime of the instance.
     """
 
-    DEFAULT_MODEL = (
-        'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+    DEFAULT_MODEL = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 
     def __init__(self, embed_model: Optional[str] = None):
         self._embed_model_id = embed_model or self.DEFAULT_MODEL
@@ -36,6 +36,7 @@ class VectorRetriever(BaseRetriever):
             return
         try:
             from modelscope import snapshot_download
+
             local_path = snapshot_download(
                 model_id=self._embed_model_id,
                 ignore_patterns=[
@@ -44,15 +45,18 @@ class VectorRetriever(BaseRetriever):
                     'pytorch_model.bin',
                     'rust_model.ot',
                     'tf_model.h5',
-                ])
+                ],
+            )
         except Exception:
             local_path = self._embed_model_id
 
         from sentence_transformers import SentenceTransformer
+
         self._model = SentenceTransformer(local_path)
 
     def _encode(self, texts: List[str]):
         import numpy as np
+
         self._ensure_model()
         embeddings = self._model.encode(texts, convert_to_numpy=True)
         return embeddings.astype(np.float32)
@@ -61,15 +65,12 @@ class VectorRetriever(BaseRetriever):
     #  BaseRetriever interface
     # ------------------------------------------------------------------ #
 
-    def index(self,
-              documents: List[str],
-              doc_ids: Optional[List[str]] = None) -> None:
+    def index(self, documents: List[str], doc_ids: Optional[List[str]] = None) -> None:
         import faiss
+
         self.reset()
         self._documents = list(documents)
-        self._doc_ids = (
-            list(doc_ids)
-            if doc_ids else [str(i) for i in range(len(documents))])
+        self._doc_ids = list(doc_ids) if doc_ids else [str(i) for i in range(len(documents))]
 
         embeddings = self._encode(self._documents)
         faiss.normalize_L2(embeddings)
@@ -79,6 +80,7 @@ class VectorRetriever(BaseRetriever):
     def search(self, query: str, top_k: int = 10) -> List[SearchResult]:
         import faiss
         import numpy as np
+
         if self._index is None or not self._documents:
             return []
 
@@ -96,7 +98,8 @@ class VectorRetriever(BaseRetriever):
                     doc_id=self._doc_ids[idx],
                     text=self._documents[idx],
                     score=float(dist),
-                ))
+                )
+            )
         return results
 
     def reset(self) -> None:

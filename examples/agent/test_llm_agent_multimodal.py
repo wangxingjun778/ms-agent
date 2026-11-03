@@ -3,6 +3,7 @@ LLMAgent 多模态对话测试
 
 从 LLMAgent 层面测试多模态功能，覆盖 stream 和非 stream 两种模式。
 """
+
 import asyncio
 import os
 import sys
@@ -70,7 +71,7 @@ async def test_llm_agent_multimodal_non_stream():
     # 构建多模态内容
     multimodal_content = [
         {'type': 'text', 'text': '请详细描述这张图片中的内容。'},
-        {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}}
+        {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}},
     ]
 
     try:
@@ -79,7 +80,7 @@ async def test_llm_agent_multimodal_non_stream():
 
         messages = [
             Message(role='system', content='你是一个多模态助手。'),
-            Message(role='user', content=multimodal_content)
+            Message(role='user', content=multimodal_content),
         ]
 
         response = await agent.run(messages=messages)
@@ -92,6 +93,7 @@ async def test_llm_agent_multimodal_non_stream():
     except Exception as e:
         print(f'\n[错误] 非 stream 多模态对话失败: {e}')
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -115,7 +117,7 @@ async def test_llm_agent_multimodal_stream():
     # 构建多模态内容
     multimodal_content = [
         {'type': 'text', 'text': '请用中文描述这张图片中的内容。'},
-        {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}}
+        {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}},
     ]
 
     try:
@@ -125,7 +127,7 @@ async def test_llm_agent_multimodal_stream():
 
         messages = [
             Message(role='system', content='你是一个多模态助手。'),
-            Message(role='user', content=multimodal_content)
+            Message(role='user', content=multimodal_content),
         ]
 
         # stream 模式调用
@@ -137,7 +139,7 @@ async def test_llm_agent_multimodal_stream():
                 last_msg = response_chunk[-1]
                 if last_msg.content and len(last_msg.content) > len(full_response):
                     # 流式输出新增内容
-                    sys.stdout.write(last_msg.content[len(full_response):])
+                    sys.stdout.write(last_msg.content[len(full_response) :])
                     sys.stdout.flush()
                     full_response = last_msg.content
 
@@ -147,6 +149,7 @@ async def test_llm_agent_multimodal_stream():
     except Exception as e:
         print(f'\n[错误] stream 多模态对话失败: {e}')
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -170,16 +173,13 @@ async def test_llm_agent_multimodal_base64_non_stream():
     agent = LLMAgent(config=config, tag=tag)
 
     # 一个简单的测试图片 base64 (1x1 像素)
-    test_image_base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk+M9Qz0AEYBxVSF+FABJADq0/8ZEPAAAAAElFTkSuQmCC'
+    test_image_base64 = (
+        'iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk+M9Qz0AEYBxVSF+FABJADq0/8ZEPAAAAAElFTkSuQmCC'
+    )
 
     multimodal_content = [
         {'type': 'text', 'text': '这是一个什么颜色的图片？请用中文简短回答。'},
-        {
-            'type': 'image_url',
-            'image_url': {
-                'url': f'data:image/png;base64,{test_image_base64}'
-            }
-        }
+        {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{test_image_base64}'}},
     ]
 
     try:
@@ -188,7 +188,7 @@ async def test_llm_agent_multimodal_base64_non_stream():
 
         messages = [
             Message(role='system', content='你是一个多模态助手。'),
-            Message(role='user', content=multimodal_content)
+            Message(role='user', content=multimodal_content),
         ]
 
         response = await agent.run(messages=messages)
@@ -199,6 +199,7 @@ async def test_llm_agent_multimodal_base64_non_stream():
     except Exception as e:
         print(f'\n[错误] Base64 多模态对话失败: {e}')
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -226,12 +227,12 @@ async def test_llm_agent_multimodal_conversation():
 
         multimodal_content = [
             {'type': 'text', 'text': '这张图片里有几个人？'},
-            {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}}
+            {'type': 'image_url', 'image_url': {'url': TEST_IMAGE_URL}},
         ]
 
         messages = [
             Message(role='system', content='你是一个多模态助手。'),
-            Message(role='user', content=multimodal_content)
+            Message(role='user', content=multimodal_content),
         ]
         response = await agent.run(messages=messages)
         print(f'\n[第一轮回复] {response[-1].content[:200]}...')
@@ -260,6 +261,7 @@ async def test_llm_agent_multimodal_conversation():
     except Exception as e:
         print(f'\n[错误] 多轮对话失败: {e}')
         import traceback
+
         traceback.print_exc()
         return False
 

@@ -12,6 +12,7 @@ Usage::
 
 External backends can self-register via entry_points or explicit import.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,13 +37,14 @@ class BackendRegistry:
         override: bool = False,
     ) -> None:
         if name in self._backends and not override:
-            logger.warning(f"[registry] Backend '{name}' already registered "
-                           f'({self._backends[name].__name__}), skipping '
-                           f'{cls.__name__}. Pass override=True to replace.')
+            logger.warning(
+                f"[registry] Backend '{name}' already registered "
+                f'({self._backends[name].__name__}), skipping '
+                f'{cls.__name__}. Pass override=True to replace.'
+            )
             return
         self._backends[name] = cls
-        logger.debug(
-            f"[registry] Registered backend '{name}' → {cls.__name__}")
+        logger.debug(f"[registry] Registered backend '{name}' → {cls.__name__}")
 
     def get(self, name: str) -> Optional[Type[BaseMemoryBackend]]:
         return self._backends.get(name)
@@ -56,14 +58,14 @@ class BackendRegistry:
         cls = self._backends.get(name)
         if cls is not None:
             return cls
-        logger.warning(f"[registry] Backend '{name}' not found. "
-                       f'Available: {list(self._backends)}. '
-                       f"Falling back to '{fallback}'.")
+        logger.warning(
+            f"[registry] Backend '{name}' not found. Available: {list(self._backends)}. Falling back to '{fallback}'."
+        )
         cls = self._backends.get(fallback)
         if cls is None:
             raise ValueError(
-                f"Neither '{name}' nor fallback '{fallback}' registered. "
-                f'Available: {list(self._backends)}')
+                f"Neither '{name}' nor fallback '{fallback}' registered. Available: {list(self._backends)}"
+            )
         return cls
 
     def list_available(self) -> list[str]:

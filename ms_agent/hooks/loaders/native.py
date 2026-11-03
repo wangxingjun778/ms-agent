@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-import yaml
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from ms_agent.hooks.registry import HookRegistry
 
 
 class NativeYamlLoader:
-
     @staticmethod
     def load_file(
         path: Path | str,
@@ -31,7 +31,6 @@ class NativeYamlLoader:
 
 
 class NativeJsonLoader:
-
     @staticmethod
     def load_file(
         path: Path | str,

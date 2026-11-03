@@ -40,8 +40,10 @@ Declare dependencies in the appropriate `requirements/` extra. WebUI dependencie
 must also agree with `webui/backend/pyproject.toml` and its lockfile. Keep optional
 integrations out of imports needed by unrelated SDK features.
 
-Follow `setup.cfg` for SDK Python formatting and the existing conventions within
-WebUI modules. Development skills are available in `.agents/skills/`.
+Follow `ruff.toml` for SDK Python formatting (`make lint` checks, `make
+format` fixes) and the existing conventions within WebUI modules, which the
+WebUI workflow checks separately. Development skills are available in
+`.agents/skills/`.
 
 Use the tests nearest the changed behavior. WebUI commands and checks are in
 `webui/README.md`; installed-package behavior is checked by

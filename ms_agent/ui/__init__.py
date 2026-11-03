@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# isort: skip_file  # noqa
 """UI-agnostic contract layer.
 
 The stable abstraction every front-end depends on (TUI now, WebUI backend and
@@ -8,12 +7,32 @@ so the same structured event + async-input contracts validate the WebUI
 interface design. Pure stdlib; importing this package pulls in no rich /
 prompt_toolkit / omegaconf.
 """
+
 from ms_agent.ui.events import (
-    AgentEvent, AgentEventSink, ContentDelta, ContentEnd, ContextCompacted,
-    ErrorRaised, JsonlEventSink, Notice, PermissionRequested,
-    PermissionResolved, PlanEntry, PlanUpdated, ReasoningDelta, ReasoningEnded,
-    ReasoningStarted, RecordingSink, TeeEventSink, ToolCallCompleted,
-    ToolCallStarted, TurnCompleted, TurnStarted, UsageInfo, UserMessage)
+    AgentEvent,
+    AgentEventSink,
+    ContentDelta,
+    ContentEnd,
+    ContextCompacted,
+    ErrorRaised,
+    JsonlEventSink,
+    Notice,
+    PermissionRequested,
+    PermissionResolved,
+    PlanEntry,
+    PlanUpdated,
+    ReasoningDelta,
+    ReasoningEnded,
+    ReasoningStarted,
+    RecordingSink,
+    TeeEventSink,
+    ToolCallCompleted,
+    ToolCallStarted,
+    TurnCompleted,
+    TurnStarted,
+    UsageInfo,
+    UserMessage,
+)
 from ms_agent.ui.input import InputSource, StdinInputSource
 
 __all__ = [

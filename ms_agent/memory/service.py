@@ -1,4 +1,5 @@
 """Memory service with per-user isolation, no process-level singletons."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,8 +41,7 @@ class MemoryService:
     ) -> None:
         """Configure the service; backend and directories are initialized lazily."""
         self.user_id = self._validate_user_id(user_id)
-        self.memory_dir = (
-            Path(base_dir).expanduser() / 'users' / self.user_id / 'memory')
+        self.memory_dir = Path(base_dir).expanduser() / 'users' / self.user_id / 'memory'
         self.llm_client = llm_client
         self._lock = asyncio.Lock()
         self._backend: Optional[FileBasedBackend] = None
@@ -53,8 +53,7 @@ class MemoryService:
             if self._closed:
                 raise RuntimeError('MemoryService is closed')
             if self._backend is None:
-                await asyncio.to_thread(
-                    self.memory_dir.mkdir, parents=True, exist_ok=True)
+                await asyncio.to_thread(self.memory_dir.mkdir, parents=True, exist_ok=True)
                 config = MemoryConfig(
                     base_dir=str(self.memory_dir),
                     user_id=self.user_id,
@@ -65,9 +64,7 @@ class MemoryService:
                     char_limit=1_000_000,
                 )
                 backend = FileBasedBackend(config)
-                start_kwargs = (
-                    {'llm': self.llm_client}
-                    if self.llm_client is not None else {})
+                start_kwargs = {'llm': self.llm_client} if self.llm_client is not None else {}
                 await backend.start(**start_kwargs)
                 self._backend = backend
             return self._backend
@@ -115,8 +112,8 @@ class MemoryService:
                 seen.update(
                     str(entry.get('metadata', {}).get('content_hash'))
                     for entry in entries
-                    if isinstance(entry.get('metadata'), dict)
-                    and entry['metadata'].get('content_hash'))
+                    if isinstance(entry.get('metadata'), dict) and entry['metadata'].get('content_hash')
+                )
 
                 batch_hashes: Set[str] = set()
                 new_hashes: List[str] = []
@@ -140,18 +137,17 @@ class MemoryService:
                                 'role': role,
                                 'content_hash': content_hash,
                             },
-                        ))
+                        )
+                    )
 
                 if new_entries:
-                    await asyncio.to_thread(
-                        self._append_entries_sync, new_entries)
+                    await asyncio.to_thread(self._append_entries_sync, new_entries)
                     entries.extend(new_entries)
 
                 if not batch_hashes:
                     return
 
-                await asyncio.to_thread(
-                    self._write_memory_markdown_sync, entries)
+                await asyncio.to_thread(self._write_memory_markdown_sync, entries)
                 for content_hash in new_hashes:
                     if content_hash not in seen:
                         ledger.append(content_hash)
@@ -176,8 +172,7 @@ class MemoryService:
                 )
                 backend.invalidate()
             except (OSError, TypeError, ValueError) as exc:
-                logger.warning('Memory ingest failed for user %s: %s',
-                               self.user_id, exc)
+                logger.warning('Memory ingest failed for user %s: %s', self.user_id, exc)
 
     async def search(
         self,
@@ -186,8 +181,7 @@ class MemoryService:
     ) -> List[Dict[str, Any]]:
         """Search structured memory entries using deterministic keyword scoring."""
         query = str(query or '').strip()
-        if (self._closed or not query or top_k <= 0
-                or not self._entries_path.exists()):
+        if self._closed or not query or top_k <= 0 or not self._entries_path.exists():
             return []
         await self._ensure_backend()
         async with self._lock:
@@ -255,23 +249,19 @@ class MemoryService:
                     try:
                         entry = json.loads(line)
                     except (json.JSONDecodeError, TypeError):
-                        logger.warning('Ignoring malformed memory record %s:%s',
-                                       self._entries_path, line_number)
+                        logger.warning('Ignoring malformed memory record %s:%s', self._entries_path, line_number)
                         continue
-                    if (isinstance(entry, dict)
-                            and isinstance(entry.get('content'), str)):
+                    if isinstance(entry, dict) and isinstance(entry.get('content'), str):
                         entries.append(entry)
         except OSError as exc:
-            logger.warning('Unable to read memory file %s: %s',
-                           self._entries_path, exc)
+            logger.warning('Unable to read memory file %s: %s', self._entries_path, exc)
         return entries
 
     def _append_entries_sync(self, entries: List[Dict[str, Any]]) -> None:
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         with self._entries_path.open('a', encoding='utf-8') as handle:
             for entry in entries:
-                handle.write(
-                    json.dumps(entry, ensure_ascii=False, default=str) + '\n')
+                handle.write(json.dumps(entry, ensure_ascii=False, default=str) + '\n')
             handle.flush()
             os.fsync(handle.fileno())
 
@@ -281,14 +271,17 @@ class MemoryService:
         try:
             state = json.loads(self._state_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, TypeError) as exc:
-            logger.warning('Unable to read ingest state %s: %s',
-                           self._state_path, exc)
+            logger.warning('Unable to read ingest state %s: %s', self._state_path, exc)
             return {'version': 1, 'hashes': [], 'sessions': {}}
-        return state if isinstance(state, dict) else {
-            'version': 1,
-            'hashes': [],
-            'sessions': {},
-        }
+        return (
+            state
+            if isinstance(state, dict)
+            else {
+                'version': 1,
+                'hashes': [],
+                'sessions': {},
+            }
+        )
 
     def _write_memory_markdown_sync(
         self,
@@ -347,10 +340,7 @@ class MemoryService:
         if isinstance(content, str):
             return content.strip()
         if isinstance(content, list):
-            parts = [
-                str(item.get('text', '')).strip()
-                for item in content if isinstance(item, dict)
-            ]
+            parts = [str(item.get('text', '')).strip() for item in content if isinstance(item, dict)]
             return ' '.join(part for part in parts if part)
         return str(content or '').strip()
 
@@ -381,7 +371,13 @@ class MemoryService:
     @staticmethod
     def _validate_user_id(user_id: str) -> str:
         value = str(user_id or '').strip()
-        if (not value or value in {'.', '..'} or '/' in value or '\\' in value
-                or os.sep in value or (os.altsep and os.altsep in value)):
+        if (
+            not value
+            or value in {'.', '..'}
+            or '/' in value
+            or '\\' in value
+            or os.sep in value
+            or (os.altsep and os.altsep in value)
+        ):
             raise ValueError('user_id must be a non-empty path component')
         return value

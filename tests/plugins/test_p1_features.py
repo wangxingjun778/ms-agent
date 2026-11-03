@@ -45,6 +45,7 @@ def _basic_plugin(root, *, user_config=None, dependencies=None):
 
 def test_ms_agent_uri_resolves_inner_source():
     from urllib.parse import quote
+
     inner = 'github://anthropics/claude-plugins-official@main#plugins/hookify'
     uri = f'ms-agent://plugin/install?source={quote(inner, safe="")}'
     assert resolve_ms_agent_uri(uri) == inner
@@ -60,6 +61,7 @@ def test_tarball_install(tmp_path):
 
     global_dir = tmp_path / '.ms_agent'
     from ms_agent.plugins.config_manager import PluginConfigManager
+
     manager = PluginConfigManager(global_dir=global_dir)
     installer = PluginInstaller(config_manager=manager, global_root=global_dir)
     manifest = installer.install(str(archive), scope='global')
@@ -76,20 +78,25 @@ def test_dependencies_install_order(tmp_path):
     )
     _basic_plugin(child)
     (child / '.claude-plugin' / 'plugin.json').write_text(
-        json.dumps({
-            'name': 'child-plugin',
-            'version': '1.0.0',
-            'dependencies': [{
-                'name': 'base-plugin',
-                'version': '~1.0.0',
-                'source': str(base),
-            }],
-        }),
+        json.dumps(
+            {
+                'name': 'child-plugin',
+                'version': '1.0.0',
+                'dependencies': [
+                    {
+                        'name': 'base-plugin',
+                        'version': '~1.0.0',
+                        'source': str(base),
+                    }
+                ],
+            }
+        ),
         encoding='utf-8',
     )
 
     global_dir = tmp_path / '.ms_agent'
     from ms_agent.plugins.config_manager import PluginConfigManager
+
     manager = PluginConfigManager(global_dir=global_dir)
     installer = PluginInstaller(config_manager=manager, global_root=global_dir)
     installer.install(str(child), scope='global')
@@ -101,15 +108,18 @@ def test_missing_dependency_without_source_raises(tmp_path):
     root = tmp_path / 'needs-dep'
     _basic_plugin(root)
     (root / '.claude-plugin' / 'plugin.json').write_text(
-        json.dumps({
-            'name': 'needs-dep',
-            'version': '1.0.0',
-            'dependencies': [{'name': 'missing-plugin', 'version': '1.0.0'}],
-        }),
+        json.dumps(
+            {
+                'name': 'needs-dep',
+                'version': '1.0.0',
+                'dependencies': [{'name': 'missing-plugin', 'version': '1.0.0'}],
+            }
+        ),
         encoding='utf-8',
     )
     global_dir = tmp_path / '.ms_agent'
     from ms_agent.plugins.config_manager import PluginConfigManager
+
     manager = PluginConfigManager(global_dir=global_dir)
     installer = PluginInstaller(config_manager=manager, global_root=global_dir)
     with pytest.raises(PluginDependencyError):
@@ -146,10 +156,7 @@ def test_commands_merge_into_skill_catalog(tmp_path):
             plugin_data_root=tmp_path / 'data',
         ),
     )
-    command_sources = [
-        source for source in result.skill_sources
-        if source.capability == 'commands'
-    ]
+    command_sources = [source for source in result.skill_sources if source.capability == 'commands']
     assert len(command_sources) == 1
     catalog = SkillCatalog()
     catalog.load_from_sources(command_sources)
@@ -180,12 +187,14 @@ def test_agent_md_subdirectory(tmp_path):
 
 def test_build_hook_env_includes_session_id(monkeypatch):
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'secret')
-    env = build_hook_env(HookExecutionContext(
-        session_id='session-123',
-        project_path='/tmp/project',
-        plugin_root='/tmp/plugin',
-        plugin_data_dir='/tmp/data',
-    ))
+    env = build_hook_env(
+        HookExecutionContext(
+            session_id='session-123',
+            project_path='/tmp/project',
+            plugin_root='/tmp/plugin',
+            plugin_data_dir='/tmp/data',
+        )
+    )
     assert env['MS_AGENT_SESSION_ID'] == 'session-123'
     assert 'ANTHROPIC_API_KEY' not in env
 
@@ -194,6 +203,7 @@ def test_plugin_registry_managed_paths(tmp_path):
     global_dir = tmp_path / '.ms_agent'
     from ms_agent.plugins.config_manager import PluginConfigManager
     from ms_agent.plugins.installer import PluginInstaller
+
     source = tmp_path / 'source-plugin'
     _basic_plugin(source)
     manager = PluginConfigManager(global_dir=global_dir)
@@ -205,14 +215,16 @@ def test_plugin_registry_managed_paths(tmp_path):
 
 def test_resolve_task_entry_maps_builtin_single_agent():
     registry = PluginAgentRegistry()
-    registry.rebuild([
-        AgentDef(
-            plugin_id='hookify',
-            name='conversation-analyzer',
-            path='/tmp/agents/conversation-analyzer.md',
-            description='Analyze conversation',
-        ),
-    ])
+    registry.rebuild(
+        [
+            AgentDef(
+                plugin_id='hookify',
+                name='conversation-analyzer',
+                path='/tmp/agents/conversation-analyzer.md',
+                description='Analyze conversation',
+            ),
+        ]
+    )
     entry = AgentDelegate.resolve_task_entry(
         registry,
         {'subagent_type': 'general-purpose', 'prompt': 'hi'},
@@ -236,14 +248,16 @@ def test_example_plugin_mcp_fixture(tmp_path):
     root = tmp_path / 'example-plugin'
     _basic_plugin(root)
     (root / '.mcp.json').write_text(
-        json.dumps({
-            'mcpServers': {
-                'example': {
-                    'type': 'http',
-                    'url': 'http://127.0.0.1:9999/mcp',
+        json.dumps(
+            {
+                'mcpServers': {
+                    'example': {
+                        'type': 'http',
+                        'url': 'http://127.0.0.1:9999/mcp',
+                    },
                 },
-            },
-        }),
+            }
+        ),
         encoding='utf-8',
     )
     (root / 'commands').mkdir()
@@ -274,6 +288,7 @@ def test_runtime_user_config_roundtrip(tmp_path):
     global_dir = tmp_path / '.ms_agent'
     from ms_agent.plugins.config_manager import PluginConfigManager
     from ms_agent.plugins.installer import PluginInstaller
+
     manager = PluginConfigManager(global_dir=global_dir)
     installer = PluginInstaller(config_manager=manager, global_root=global_dir)
     installer.install(str(root), scope='global')

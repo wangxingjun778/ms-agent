@@ -4,7 +4,6 @@ from ms_agent.personalization.profile import ProfileManager
 
 
 class TestProfileManager:
-
     @pytest.fixture
     def profile_dir(self, tmp_path):
         return tmp_path / '.ms_agent'

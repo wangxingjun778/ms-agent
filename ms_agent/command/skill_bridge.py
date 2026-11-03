@@ -17,14 +17,14 @@ expansion semantics to non-interactive surfaces (WebUI backend, future TUI):
   with the rest of the text as the arguments. Unknown ``/x`` tokens fall
   through (return None) so ordinary prose is never hijacked.
 """
+
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
 
 from ms_agent.command.router import CommandRouter
-from ms_agent.command.types import (CommandContext, CommandResult,
-                                    CommandResultType)
+from ms_agent.command.types import CommandContext, CommandResult, CommandResultType
 
 if TYPE_CHECKING:
     from ms_agent.skill.catalog import SkillCatalog
@@ -48,8 +48,7 @@ def find_skill(catalog: 'SkillCatalog', name: str) -> 'SkillSchema | None':
     return None
 
 
-def expand_skill(catalog: 'SkillCatalog', name_or_id: str,
-                 args: str) -> CommandResult | None:
+def expand_skill(catalog: 'SkillCatalog', name_or_id: str, args: str) -> CommandResult | None:
     """Expand one known-skill invocation into a CommandResult.
 
     Returns None when the skill doesn't exist; else a SUBMIT_PROMPT whose
@@ -67,22 +66,20 @@ def expand_skill(catalog: 'SkillCatalog', name_or_id: str,
     body = body.replace('$ARGUMENTS', args)
 
     tail = (
-        f"User's request: {args}" if args else
-        'The user invoked this skill without additional arguments; follow '
+        f"User's request: {args}"
+        if args
+        else 'The user invoked this skill without additional arguments; follow '
         'its instructions and proceed (ask for the missing input only if the '
-        'skill requires one).')
-    enriched = (
-        f'Use the [{skill.name}] skill located at `{skill.skill_path}`.\n\n'
-        f'{body}\n\n'
-        f'{tail}')
+        'skill requires one).'
+    )
+    enriched = f'Use the [{skill.name}] skill located at `{skill.skill_path}`.\n\n{body}\n\n{tail}'
     return CommandResult(
         type=CommandResultType.SUBMIT_PROMPT,
         content=enriched,
     )
 
 
-def expand_slash_text(catalog: 'SkillCatalog',
-                      text: str) -> CommandResult | None:
+def expand_slash_text(catalog: 'SkillCatalog', text: str) -> CommandResult | None:
     """Expand the first catalog-known ``/token`` found anywhere in ``text``.
 
     Tokens must be whitespace-delimited (or at the string boundaries); the
@@ -97,14 +94,12 @@ def expand_slash_text(catalog: 'SkillCatalog',
             continue
         # Drop the token and mend the seam (collapse doubled spaces/tabs only —
         # newlines and the rest of the text stay untouched).
-        args = re.sub(r'[ \t]{2,}', ' ',
-                      text[:match.start()] + text[match.end():]).strip()
+        args = re.sub(r'[ \t]{2,}', ' ', text[: match.start()] + text[match.end() :]).strip()
         return expand_skill(catalog, match.group(1), args)
     return None
 
 
 class SkillCommandBridge:
-
     def __init__(self, catalog: 'SkillCatalog') -> None:
         self._catalog = catalog
 

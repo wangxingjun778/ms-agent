@@ -1,17 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # !/usr/bin/env python
-from setuptools import find_packages, setup
-from setuptools.command.build_py import build_py as _build_py
-from setuptools.command.sdist import sdist as _sdist
-
 import importlib.util
 import os
 import shutil
 from pathlib import Path
 
+from setuptools import find_packages, setup
+from setuptools.command.build_py import build_py as _build_py
+from setuptools.command.sdist import sdist as _sdist
+
 _webui_spec = importlib.util.spec_from_file_location(
-    '_ms_agent_webui_build',
-    Path(__file__).resolve().parent / '.dev_scripts/webui/webui_packaging.py')
+    '_ms_agent_webui_build', Path(__file__).resolve().parent / '.dev_scripts/webui/webui_packaging.py'
+)
 webui_packaging = importlib.util.module_from_spec(_webui_spec)
 _webui_spec.loader.exec_module(webui_packaging)
 
@@ -50,6 +50,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     import re
     import sys
     from os.path import exists
+
     require_fpath = fname
 
     def parse_line(line):
@@ -79,8 +80,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                     if ';' in rest:
                         # Handle platform specific dependencies
                         # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
-                        version, platform_deps = map(str.strip,
-                                                     rest.split(';'))
+                        version, platform_deps = map(str.strip, rest.split(';'))
                         info['platform_deps'] = platform_deps
                     else:
                         version = rest  # NOQA
@@ -94,8 +94,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                 if line.startswith(('http://', 'https://')):
                     print('skip http requirements %s' % line)
                     continue
-                if line and not line.startswith('#') and not line.startswith(
-                        '--'):
+                if line and not line.startswith('#') and not line.startswith('--'):
                     for info in parse_line(line):
                         yield info
                 elif line and line.startswith('--find-links'):
@@ -130,7 +129,6 @@ def parse_requirements(fname='requirements.txt', with_version=True):
 
 
 class build_py(_build_py):
-
     def run(self):
         if getattr(self, 'editable_mode', False):
             super().run()
@@ -157,8 +155,7 @@ class build_py(_build_py):
         # (skill_id = ``ms-agent``) under ``ms_agent/skills/ms-agent/``.
         skill_src = os.path.join(os.path.dirname(__file__), 'ms-agent-skills')
         if os.path.isdir(skill_src):
-            skill_dst = os.path.join(self.build_lib, 'ms_agent', 'skills',
-                                     'ms-agent')
+            skill_dst = os.path.join(self.build_lib, 'ms_agent', 'skills', 'ms-agent')
             os.makedirs(os.path.dirname(skill_dst), exist_ok=True)
             if os.path.exists(skill_dst):
                 shutil.rmtree(skill_dst)
@@ -170,11 +167,13 @@ class build_py(_build_py):
 
     def get_source_files(self):
         files = super().get_source_files()
-        files.extend('webui/' + rel
-                     for rel in webui_packaging.resource_paths(
-                         include_build=(webui_packaging.WEBUI /
-                                        webui_packaging.MANIFEST).is_file())
-                     if (webui_packaging.WEBUI / rel).is_file())
+        files.extend(
+            'webui/' + rel
+            for rel in webui_packaging.resource_paths(
+                include_build=(webui_packaging.WEBUI / webui_packaging.MANIFEST).is_file()
+            )
+            if (webui_packaging.WEBUI / rel).is_file()
+        )
         if (webui_packaging.WEBUI / webui_packaging.MANIFEST).is_file():
             files.append('webui/' + webui_packaging.MANIFEST)
         return files
@@ -185,14 +184,14 @@ class build_py(_build_py):
             files.extend(
                 str(Path(self.build_lib) / 'ms_agent/webui' / rel)
                 for rel in webui_packaging.resource_paths(
-                    include_build=(webui_packaging.WEBUI /
-                                   webui_packaging.MANIFEST).is_file())
-                + [webui_packaging.MANIFEST])
+                    include_build=(webui_packaging.WEBUI / webui_packaging.MANIFEST).is_file()
+                )
+                + [webui_packaging.MANIFEST]
+            )
         return files
 
 
 class sdist(_sdist):
-
     def run(self):
         if (webui_packaging.WEBUI / webui_packaging.MANIFEST).is_file():
             webui_packaging.validate_release()
@@ -200,21 +199,16 @@ class sdist(_sdist):
 
 
 if __name__ == '__main__':
-    print(
-        'Usage: `python setup.py sdist bdist_wheel` or `pip install .` from source code'
-    )
+    print('Usage: `python setup.py sdist bdist_wheel` or `pip install .` from source code')
 
-    install_requires, deps_link = parse_requirements(
-        'requirements/framework.txt')
+    install_requires, deps_link = parse_requirements('requirements/framework.txt')
 
     extra_requires = {}
-    extra_requires['research'], _ = parse_requirements(
-        'requirements/research.txt')
+    extra_requires['research'], _ = parse_requirements('requirements/research.txt')
     extra_requires['code'], _ = parse_requirements('requirements/code.txt')
     extra_requires['acp'], _ = parse_requirements('requirements/acp.txt')
     extra_requires['a2a'], _ = parse_requirements('requirements/a2a.txt')
-    extra_requires['retrieval'], _ = parse_requirements(
-        'requirements/retrieval.txt')
+    extra_requires['retrieval'], _ = parse_requirements('requirements/retrieval.txt')
     extra_requires['cinema'], _ = parse_requirements('requirements/cinema.txt')
     extra_requires['docs'], _ = parse_requirements('requirements/docs.txt')
     extra_requires['webui'], _ = parse_requirements('requirements/webui.txt')
@@ -223,16 +217,14 @@ if __name__ == '__main__':
     # yields a fully-featured install. ``docs`` is build-only and intentionally
     # excluded. De-duplicated for a clean, deterministic dependency set.
     all_requires = list(install_requires)
-    for _group in ('research', 'code', 'acp', 'a2a', 'retrieval', 'cinema',
-                   'webui'):
+    for _group in ('research', 'code', 'acp', 'a2a', 'retrieval', 'cinema', 'webui'):
         all_requires.extend(extra_requires[_group])
     extra_requires['all'] = sorted(set(all_requires))
 
     setup(
         name='ms-agent',
         version=get_version(),
-        description=
-        'MS-Agent: Lightweight Framework for Empowering Agents with Autonomous Exploration',
+        description='MS-Agent: Lightweight Framework for Empowering Agents with Autonomous Exploration',
         long_description=readme(),
         long_description_content_type='text/markdown',
         author='The ModelScope teams',
@@ -242,10 +234,7 @@ if __name__ == '__main__':
         packages=find_packages(exclude=('configs', 'demo')),
         python_requires='>=3.10',
         include_package_data=True,
-        cmdclass={
-            'build_py': build_py,
-            'sdist': sdist
-        },
+        cmdclass={'build_py': build_py, 'sdist': sdist},
         package_data={
             'ms_agent': [
                 'projects/**/*',
@@ -271,8 +260,7 @@ if __name__ == '__main__':
         license='Apache License 2.0',
         install_requires=install_requires,
         extras_require=extra_requires,
-        entry_points={
-            'console_scripts': ['ms-agent=ms_agent.cli.cli:run_cmd']
-        },
+        entry_points={'console_scripts': ['ms-agent=ms_agent.cli.cli:run_cmd']},
         dependency_links=deps_link,
-        zip_safe=False)
+        zip_safe=False,
+    )

@@ -11,6 +11,7 @@ This replaces the hard-coded ``all_services_mapping`` (4 entries) and the thin
 ``ModelScope``/``DashScope``/``DeepSeek`` subclasses, whose only real
 differences (base_url, api_key, continue-gen flag) become spec data.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,8 +40,7 @@ class ProviderSpec:
     keywords: List[str] = field(default_factory=list)
     # Alternative service names that resolve to this spec (e.g. 'glm' -> zhipu).
     aliases: List[str] = field(default_factory=list)
-    capabilities: ProviderCapabilities = field(
-        default_factory=ProviderCapabilities)
+    capabilities: ProviderCapabilities = field(default_factory=ProviderCapabilities)
     # Continue-generation mode for OpenAI-compatible providers:
     #   'partial' (DashScope/Bailian) | 'prefix' (DeepSeek beta) | None
     continue_gen_mode: Optional[str] = None
@@ -102,19 +102,16 @@ class ProviderRegistry:
         return list(self._specs.values())
 
     def _register_builtins(self) -> None:
-        openai_caps = ProviderCapabilities.from_list(
-            ['tool_call', 'streaming', 'vision', 'continue_gen'])
-        openai_cache_caps = ProviderCapabilities.from_list([
-            'tool_call', 'streaming', 'vision', 'prefix_cache', 'continue_gen'
-        ])
+        openai_caps = ProviderCapabilities.from_list(['tool_call', 'streaming', 'vision', 'continue_gen'])
+        openai_cache_caps = ProviderCapabilities.from_list(
+            ['tool_call', 'streaming', 'vision', 'prefix_cache', 'continue_gen']
+        )
         # NOTE: no 'prefix_cache' here. Anthropic supports prompt caching
         # natively, but AnthropicMessagesTransport does not implement it yet.
         # Keep the capability set honest (declared == implemented); add
         # 'prefix_cache' back only once the transport applies cache_control.
-        anthropic_caps = ProviderCapabilities.from_list(
-            ['tool_call', 'streaming', 'reasoning', 'vision'])
-        reasoning_caps = ProviderCapabilities.from_list(
-            ['tool_call', 'streaming', 'reasoning', 'continue_gen'])
+        anthropic_caps = ProviderCapabilities.from_list(['tool_call', 'streaming', 'reasoning', 'vision'])
+        reasoning_caps = ProviderCapabilities.from_list(['tool_call', 'streaming', 'reasoning', 'continue_gen'])
 
         # This order is user-visible: the WebUI preserves registry order for
         # both the provider rail and provider selectors. Keep ModelScope first
@@ -160,8 +157,7 @@ class ProviderRegistry:
                 display_name='Google Gemini',
                 transport=TRANSPORT_OPENAI_COMPAT,
                 api_key_env=['GOOGLE_API_KEY', 'GEMINI_API_KEY'],
-                default_base_url=
-                'https://generativelanguage.googleapis.com/v1beta/openai/',
+                default_base_url='https://generativelanguage.googleapis.com/v1beta/openai/',
                 base_url_env=['GOOGLE_BASE_URL'],
                 keywords=['gemini-', 'gemma-'],
                 capabilities=openai_caps,
@@ -170,9 +166,7 @@ class ProviderRegistry:
                 name='zhipu',
                 display_name='Zhipu AI (GLM)',
                 transport=TRANSPORT_OPENAI_COMPAT,
-                api_key_env=[
-                    'GLM_API_KEY', 'ZHIPU_API_KEY', 'ZHIPUAI_API_KEY'
-                ],
+                api_key_env=['GLM_API_KEY', 'ZHIPU_API_KEY', 'ZHIPUAI_API_KEY'],
                 default_base_url='https://open.bigmodel.cn/api/paas/v4',
                 base_url_env=['GLM_BASE_URL', 'ZHIPU_BASE_URL'],
                 keywords=['glm-', 'glm4', 'cogview', 'charglm'],
@@ -210,8 +204,7 @@ class ProviderRegistry:
                 display_name='Alibaba (DashScope)',
                 transport=TRANSPORT_OPENAI_COMPAT,
                 api_key_env=['DASHSCOPE_API_KEY'],
-                default_base_url=
-                'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                default_base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
                 base_url_env=['DASHSCOPE_BASE_URL'],
                 keywords=[],
                 capabilities=openai_cache_caps,

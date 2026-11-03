@@ -1,7 +1,10 @@
 """Tests for new builtin commands: /usage, /model, /config, /quit, /tools, /compact, /context."""
-import pytest
+
 from dataclasses import dataclass, field
 from typing import List
+
+import pytest
+from omegaconf import OmegaConf
 
 from ms_agent.command.builtin import register_builtin_commands
 from ms_agent.command.router import CommandRouter
@@ -9,24 +12,23 @@ from ms_agent.command.types import CommandContext, CommandResultType
 from ms_agent.llm.utils import Message
 
 
-from omegaconf import OmegaConf
-
-
 def _make_mock_config():
-    return OmegaConf.create({
-        'llm': {
-            'service': 'openai',
-            'model': 'qwen3.7-plus',
-            'openai_api_key': 'sk-test-secret-key',
-        },
-        'tools': {
-            'file_system': {},
-            'web_search': {},
-            'code_executor': {},
-            'plugins': ['tools/my_plugin.py'],
-        },
-        'generation_config': {'stream': True},
-    })
+    return OmegaConf.create(
+        {
+            'llm': {
+                'service': 'openai',
+                'model': 'qwen3.7-plus',
+                'openai_api_key': 'sk-test-secret-key',
+            },
+            'tools': {
+                'file_system': {},
+                'web_search': {},
+                'code_executor': {},
+                'plugins': ['tools/my_plugin.py'],
+            },
+            'generation_config': {'stream': True},
+        }
+    )
 
 
 @dataclass
@@ -66,6 +68,7 @@ class TestUsage:
     @pytest.fixture(autouse=True)
     def _save_restore_tokens(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         saved = (
             LLMAgent.TOTAL_PROMPT_TOKENS,
             LLMAgent.TOTAL_COMPLETION_TOKENS,
@@ -81,6 +84,7 @@ class TestUsage:
     @pytest.mark.asyncio
     async def test_shows_token_counts(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.TOTAL_PROMPT_TOKENS = 1000
         LLMAgent.TOTAL_COMPLETION_TOKENS = 500
         LLMAgent.TOTAL_REASONING_TOKENS = 0
@@ -96,6 +100,7 @@ class TestUsage:
     @pytest.mark.asyncio
     async def test_shows_reasoning_tokens(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.TOTAL_PROMPT_TOKENS = 2000
         LLMAgent.TOTAL_COMPLETION_TOKENS = 800
         LLMAgent.TOTAL_REASONING_TOKENS = 600
@@ -107,6 +112,7 @@ class TestUsage:
     @pytest.mark.asyncio
     async def test_hides_reasoning_when_zero(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.TOTAL_PROMPT_TOKENS = 100
         LLMAgent.TOTAL_COMPLETION_TOKENS = 50
         LLMAgent.TOTAL_REASONING_TOKENS = 0
@@ -147,19 +153,18 @@ class TestModel:
     async def test_switch_model_persists_to_project_patch(self, tmp_path):
         # The committed source YAML must never be mutated by /model.
         yaml_text = (
-            'llm:\n'
-            '  service: openai\n'
-            '  model: qwen3.5-plus\n'
-            '  openai_api_key: <OPENAI_API_KEY>  # secret placeholder\n'
+            'llm:\n  service: openai\n  model: qwen3.5-plus\n  openai_api_key: <OPENAI_API_KEY>  # secret placeholder\n'
         )
         cfg_file = tmp_path / 'searcher.yaml'
         cfg_file.write_text(yaml_text, encoding='utf-8')
 
-        config = OmegaConf.create({
-            'llm': {'service': 'openai', 'model': 'qwen3.5-plus'},
-            'local_dir': str(tmp_path),
-            'name': 'searcher.yaml',
-        })
+        config = OmegaConf.create(
+            {
+                'llm': {'service': 'openai', 'model': 'qwen3.5-plus'},
+                'local_dir': str(tmp_path),
+                'name': 'searcher.yaml',
+            }
+        )
         runtime = MockRuntime(llm=MockLLM(model='qwen3.5-plus', config=config))
         router = make_router()
         ctx = make_ctx('/model qwen3.7-max', runtime=runtime)
@@ -298,6 +303,7 @@ class TestContext:
     @pytest.fixture(autouse=True)
     def _save_restore_tokens(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         saved = (
             LLMAgent.LAST_PROMPT_TOKENS,
             LLMAgent.LAST_COMPLETION_TOKENS,
@@ -313,6 +319,7 @@ class TestContext:
     @pytest.mark.asyncio
     async def test_shows_context_usage_with_known_model(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.LAST_PROMPT_TOKENS = 10000
         LLMAgent.LAST_COMPLETION_TOKENS = 2000
         LLMAgent.LAST_REASONING_TOKENS = 0
@@ -334,6 +341,7 @@ class TestContext:
     @pytest.mark.asyncio
     async def test_shows_reasoning_tokens(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.LAST_PROMPT_TOKENS = 5000
         LLMAgent.LAST_COMPLETION_TOKENS = 3000
         LLMAgent.LAST_REASONING_TOKENS = 2500
@@ -345,6 +353,7 @@ class TestContext:
     @pytest.mark.asyncio
     async def test_unknown_model_no_percentage(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.LAST_PROMPT_TOKENS = 100
         LLMAgent.LAST_COMPLETION_TOKENS = 50
         runtime = MockRuntime()
@@ -358,6 +367,7 @@ class TestContext:
     @pytest.mark.asyncio
     async def test_no_api_calls_yet(self):
         from ms_agent.agent.llm_agent import LLMAgent
+
         LLMAgent.LAST_PROMPT_TOKENS = 0
         LLMAgent.LAST_COMPLETION_TOKENS = 0
         router = make_router()

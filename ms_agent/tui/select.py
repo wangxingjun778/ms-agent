@@ -11,16 +11,14 @@ Runs on the current event loop via ``run_async`` (the agent's permission ask
 executes in the main loop, so this composes cleanly). Callers must guard for a
 TTY; there is a plain fallback for pipes/CI.
 """
+
 from __future__ import annotations
 
 import sys
 from typing import List, Optional, Sequence
 
 
-async def select_async(options: Sequence[str],
-                       *,
-                       default: int = 0,
-                       header: Optional[str] = None) -> Optional[int]:
+async def select_async(options: Sequence[str], *, default: int = 0, header: Optional[str] = None) -> Optional[int]:
     """Show an inline menu; return the chosen index, or None if cancelled.
 
     ``header`` (optional, may be multi-line) renders above the options *inside*
@@ -38,9 +36,7 @@ async def select_async(options: Sequence[str],
     return await _menu_async(options, default, header)
 
 
-async def _menu_async(options: Sequence[str],
-                      default: int,
-                      header: Optional[str] = None) -> Optional[int]:
+async def _menu_async(options: Sequence[str], default: int, header: Optional[str] = None) -> Optional[int]:
     """The prompt_toolkit menu itself (no TTY guard, so tests can drive it via
     a pipe input + AppSession)."""
     from prompt_toolkit import Application
@@ -83,8 +79,7 @@ async def _menu_async(options: Sequence[str],
     def _render():
         frags = []
         for j, hl in enumerate(header_lines):
-            frags.append(
-                ('class:head' if j == 0 else 'class:headdim', hl + '\n'))
+            frags.append(('class:head' if j == 0 else 'class:headdim', hl + '\n'))
         for i, label in enumerate(options):
             if i == sel[0]:
                 frags.append(('class:sel', f'❯ {i + 1}. {label}\n'))
@@ -94,18 +89,17 @@ async def _menu_async(options: Sequence[str],
         return frags
 
     control = FormattedTextControl(_render, focusable=True, show_cursor=False)
-    style = Style.from_dict({
-        'sel': 'bold ansicyan',
-        'opt': '',
-        'head': 'bold ansiyellow',
-        'headdim': 'ansibrightblack',
-        'hint': 'italic ansibrightblack',
-    })
+    style = Style.from_dict(
+        {
+            'sel': 'bold ansicyan',
+            'opt': '',
+            'head': 'bold ansiyellow',
+            'headdim': 'ansibrightblack',
+            'hint': 'italic ansibrightblack',
+        }
+    )
     app = Application(
-        layout=Layout(
-            HSplit(
-                [Window(control,
-                        height=len(options) + 1 + len(header_lines))])),
+        layout=Layout(HSplit([Window(control, height=len(options) + 1 + len(header_lines))])),
         key_bindings=kb,
         style=style,
         full_screen=False,
@@ -118,6 +112,7 @@ async def _menu_async(options: Sequence[str],
 async def _fallback_numeric(n: int) -> Optional[int]:
     """Non-TTY fallback: read a 1-based number (or legacy letter) from stdin."""
     import asyncio
+
     loop = asyncio.get_running_loop()
     try:
         raw = (await loop.run_in_executor(None, input, 'choice: ')).strip()

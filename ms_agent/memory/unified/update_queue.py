@@ -4,6 +4,7 @@ Same-thread_id updates are merged (messages replaced, flags OR'd).
 After *debounce_seconds* of inactivity the queue triggers
 ``LLMMergeExtractor`` → ``FactsStorage.apply_merge``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from ms_agent.utils.logger import get_logger
+
 from .config import MemoryConfig
 from .extraction.llm_merge import LLMMergeExtractor
 from .protocols import MemoryEntry
@@ -85,8 +87,7 @@ class MemoryUpdateQueue:
     ) -> None:
         """Force immediate flush (used before compression)."""
         async with self._lock:
-            self._pending[thread_id] = _PendingUpdate(
-                thread_id=thread_id, messages=messages)
+            self._pending[thread_id] = _PendingUpdate(thread_id=thread_id, messages=messages)
             self._cancel_timer(thread_id)
         await self._flush(thread_id)
 
@@ -110,11 +111,9 @@ class MemoryUpdateQueue:
 
         logger.info(f'[update_queue] Flushing facts for {thread_id}')
         existing = await self._facts.list_all()
-        existing_json = json.dumps([e.to_dict() for e in existing],
-                                   ensure_ascii=False)
+        existing_json = json.dumps([e.to_dict() for e in existing], ensure_ascii=False)
 
-        entries = await self._extractor.extract(
-            pending.messages, existing_facts=existing_json)
+        entries = await self._extractor.extract(pending.messages, existing_facts=existing_json)
         if not entries:
             return
 
@@ -125,8 +124,7 @@ class MemoryUpdateQueue:
                 facts_to_remove.extend(ids)
 
         await self._facts.apply_merge(entries, facts_to_remove)
-        logger.info(f'[update_queue] Applied {len(entries)} new facts, '
-                    f'removed {len(facts_to_remove)}')
+        logger.info(f'[update_queue] Applied {len(entries)} new facts, removed {len(facts_to_remove)}')
 
     def _cancel_timer(self, thread_id: str) -> None:
         timer = self._timers.pop(thread_id, None)

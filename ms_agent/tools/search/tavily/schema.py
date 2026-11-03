@@ -49,8 +49,7 @@ class TavilySearchRequest:
         }
         # chunks_per_source only meaningful for advanced (per Tavily docs)
         if self.search_depth == 'advanced':
-            body['chunks_per_source'] = max(
-                1, min(3, int(self.chunks_per_source)))
+            body['chunks_per_source'] = max(1, min(3, int(self.chunks_per_source)))
         if self.time_range:
             body['time_range'] = self.time_range
         if self.start_date:
@@ -93,21 +92,23 @@ class TavilySearchResult:
             raw = (r.get('raw_content') or '').strip()
             # Prefer full page text for downstream summarization; fallback to snippets
             body = raw if raw else snippet
-            rows.append({
-                'url': url,
-                'id': url,
-                'title': title,
-                'highlights': None,
-                'highlight_scores': None,
-                'summary': snippet,
-                'markdown': raw if raw else None,
-                # Pipeline uses these keys:
-                'content': body,
-                'fetch_success': bool(raw),
-                'score': r.get('score'),
-                'tavily_images': r.get('images') or [],
-                'favicon': r.get('favicon'),
-            })
+            rows.append(
+                {
+                    'url': url,
+                    'id': url,
+                    'title': title,
+                    'highlights': None,
+                    'highlight_scores': None,
+                    'summary': snippet,
+                    'markdown': raw if raw else None,
+                    # Pipeline uses these keys:
+                    'content': body,
+                    'fetch_success': bool(raw),
+                    'score': r.get('score'),
+                    'tavily_images': r.get('images') or [],
+                    'favicon': r.get('favicon'),
+                }
+            )
         return rows
 
     def extra_response_fields(self) -> Dict[str, Any]:

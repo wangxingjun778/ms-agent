@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+
 from dotenv import find_dotenv, load_dotenv
 
 from ms_agent.capabilities import create_registry
@@ -89,8 +90,7 @@ def _load_env(env_file: str | None = None) -> None:
             logger.debug('Loaded env from %s', cwd_dotenv)
             loaded_any = True
 
-    package_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    package_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     pkg_dotenv = os.path.join(package_root, '.env')
     if os.path.isfile(pkg_dotenv):
         load_dotenv(pkg_dotenv, override=False)
@@ -113,18 +113,18 @@ def _print_check() -> None:
     caps = registry.list_all()
     exposed = [c for c in caps if _is_exposed_over_mcp(c)]
     info = {
-        'status':
-        'ok',
-        'registered_total':
-        len(caps),
-        'mcp_exposed_total':
-        len(exposed),
-        'capabilities': [{
-            'name': c.name,
-            'granularity': c.granularity,
-            'summary': c.summary,
-            'mcp_exposed': _is_exposed_over_mcp(c),
-        } for c in caps],
+        'status': 'ok',
+        'registered_total': len(caps),
+        'mcp_exposed_total': len(exposed),
+        'capabilities': [
+            {
+                'name': c.name,
+                'granularity': c.granularity,
+                'summary': c.summary,
+                'mcp_exposed': _is_exposed_over_mcp(c),
+            }
+            for c in caps
+        ],
     }
     print(json.dumps(info, indent=2))
 
@@ -208,7 +208,8 @@ def main() -> None:
     """
 
     parser = argparse.ArgumentParser(
-        description='ms-agent MCP Capability Server', )
+        description='ms-agent MCP Capability Server',
+    )
     parser.add_argument(
         '--check',
         action='store_true',
@@ -243,8 +244,7 @@ def main() -> None:
         from mcp.server.fastmcp import FastMCP
     except ImportError:
         print(
-            'ERROR: The "mcp" package is required.  Install it with:\n'
-            "  pip install 'mcp<2'\n",
+            'ERROR: The "mcp" package is required.  Install it with:\n  pip install \'mcp<2\'\n',
             file=sys.stderr,
         )
         sys.exit(1)
@@ -255,17 +255,16 @@ def main() -> None:
     server = FastMCP(
         'ms-agent-capabilities',
         port=args.port,
-        instructions=('ms-agent Capability Gateway. Provides deep research, '
-                      'LSP code validation, and advanced file-editing tools.'),
+        instructions=(
+            'ms-agent Capability Gateway. Provides deep research, LSP code validation, and advanced file-editing tools.'
+        ),
     )
 
     for cap in registry.list_all():
         # Parent component descriptors are skipped; their children are
         # registered individually.  See :func:`_is_exposed_over_mcp`.
         if _is_exposed_over_mcp(cap):
-            _register_cap(
-                server, registry, cap, workspace,
-                protect_stdout=args.transport == 'stdio')
+            _register_cap(server, registry, cap, workspace, protect_stdout=args.transport == 'stdio')
 
     server.run(transport=args.transport)
 
@@ -295,18 +294,13 @@ def _build_handler(registry, cap, workspace: str, *, protect_stdout=False):
     for pname, pschema in properties.items():
         py_type = type_map.get(pschema.get('type', 'string'), str)
         if pname in required_params:
-            params.append(
-                inspect.Parameter(
-                    pname, inspect.Parameter.KEYWORD_ONLY, annotation=py_type))
+            params.append(inspect.Parameter(pname, inspect.Parameter.KEYWORD_ONLY, annotation=py_type))
         else:
             opt_type = typing.Optional[py_type]
             default = pschema.get('default')
             params.append(
-                inspect.Parameter(
-                    pname,
-                    inspect.Parameter.KEYWORD_ONLY,
-                    default=default,
-                    annotation=opt_type))
+                inspect.Parameter(pname, inspect.Parameter.KEYWORD_ONLY, default=default, annotation=opt_type)
+            )
         annotations[pname] = params[-1].annotation
 
     cap_name = cap.name
@@ -328,15 +322,13 @@ def _build_handler(registry, cap, workspace: str, *, protect_stdout=False):
     return handler
 
 
-def _register_cap(server, registry, cap, workspace: str, *,
-                  protect_stdout=False) -> None:
+def _register_cap(server, registry, cap, workspace: str, *, protect_stdout=False) -> None:
     """Register a single capability as an MCP tool on *server*."""
     desc = cap.summary
     if cap.estimated_duration in ('minutes', 'hours'):
         desc += f' [estimated duration: {cap.estimated_duration}]'
 
-    handler = _build_handler(
-        registry, cap, workspace, protect_stdout=protect_stdout)
+    handler = _build_handler(registry, cap, workspace, protect_stdout=protect_stdout)
     handler.__doc__ = desc
     server.tool(name=cap.name, description=desc)(handler)
 

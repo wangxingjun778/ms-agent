@@ -6,13 +6,13 @@ Transports return ``Message`` (the proven hot-path contract). New consumers
 blocks. ``to_message`` is the inverse, for code that produces ``LLMResponse``
 and needs to feed the legacy agent loop.
 """
+
 from __future__ import annotations
 
 import json
 from typing import List, Optional
 
-from .types import (LLMResponse, TextBlock, ThinkingBlock, ToolUseBlock,
-                    UsageInfo)
+from .types import LLMResponse, TextBlock, ThinkingBlock, ToolUseBlock, UsageInfo
 from .utils import Message, ToolCall
 
 
@@ -30,7 +30,6 @@ def _parse_arguments(raw) -> dict:
 
 
 class ResponseAdapter:
-
     @staticmethod
     def to_response(message: Message) -> LLMResponse:
         """Legacy ``Message`` -> typed ``LLMResponse`` (for new consumers)."""
@@ -39,13 +38,14 @@ class ResponseAdapter:
             blocks.append(ThinkingBlock(thinking=message.reasoning_content))
         if message.content and isinstance(message.content, str):
             blocks.append(TextBlock(text=message.content))
-        for tc in (message.tool_calls or []):
+        for tc in message.tool_calls or []:
             blocks.append(
                 ToolUseBlock(
                     id=tc.get('id', ''),
                     name=tc.get('tool_name', ''),
                     arguments=_parse_arguments(tc.get('arguments', {})),
-                ))
+                )
+            )
         usage = UsageInfo(
             prompt_tokens=message.prompt_tokens,
             completion_tokens=message.completion_tokens,
@@ -76,7 +76,8 @@ class ResponseAdapter:
                         type='function',
                         tool_name=tc.name,
                         arguments=args,
-                    ))
+                    )
+                )
         return Message(
             role='assistant',
             content=response.text,

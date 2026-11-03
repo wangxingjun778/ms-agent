@@ -1,4 +1,5 @@
 """Reentrant locks for cooperating threads and local processes."""
+
 from __future__ import annotations
 
 import errno
@@ -60,15 +61,25 @@ def file_lock(resource: str | Path, timeout: float = 10):
         try:
             if os.name == 'nt':
                 import msvcrt
+
                 if os.fstat(fd).st_size == 0:
                     os.write(fd, b'\0')
                 os.lseek(fd, 0, os.SEEK_SET)
-                acquire = lambda: msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                release = lambda: msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+                def acquire():
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+
+                def release():
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl
-                acquire = lambda: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                release = lambda: fcntl.flock(fd, fcntl.LOCK_UN)
+
+                def acquire():
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                def release():
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+
             while True:
                 try:
                     acquire()
@@ -95,10 +106,13 @@ def file_lock(resource: str | Path, timeout: float = 10):
 
 def locked(resource):
     """Protect a complete synchronous operation; resolve its resource per call."""
+
     def decorate(function):
         @wraps(function)
         def wrapped(*args, **kwargs):
             with file_lock(resource(*args, **kwargs)):
                 return function(*args, **kwargs)
+
         return wrapped
+
     return decorate

@@ -4,16 +4,15 @@ Expiring an approval answers it as a refusal — an answer the user never gave.
 So the wait is unbounded wherever a person intends to answer, and the message
 on the bounded path says plainly that nobody refused anything.
 """
+
 import asyncio
 
 import pytest
 
-from ms_agent.permission.handler import (PermissionAction, PermissionResponse,
-                                         WebPermissionHandler)
+from ms_agent.permission.handler import PermissionAction, PermissionResponse, WebPermissionHandler
 
 
 class _Emitter:
-
     def __init__(self):
         self.events = []
 
@@ -31,8 +30,7 @@ async def test_default_wait_is_unbounded():
     assert not task.done(), 'an unbounded ask must not resolve itself'
 
     request_id = handler._event_emitter.events[0]['request_id']
-    handler.resolve(request_id,
-                    PermissionResponse(action=PermissionAction.ALLOW_ONCE))
+    handler.resolve(request_id, PermissionResponse(action=PermissionAction.ALLOW_ONCE))
     assert (await task).action is PermissionAction.ALLOW_ONCE
 
 
@@ -70,29 +68,24 @@ async def test_pending_asks_are_answered_when_the_session_closes():
 
 @pytest.mark.asyncio
 async def test_answering_one_card_releases_the_ones_it_covers():
-    """"Always allow" is a statement about a pattern; a sibling card the
+    """ "Always allow" is a statement about a pattern; a sibling card the
     pattern covers must not be left holding the turn open indefinitely."""
     from ms_agent.permission.config import PermissionConfig
     from ms_agent.permission.enforcer import PermissionEnforcer
 
     emitter = _Emitter()
     handler = WebPermissionHandler(emitter)
-    enforcer = PermissionEnforcer(
-        config=PermissionConfig(mode='interactive'), handler=handler)
+    enforcer = PermissionEnforcer(config=PermissionConfig(mode='interactive'), handler=handler)
     tool = 'code_executor---shell_executor'
 
-    calls = [
-        asyncio.create_task(
-            enforcer.check(tool, {'command': f'git status {i}'}))
-        for i in range(3)
-    ]
+    calls = [asyncio.create_task(enforcer.check(tool, {'command': f'git status {i}'})) for i in range(3)]
     await asyncio.sleep(0.05)
     assert len(handler._pending) == 3
 
     handler.resolve(
         emitter.events[0]['request_id'],
-        PermissionResponse(
-            action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:git *'))
+        PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:git *'),
+    )
     await asyncio.sleep(0.05)
 
     assert all(c.done() for c in calls), 'siblings left waiting'
@@ -107,28 +100,24 @@ async def test_a_remembered_answer_never_releases_a_safety_confirmation():
     looking at this particular call. Releasing siblings must not create a way
     around it."""
     from ms_agent.permission.config import PermissionConfig
-    from ms_agent.permission.enforcer import (PermissionDecision,
-                                              PermissionEnforcer)
+    from ms_agent.permission.enforcer import PermissionDecision, PermissionEnforcer
 
     emitter = _Emitter()
     handler = WebPermissionHandler(emitter)
-    enforcer = PermissionEnforcer(
-        config=PermissionConfig(mode='interactive'), handler=handler)
+    enforcer = PermissionEnforcer(config=PermissionConfig(mode='interactive'), handler=handler)
     tool = 'code_executor---shell_executor'
     forced = PermissionDecision(action='ask', reason='reads outside workspace')
 
     calls = [
-        asyncio.create_task(
-            enforcer.check(
-                tool, {'command': f'cat /etc/hosts {i}'},
-                force_decision=forced)) for i in range(3)
+        asyncio.create_task(enforcer.check(tool, {'command': f'cat /etc/hosts {i}'}, force_decision=forced))
+        for i in range(3)
     ]
     await asyncio.sleep(0.05)
 
     handler.resolve(
         emitter.events[0]['request_id'],
-        PermissionResponse(
-            action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:cat *'))
+        PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:cat *'),
+    )
     await asyncio.sleep(0.05)
 
     assert sum(c.done() for c in calls) == 1, 'a safety ask was auto-released'

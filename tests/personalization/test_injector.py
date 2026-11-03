@@ -3,7 +3,6 @@ from ms_agent.personalization.types import PersonalizationConfig
 
 
 class TestPersonalizationInjector:
-
     def test_all_sources_present(self):
         config = PersonalizationConfig(
             global_instruction='Be concise.',
@@ -95,7 +94,6 @@ class TestPersonalizationInjector:
 
 
 class TestPersonalizationConfig:
-
     def test_frozen(self):
         config = PersonalizationConfig(global_instruction='test')
         try:

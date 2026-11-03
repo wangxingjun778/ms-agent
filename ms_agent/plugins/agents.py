@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from omegaconf import OmegaConf
 from pathlib import Path
 from typing import Any
+
+from omegaconf import OmegaConf
 
 from ms_agent.plugins.types import AgentDef
 from ms_agent.skill.schema import SkillSchemaParser
@@ -15,33 +16,37 @@ _FRONTMATTER_RE = re.compile(r'^---\s*\n.*?\n---\s*\n', re.DOTALL)
 
 # Claude Code tool names -> ms-agent config.tools top-level keys to keep.
 _CLAUDE_TOOL_TO_CONFIG_KEYS: dict[str, tuple[str, ...]] = {
-    'Read': ('file_system', ),
-    'Write': ('file_system', ),
-    'Edit': ('file_system', ),
-    'MultiEdit': ('file_system', ),
-    'Bash': ('code_executor', ),
+    'Read': ('file_system',),
+    'Write': ('file_system',),
+    'Edit': ('file_system',),
+    'MultiEdit': ('file_system',),
+    'Bash': ('code_executor',),
     'Grep': ('file_system', 'localsearch', 'web_search'),
-    'Glob': ('file_system', ),
+    'Glob': ('file_system',),
     'Skill': (),  # skills are injected separately
-    'TodoWrite': ('todo_list', ),
+    'TodoWrite': ('todo_list',),
     'AskUserQuestion': (),  # no dedicated tool yet
-    'Task': ('agent_tools', ),
+    'Task': ('agent_tools',),
 }
 
-_FORBIDDEN_AGENT_FRONTMATTER_KEYS = frozenset({
-    'hooks',
-    'mcpServers',
-    'permissionMode',
-})
+_FORBIDDEN_AGENT_FRONTMATTER_KEYS = frozenset(
+    {
+        'hooks',
+        'mcpServers',
+        'permissionMode',
+    }
+)
 
-_CLAUDE_BUILTIN_SUBAGENT_TYPES = frozenset({
-    'general-purpose',
-    'explore',
-    'shell',
-    'browser',
-    'planner',
-    'architect',
-})
+_CLAUDE_BUILTIN_SUBAGENT_TYPES = frozenset(
+    {
+        'general-purpose',
+        'explore',
+        'shell',
+        'browser',
+        'planner',
+        'architect',
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -61,21 +66,16 @@ class PluginAgentRegistry:
         self._by_namespaced.clear()
         self._by_short.clear()
         short_claimed: set[str] = set()
-        for defn in sorted(
-                agent_defs, key=lambda item: (item.plugin_id, item.name)):
+        for defn in sorted(agent_defs, key=lambda item: (item.plugin_id, item.name)):
             namespaced = f'{defn.plugin_id}:{defn.name}'
-            entry = RegisteredPluginAgent(
-                defn=defn, namespaced_name=namespaced)
+            entry = RegisteredPluginAgent(defn=defn, namespaced_name=namespaced)
             self._by_namespaced[namespaced] = entry
             if defn.name not in short_claimed:
                 self._by_short[defn.name] = entry
                 short_claimed.add(defn.name)
 
     def remove_plugin(self, plugin_id: str) -> None:
-        for key in [
-                key for key, entry in self._by_namespaced.items()
-                if entry.defn.plugin_id == plugin_id
-        ]:
+        for key in [key for key, entry in self._by_namespaced.items() if entry.defn.plugin_id == plugin_id]:
             entry = self._by_namespaced.pop(key)
             short = self._by_short.get(entry.defn.name)
             if short is not None and short.namespaced_name == entry.namespaced_name:
@@ -95,16 +95,18 @@ class PluginAgentRegistry:
                 continue
             seen.add(entry.namespaced_name)
             defn = entry.defn
-            items.append({
-                'plugin_id': defn.plugin_id,
-                'name': defn.name,
-                'namespaced_name': entry.namespaced_name,
-                'description': defn.description,
-                'model': defn.model,
-                'tools': list(defn.tools),
-                'skills': list(defn.skills),
-                'path': defn.path,
-            })
+            items.append(
+                {
+                    'plugin_id': defn.plugin_id,
+                    'name': defn.name,
+                    'namespaced_name': entry.namespaced_name,
+                    'description': defn.description,
+                    'model': defn.model,
+                    'tools': list(defn.tools),
+                    'skills': list(defn.skills),
+                    'path': defn.path,
+                }
+            )
         return sorted(items, key=lambda item: item['namespaced_name'])
 
     def resolve(self, name: str | None) -> RegisteredPluginAgent | None:
@@ -136,8 +138,7 @@ class AgentDelegate:
         warnings: list[str] = []
         for key in _FORBIDDEN_AGENT_FRONTMATTER_KEYS:
             if key in frontmatter:
-                warnings.append(
-                    f'Plugin agents must not declare {key!r} in frontmatter')
+                warnings.append(f'Plugin agents must not declare {key!r} in frontmatter')
         return warnings
 
     @staticmethod
@@ -148,14 +149,10 @@ class AgentDelegate:
         frontmatter, body = AgentDelegate.read_agent_markdown(defn.path)
         warnings = AgentDelegate.validate_frontmatter(frontmatter)
         if warnings:
-            raise ValueError(
-                f'Invalid plugin agent {defn.plugin_id}:{defn.name}: '
-                + '; '.join(warnings))
+            raise ValueError(f'Invalid plugin agent {defn.plugin_id}:{defn.name}: ' + '; '.join(warnings))
 
         inline: dict[str, Any] = {
-            'prompt': {
-                'system': body
-            },
+            'prompt': {'system': body},
             'ms_agent_subagent': True,
             'plugin_agent': {
                 'plugin_id': defn.plugin_id,
@@ -169,8 +166,7 @@ class AgentDelegate:
         if model and str(model).lower() != 'inherit':
             parent_llm = {}
             if hasattr(parent_config, 'llm') and parent_config.llm is not None:
-                parent_llm = OmegaConf.to_container(
-                    parent_config.llm, resolve=True) or {}
+                parent_llm = OmegaConf.to_container(parent_config.llm, resolve=True) or {}
             inline['llm'] = {**parent_llm, 'model': str(model)}
         if defn.skills:
             inline['skills'] = {
@@ -189,8 +185,7 @@ class AgentDelegate:
             return None
         if not hasattr(parent_config, 'tools') or parent_config.tools is None:
             return None
-        tools_dict = OmegaConf.to_container(
-            parent_config.tools, resolve=True) or {}
+        tools_dict = OmegaConf.to_container(parent_config.tools, resolve=True) or {}
         if not isinstance(tools_dict, dict):
             return None
 
@@ -199,10 +194,7 @@ class AgentDelegate:
             keep.update(_CLAUDE_TOOL_TO_CONFIG_KEYS.get(claude_name, ()))
 
         plugin_only_keys = {'agent_tools', 'split_task', 'task_control'}
-        disallowed = [
-            key for key in tools_dict
-            if key not in keep and key not in plugin_only_keys
-        ]
+        disallowed = [key for key in tools_dict if key not in keep and key not in plugin_only_keys]
         return disallowed or None
 
     @staticmethod
@@ -215,12 +207,9 @@ class AgentDelegate:
         from ms_agent.tools.agent_tool import _AgentToolSpec
 
         defn = entry.defn
-        description = (
-            defn.description or
-            f'Plugin subagent {entry.namespaced_name} from {defn.plugin_id}')
+        description = defn.description or f'Plugin subagent {entry.namespaced_name} from {defn.plugin_id}'
         inline_config = AgentDelegate.build_inline_config(defn, parent_config)
-        disallowed_tools = AgentDelegate.compute_disallowed_tools(
-            defn, parent_config)
+        disallowed_tools = AgentDelegate.compute_disallowed_tools(defn, parent_config)
         return _AgentToolSpec(
             tool_name=defn.name,
             description=description,
@@ -228,17 +217,12 @@ class AgentDelegate:
                 'type': 'object',
                 'properties': {
                     'prompt': {
-                        'type':
-                        'string',
-                        'description':
-                        (f'Task prompt for plugin subagent {entry.namespaced_name}.'
-                         ),
+                        'type': 'string',
+                        'description': (f'Task prompt for plugin subagent {entry.namespaced_name}.'),
                     },
                     'request': {
-                        'type':
-                        'string',
-                        'description':
-                        'Alias of prompt for AgentTool compatibility.',
+                        'type': 'string',
+                        'description': 'Alias of prompt for AgentTool compatibility.',
                     },
                     'description': {
                         'type': 'string',
@@ -276,25 +260,23 @@ class AgentDelegate:
         available = [item['namespaced_name'] for item in registry.list_all()]
         return _AgentToolSpec(
             tool_name='Task',
-            description=
-            ('Launch a plugin-defined subagent. Provide `agent` (for example '
-             f'{available[0] if available else "hookify:conversation-analyzer"}) '
-             'and `prompt`.'),
+            description=(
+                'Launch a plugin-defined subagent. Provide `agent` (for example '
+                f'{available[0] if available else "hookify:conversation-analyzer"}) '
+                'and `prompt`.'
+            ),
             parameters={
                 'type': 'object',
                 'properties': {
                     'agent': {
-                        'type':
-                        'string',
-                        'description':
-                        ('Plugin subagent name, e.g. conversation-analyzer or '
-                         'hookify:conversation-analyzer.'),
+                        'type': 'string',
+                        'description': (
+                            'Plugin subagent name, e.g. conversation-analyzer or hookify:conversation-analyzer.'
+                        ),
                     },
                     'subagent_type': {
-                        'type':
-                        'string',
-                        'description':
-                        'Alias of agent when it matches a plugin subagent.',
+                        'type': 'string',
+                        'description': 'Alias of agent when it matches a plugin subagent.',
                     },
                     'prompt': {
                         'type': 'string',
@@ -346,10 +328,7 @@ class AgentDelegate:
         if agent_name:
             for item in registry.list_all():
                 namespaced = item['namespaced_name']
-                if agent_name in {
-                        namespaced, item['name'],
-                        namespaced.split(':', 1)[-1]
-                }:
+                if agent_name in {namespaced, item['name'], namespaced.split(':', 1)[-1]}:
                     resolved = registry.resolve(namespaced)
                     if resolved is not None:
                         return resolved
@@ -358,6 +337,6 @@ class AgentDelegate:
             only = registry.resolve(items[0]['namespaced_name'])
             if only is not None:
                 return only
-        if (agent_name in _CLAUDE_BUILTIN_SUBAGENT_TYPES and len(items) == 1):
+        if agent_name in _CLAUDE_BUILTIN_SUBAGENT_TYPES and len(items) == 1:
             return registry.resolve(items[0]['namespaced_name'])
         return None

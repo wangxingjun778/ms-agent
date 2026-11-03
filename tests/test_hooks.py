@@ -34,12 +34,16 @@ class TestPatternMatcher:
 
 class TestHookRegistry:
     def test_from_dict(self):
-        reg = HookRegistry.from_dict({
-            'PreToolUse': [{
-                'matcher': 'code_executor---*',
-                'hooks': [{'type': 'command', 'command': './hook.sh'}],
-            }],
-        })
+        reg = HookRegistry.from_dict(
+            {
+                'PreToolUse': [
+                    {
+                        'matcher': 'code_executor---*',
+                        'hooks': [{'type': 'command', 'command': './hook.sh'}],
+                    }
+                ],
+            }
+        )
         handlers = reg.get_handlers('PreToolUse', 'code_executor---shell_executor')
         assert len(handlers) == 1
         assert handlers[0].command == './hook.sh'
@@ -49,40 +53,60 @@ class TestHookRegistry:
         assert reg.is_empty
 
     def test_merge(self):
-        a = HookRegistry.from_dict({
-            'Stop': [{'hooks': [{'type': 'command', 'command': 'a.sh'}]}],
-        })
-        b = HookRegistry.from_dict({
-            'Stop': [{'hooks': [{'type': 'command', 'command': 'b.sh'}]}],
-        })
+        a = HookRegistry.from_dict(
+            {
+                'Stop': [{'hooks': [{'type': 'command', 'command': 'a.sh'}]}],
+            }
+        )
+        b = HookRegistry.from_dict(
+            {
+                'Stop': [{'hooks': [{'type': 'command', 'command': 'b.sh'}]}],
+            }
+        )
         merged = a.merge(b)
         handlers = merged.get_handlers('Stop')
         assert [h.command for h in handlers] == ['a.sh', 'b.sh']
 
     def test_non_tool_event_no_matcher(self):
-        reg = HookRegistry.from_dict({
-            'SessionStart': [{'matcher': 'ignored', 'hooks': [
-                {'type': 'command', 'command': 'init.sh'},
-            ]}],
-        })
+        reg = HookRegistry.from_dict(
+            {
+                'SessionStart': [
+                    {
+                        'matcher': 'ignored',
+                        'hooks': [
+                            {'type': 'command', 'command': 'init.sh'},
+                        ],
+                    }
+                ],
+            }
+        )
         assert len(reg.get_handlers('SessionStart')) == 1
 
     def test_tool_event_requires_tool_name_for_matcher(self):
-        reg = HookRegistry.from_dict({
-            'PreToolUse': [{
-                'matcher': 'code_executor---*',
-                'hooks': [{'type': 'command', 'command': './hook.sh'}],
-            }],
-        })
+        reg = HookRegistry.from_dict(
+            {
+                'PreToolUse': [
+                    {
+                        'matcher': 'code_executor---*',
+                        'hooks': [{'type': 'command', 'command': './hook.sh'}],
+                    }
+                ],
+            }
+        )
         assert reg.get_handlers('PreToolUse', None) == []
         assert len(reg.get_handlers('PreToolUse', 'code_executor---shell_executor')) == 1
 
     def test_skips_disabled_executor_types(self):
-        reg = HookRegistry.from_dict({
-            'PreToolUse': [{
-                'hooks': [{'type': 'http', 'url': 'https://example.com/hook'}],
-            }],
-        }, enabled_executors=frozenset({'command'}))
+        reg = HookRegistry.from_dict(
+            {
+                'PreToolUse': [
+                    {
+                        'hooks': [{'type': 'http', 'url': 'https://example.com/hook'}],
+                    }
+                ],
+            },
+            enabled_executors=frozenset({'command'}),
+        )
         assert reg.is_empty
 
 
@@ -92,8 +116,7 @@ class TestResponseAdapter:
         assert r.action == 'deny'
 
     def test_claude_permission_decision(self):
-        r = ResponseAdapter().parse(
-            '{"hookSpecificOutput": {"permissionDecision": "allow"}}')
+        r = ResponseAdapter().parse('{"hookSpecificOutput": {"permissionDecision": "allow"}}')
         assert r.action == 'allow'
 
     def test_updated_args_only_passthrough(self):
@@ -102,8 +125,7 @@ class TestResponseAdapter:
         assert r.updated_args == {'command': 'ls'}
 
     def test_cursor_permission_deny(self):
-        r = ResponseAdapter().parse(
-            '{"permission": "deny", "user_message": "nope"}')
+        r = ResponseAdapter().parse('{"permission": "deny", "user_message": "nope"}')
         assert r.action == 'deny'
         assert r.reason == 'nope'
 
@@ -115,6 +137,7 @@ class TestHookExecutor:
 
     def test_env_includes_plugin_data_aliases(self, tmp_path):
         from ms_agent.hooks.executors.command import build_hook_env
+
         plugin_root = tmp_path / 'plugin'
         plugin_data = tmp_path / 'data'
         ctx = HookExecutionContext(
@@ -136,10 +159,12 @@ class TestHookExecutor:
         monkeypatch.setenv('AWS_SECRET_ACCESS_KEY', 'aws-secret')
         monkeypatch.setenv('PATH', '/usr/bin')
 
-        env = build_hook_env(HookExecutionContext(
-            session_id='s1',
-            project_path=str(tmp_path),
-        ))
+        env = build_hook_env(
+            HookExecutionContext(
+                session_id='s1',
+                project_path=str(tmp_path),
+            )
+        )
         assert 'OPENAI_API_KEY' not in env
         assert 'AWS_SECRET_ACCESS_KEY' not in env
         assert env['PATH'] == '/usr/bin'
@@ -150,6 +175,7 @@ class TestHookExecutor:
         script = FIXTURES / 'pass.py'
         os.chmod(script, script.stat().st_mode | stat.S_IEXEC)
         from ms_agent.hooks.registry import HookHandlerConfig
+
         handler = HookHandlerConfig(type='command', command=f'python3 {script}')
         ctx = HookExecutionContext(session_id='s1', project_path=str(tmp_path))
         result = await executor.execute(
@@ -163,7 +189,8 @@ class TestHookExecutor:
     async def test_deny_script(self, executor, tmp_path):
         script = FIXTURES / 'deny.py'
         handler = __import__('ms_agent.hooks.registry', fromlist=['HookHandlerConfig']).HookHandlerConfig(
-            type='command', command=f'python3 {script}')
+            type='command', command=f'python3 {script}'
+        )
         ctx = HookExecutionContext(session_id='s1', project_path=str(tmp_path))
         result = await executor.execute(
             handler,
@@ -177,6 +204,7 @@ class TestHookExecutor:
         script = FIXTURES / 'block.sh'
         os.chmod(script, script.stat().st_mode | stat.S_IEXEC)
         from ms_agent.hooks.registry import HookHandlerConfig
+
         handler = HookHandlerConfig(type='command', command=f'bash {script}')
         ctx = HookExecutionContext(session_id='s1', project_path=str(tmp_path))
         result = await executor.execute(handler, {'event': 'PreToolUse'}, ctx)
@@ -187,13 +215,13 @@ class TestHookExecutor:
         deny = FIXTURES / 'deny.py'
         allow = FIXTURES / 'allow.py'
         from ms_agent.hooks.registry import HookHandlerConfig
+
         handlers = [
             HookHandlerConfig(type='command', command=f'python3 {deny}'),
             HookHandlerConfig(type='command', command=f'python3 {allow}'),
         ]
         ctx = HookExecutionContext(session_id='s1', project_path=str(tmp_path))
-        result = await executor.execute_all(
-            handlers, {'event': 'PreToolUse'}, blockable=True, ctx=ctx)
+        result = await executor.execute_all(handlers, {'event': 'PreToolUse'}, blockable=True, ctx=ctx)
         assert result.action == 'deny'
 
 
@@ -202,7 +230,8 @@ class TestResolveHookPermission:
     async def test_hook_deny(self):
         out = await resolve_hook_permission_decision(
             HookResult(action='deny', reason='no'),
-            't', {},
+            't',
+            {},
             permission_enforcer=None,
             permission_config=None,
         )

@@ -10,16 +10,17 @@ import importlib.util
 import json
 import os.path
 import re
-import requests
 import subprocess
 import sys
 import time
-import yaml
 from contextlib import contextmanager
 from io import BytesIO
-from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
+
+import requests
+import yaml
+from omegaconf import DictConfig, OmegaConf
 
 from .constants import DEFAULT_MEMORY_DIR
 from .logger import get_logger
@@ -31,11 +32,10 @@ if sys.version_info >= (3, 11):
 else:
     # Define a placeholder class for type-checking compatibility
     class BuiltInExceptionGroup(BaseException):
-
         def __init__(self, message, exceptions):
             self.message = message
             self.exceptions = exceptions
-            self.args = (message, )
+            self.args = (message,)
 
         def __str__(self):
             return f'{self.message}: {self.exceptions}'
@@ -170,8 +170,7 @@ def escape_yaml_string(text: str) -> str:
     return text
 
 
-def save_history(output_dir: str, task: str, config: DictConfig,
-                 messages: List['Message']):
+def save_history(output_dir: str, task: str, config: DictConfig, messages: List['Message']):
     """
     Saves the specified configuration and conversation history to a cache directory for later retrieval or restoration.
 
@@ -206,10 +205,7 @@ def save_history(output_dir: str, task: str, config: DictConfig,
     with open(config_file, 'w') as f:
         OmegaConf.save(config, f)
     with open(message_file, 'w') as f:
-        json.dump([message.to_dict() for message in messages],
-                  f,
-                  indent=4,
-                  ensure_ascii=False)
+        json.dump([message.to_dict() for message in messages], f, indent=4, ensure_ascii=False)
 
 
 def read_history(output_dir: str, task: str):
@@ -243,7 +239,9 @@ def read_history(output_dir: str, task: str):
     """
     from ms_agent.config import Config
     from ms_agent.llm import Message
+
     from .constants import LEGACY_MEMORY_DIR
+
     cache_dir = os.path.join(output_dir, DEFAULT_MEMORY_DIR)
     config_file = os.path.join(cache_dir, f'{task}.yaml')
     message_file = os.path.join(cache_dir, f'{task}.json')
@@ -252,8 +250,7 @@ def read_history(output_dir: str, task: str):
     if not os.path.exists(message_file) and not os.path.exists(config_file):
         legacy_dir = os.path.join(output_dir, LEGACY_MEMORY_DIR)
         legacy_msg = os.path.join(legacy_dir, f'{task}.json')
-        if os.path.exists(legacy_msg) or os.path.exists(
-                os.path.join(legacy_dir, f'{task}.yaml')):
+        if os.path.exists(legacy_msg) or os.path.exists(os.path.join(legacy_dir, f'{task}.yaml')):
             cache_dir = legacy_dir
             config_file = os.path.join(cache_dir, f'{task}.yaml')
             message_file = os.path.join(cache_dir, f'{task}.json')
@@ -321,6 +318,7 @@ def json_loads(text: str) -> dict:
                                       JSON decoding error is raised.
     """
     import json5
+
     text = text.strip('\n')
     if text.startswith('```') and text.endswith('\n```'):
         text = '\n'.join(text.split('\n')[1:-1])
@@ -344,14 +342,12 @@ def download_pdf(url: str, out_file_path: str, reuse: bool = True):
     """
 
     if reuse and os.path.exists(out_file_path):
-        logger.info(
-            f"File '{out_file_path}' already exists. Skipping download.")
+        logger.info(f"File '{out_file_path}' already exists. Skipping download.")
         return
 
     try:
         response = requests.get(url, stream=True)
-        response.raise_for_status(
-        )  # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
 
         with open(out_file_path, 'wb') as pdf_file:
             for chunk in response.iter_content(chunk_size=8192):
@@ -389,6 +385,7 @@ def load_image_from_url_to_pil(url: str) -> 'Image.Image':
         A PIL Image object if successful, None otherwise.
     """
     from PIL import Image
+
     try:
         response = requests.get(url, timeout=(10, 25))
         # Raise an HTTPError for bad responses (4xx or 5xx)
@@ -416,6 +413,7 @@ def load_image_from_uri_to_pil(uri: str) -> 'Image.Image':
         tuple: (PIL Image object, file extension string) or None if failed
     """
     from PIL import Image
+
     try:
         header, encoded = uri.split(',', 1)
         if ';base64' in header:
@@ -434,14 +432,11 @@ def load_image_from_uri_to_pil(uri: str) -> 'Image.Image':
         logger.error(f'Error opening image with PIL for uri_to_pil: {e}')
         return None
     except Exception as e:
-        logger.error(
-            f'Unexpected error loading image from URI for uri_to_pil: {e}')
+        logger.error(f'Unexpected error loading image from URI for uri_to_pil: {e}')
         return None
 
 
-def validate_url(
-        img_url: str,
-        backend: 'docling.backend.html_backend.HTMLDocumentBackend') -> str:
+def validate_url(img_url: str, backend: 'docling.backend.html_backend.HTMLDocumentBackend') -> str:
     """
     Validates and resolves a relative image URL using the base URL from the HTML document's metadata.
 
@@ -460,23 +455,27 @@ def validate_url(
     from urllib.parse import urljoin, urlparse
 
     # Check if we have a valid soup object in the backend
-    if not backend or not hasattr(
-            backend, 'soup') or not backend.soup or not backend.soup.head:
+    if not backend or not hasattr(backend, 'soup') or not backend.soup or not backend.soup.head:
         return None
 
     # Potential sources of base URLs to try
     sources = [
         # Try base tag
-        lambda: backend.soup.head.find('base', href=True)['href']
-        if backend.soup.head.find('base', href=True) else None,
+        lambda: (
+            backend.soup.head.find('base', href=True)['href'] if backend.soup.head.find('base', href=True) else None
+        ),
         # Try canonical link
-        lambda: backend.soup.head.find('link', rel='canonical', href=True)[
-            'href'] if backend.soup.head.find(
-                'link', rel='canonical', href=True) else None,
+        lambda: (
+            backend.soup.head.find('link', rel='canonical', href=True)['href']
+            if backend.soup.head.find('link', rel='canonical', href=True)
+            else None
+        ),
         # Try OG URL meta tag
-        lambda: backend.soup.head.find(
-            'meta', property='og:url', content=True)['content'] if backend.soup
-        .head.find('meta', property='og:url', content=True) else None
+        lambda: (
+            backend.soup.head.find('meta', property='og:url', content=True)['content']
+            if backend.soup.head.find('meta', property='og:url', content=True)
+            else None
+        ),
     ]
 
     # Try each source until we find a valid base URL
@@ -520,7 +519,9 @@ def get_default_config():
             os.path.dirname(__file__),  # ms_agent/utils/
             '..',  # ↑ up to ms_agent/
             'agent',  # → agent/
-            'agent.yaml'))
+            'agent.yaml',
+        )
+    )
     with open(config_path, 'r', encoding='utf-8') as file:
         return yaml.safe_load(file)
 
@@ -590,8 +591,7 @@ def txt_to_html(txt_path: str, html_path: Optional[str] = None) -> str:
     return html_path
 
 
-def get_files_from_dir(folder_path: Union[str, Path],
-                       exclude: Optional[List[str]] = None) -> List[Path]:
+def get_files_from_dir(folder_path: Union[str, Path], exclude: Optional[List[str]] = None) -> List[Path]:
     """
     Get all files in the target directory recursively, excluding files that match any of the given regex patterns.
 
@@ -619,11 +619,12 @@ def get_files_from_dir(folder_path: Union[str, Path],
 
     # Filter files based on exclusion patterns
     file_list = [
-        file_path for file_path in files if not any(
-            pattern.search(
-                str(file_path.resolve().relative_to(
-                    folder_path.resolve())).replace('\\', '/'))
-            for pattern in exclude_patterns)
+        file_path
+        for file_path in files
+        if not any(
+            pattern.search(str(file_path.resolve().relative_to(folder_path.resolve())).replace('\\', '/'))
+            for pattern in exclude_patterns
+        )
     ]
 
     return file_list
@@ -642,9 +643,7 @@ def is_package_installed(package_or_import_name: str) -> bool:
     return importlib.util.find_spec(package_or_import_name) is not None
 
 
-def install_package(package_name: str,
-                    import_name: Optional[str] = None,
-                    extend_module: str = None):
+def install_package(package_name: str, import_name: Optional[str] = None, extend_module: str = None):
     """
     Check and install a package using pip.
 
@@ -666,9 +665,7 @@ def install_package(package_name: str,
     if not is_package_installed(import_name):
         # Suppress pip's stdout ("Requirement already satisfied ...") so it does
         # not pollute interactive UIs; stderr is kept for real errors.
-        subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install', package_name],
-            stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', package_name], stdout=subprocess.DEVNULL)
         logger.info(f'Package {package_name} installed successfully.')
     else:
         logger.info(f'Package {import_name} is already installed.')
@@ -685,7 +682,7 @@ def extract_by_tag(text: str, tag: str) -> str:
     Returns:
         str: The content found between the specified tags, or an empty string if not found.
     """
-    pattern = fr'<{tag}>(.*?)</{tag}>'
+    pattern = rf'<{tag}>(.*?)</{tag}>'
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
@@ -768,15 +765,12 @@ def file_lock(lock_dir: str, filename: str, timeout: float = 120.0):
 
     while True:
         try:
-            lock_fd = os.open(lock_file_path,
-                              os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(lock_fd, f'{os.getpid()}'.encode())
             break
         except FileExistsError:
             if time.time() - start_time >= timeout:
-                raise TimeoutError(
-                    f'Failed to acquire lock for {filename} after {timeout} seconds'
-                )
+                raise TimeoutError(f'Failed to acquire lock for {filename} after {timeout} seconds')
             time.sleep(0.1)  # Wait 100ms before retry
 
     try:
@@ -791,10 +785,7 @@ def file_lock(lock_dir: str, filename: str, timeout: float = 120.0):
             pass
 
 
-def render_markdown_todo(md_path: str,
-                         *,
-                         title: str = ' CURRENT PLAN',
-                         use_pager: bool = False) -> None:
+def render_markdown_todo(md_path: str, *, title: str = ' CURRENT PLAN', use_pager: bool = False) -> None:
     """
     Render a Markdown todo list nicely in terminal using Rich.
     - Cross-platform (Windows/Linux/macOS)
@@ -805,15 +796,17 @@ def render_markdown_todo(md_path: str,
     from rich.panel import Panel
     from rich.theme import Theme
 
-    theme = Theme({
-        'markdown.code': 'bold',
-        'markdown.code_block': 'dim',
-        'markdown.h1': 'bold',
-        'markdown.h2': 'bold',
-        'markdown.h3': 'bold',
-        'markdown.link': 'underline',
-        'markdown.list': '',
-    })
+    theme = Theme(
+        {
+            'markdown.code': 'bold',
+            'markdown.code_block': 'dim',
+            'markdown.h1': 'bold',
+            'markdown.h2': 'bold',
+            'markdown.h3': 'bold',
+            'markdown.link': 'underline',
+            'markdown.list': '',
+        }
+    )
     console = Console(theme=theme, soft_wrap=True, highlight=False)
 
     try:

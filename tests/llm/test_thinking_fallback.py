@@ -7,6 +7,7 @@ open-weight and even non-Qwen families — and a refusal is a hard 400, not an
 ignored flag. So the client does not try to know: it asks, and on a refusal
 retries once with thinking off, remembering the model.
 """
+
 import pytest
 
 from ms_agent.llm import openai_llm as O
@@ -69,13 +70,7 @@ def test_refusal_is_retried_with_thinking_explicitly_off():
 
 def test_budget_keys_are_dropped_and_other_extras_kept():
     rec = _Recorder()
-    _llm(rec)._call_llm([],
-                        None,
-                        extra_body={
-                            'enable_thinking': True,
-                            'thinking_budget': 512,
-                            'unrelated': 'keep me'
-                        })
+    _llm(rec)._call_llm([], None, extra_body={'enable_thinking': True, 'thinking_budget': 512, 'unrelated': 'keep me'})
     retried = rec.calls[1]['extra_body']
     assert retried == {'enable_thinking': False, 'unrelated': 'keep me'}
 
@@ -93,14 +88,10 @@ def test_the_refusal_is_remembered_so_later_turns_cost_one_call():
 
 def test_memo_is_per_model():
     rec = _Recorder()
-    _llm(rec, model='refuser')._call_llm([],
-                                         None,
-                                         extra_body={'enable_thinking': True})
+    _llm(rec, model='refuser')._call_llm([], None, extra_body={'enable_thinking': True})
     assert len(rec.calls) == 2
     # A different model on the same endpoint must still get its chance to think.
-    _llm(rec, model='thinker')._call_llm([],
-                                         None,
-                                         extra_body={'enable_thinking': True})
+    _llm(rec, model='thinker')._call_llm([], None, extra_body={'enable_thinking': True})
     assert len(rec.calls) == 4
     assert rec.calls[2]['extra_body'] == {'enable_thinking': True}
 
@@ -109,7 +100,6 @@ def test_unrelated_400_is_not_retried():
     rec = _Recorder(refuse='context length exceeded')
 
     class _Always(_Recorder):
-
         def create(self, **kwargs):
             self.calls.append(kwargs)
             raise RuntimeError('Error code: 400 - context length exceeded')
@@ -125,7 +115,6 @@ def test_a_request_without_thinking_is_never_retried():
     somebody else's problem — retrying would hide it."""
 
     class _Always(_Recorder):
-
         def create(self, **kwargs):
             self.calls.append(kwargs)
             raise RuntimeError('Error code: 400 - thinking is unsupported')

@@ -1,25 +1,21 @@
 """Two holes the path policy had: an interpreter's argument is a program, so
 extracting paths from it proves nothing; and the sensitive-path list was only
 ever consulted for writes, so the files it names could be read out."""
+
 import asyncio
 
 import pytest
 
-from ms_agent.permission.ask_resolver import (REMEMBERABLE_ASK_CATEGORIES,
-                                              resolve_ask)
+from ms_agent.permission.ask_resolver import REMEMBERABLE_ASK_CATEGORIES, resolve_ask
 from ms_agent.permission.config import PermissionConfig, SafetyConfig
-from ms_agent.permission.enforcer import (PermissionDecision,
-                                          PermissionEnforcer)
-from ms_agent.permission.handler import (PermissionAction, PermissionResponse,
-                                         WebPermissionHandler)
-from ms_agent.permission.shell_validator import (PathSafetyConfig,
-                                                 ShellPathValidator)
+from ms_agent.permission.enforcer import PermissionDecision, PermissionEnforcer
+from ms_agent.permission.handler import PermissionAction, PermissionResponse, WebPermissionHandler
+from ms_agent.permission.shell_validator import PathSafetyConfig, ShellPathValidator
 
 WS = '/tmp/ms-agent-secret-tests'
 
 
 class _Emitter:
-
     def __init__(self):
         self.events = []
 
@@ -36,22 +32,25 @@ def _validator() -> ShellPathValidator:
             workspace_root=WS,
             allowed_directories=tuple(allowed),
             sensitive_read_paths=cfg.sensitive_read_paths,
-        ))
+        ),
+    )
 
 
 def _enforcer():
     emitter = _Emitter()
     handler = WebPermissionHandler(emitter)
-    return emitter, handler, PermissionEnforcer(
-        config=PermissionConfig(mode='interactive'), handler=handler)
+    return emitter, handler, PermissionEnforcer(config=PermissionConfig(mode='interactive'), handler=handler)
 
 
-@pytest.mark.parametrize('command', [
-    'python3 -c "import os; os.remove(\'/etc/hosts\')"',
-    'node -e "require(\'fs\').unlinkSync(\'/etc/hosts\')"',
-    'bash -c "rm -rf /"',
-    'python3 -',
-])
+@pytest.mark.parametrize(
+    'command',
+    [
+        'python3 -c "import os; os.remove(\'/etc/hosts\')"',
+        "node -e \"require('fs').unlinkSync('/etc/hosts')\"",
+        'bash -c "rm -rf /"',
+        'python3 -',
+    ],
+)
 def test_inline_code_is_surfaced_rather_than_waved_through(command):
     decision = _validator().check(command)
     assert decision.action == 'ask', command
@@ -67,21 +66,27 @@ def test_script_outside_the_workspace_is_still_judged():
     assert _validator().check('python3 /etc/evil.py').action != 'allow'
 
 
-@pytest.mark.parametrize('mode, expected', [
-    ('auto', 'allow'),
-    ('interactive', 'ask'),
-    ('strict', 'deny'),
-])
+@pytest.mark.parametrize(
+    'mode, expected',
+    [
+        ('auto', 'allow'),
+        ('interactive', 'ask'),
+        ('strict', 'deny'),
+    ],
+)
 def test_interpreter_resolution_follows_the_mode(mode, expected):
     decision = _validator().check('python3 -c "print(1)"')
     assert resolve_ask(decision, mode, 'loose').action == expected
 
 
-@pytest.mark.parametrize('command', [
-    'cat ~/.ssh/id_rsa',
-    'cat /home/other/.aws/credentials',
-    'cat /srv/certs/server.pem',
-])
+@pytest.mark.parametrize(
+    'command',
+    [
+        'cat ~/.ssh/id_rsa',
+        'cat /home/other/.aws/credentials',
+        'cat /srv/certs/server.pem',
+    ],
+)
 def test_credentials_are_never_read_unattended(command):
     decision = _validator().check(command)
     assert decision.category == 'sensitive_read', command
@@ -109,23 +114,19 @@ async def test_always_allow_actually_sticks_for_inline_code():
     memory — "always run" stored a pattern that was never consulted."""
     emitter, handler, enforcer = _enforcer()
     tool = 'code_executor---shell_executor'
-    ask = PermissionDecision(
-        action='ask', reason='runs code inline', rememberable=True)
+    ask = PermissionDecision(action='ask', reason='runs code inline', rememberable=True)
 
-    first = asyncio.create_task(
-        enforcer.check(
-            tool, {'command': 'python3 -c "print(1)"'}, force_decision=ask))
+    first = asyncio.create_task(enforcer.check(tool, {'command': 'python3 -c "print(1)"'}, force_decision=ask))
     await asyncio.sleep(0.05)
     handler.resolve(
         emitter.events[0]['request_id'],
-        PermissionResponse(
-            action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:python3 *'))
+        PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:python3 *'),
+    )
     assert (await first).action == 'allow'
 
     # Second time: no card at all.
     before = len(emitter.events)
-    again = await enforcer.check(
-        tool, {'command': 'python3 -c "print(2)"'}, force_decision=ask)
+    again = await enforcer.check(tool, {'command': 'python3 -c "print(2)"'}, force_decision=ask)
     assert again.action == 'allow'
     assert len(emitter.events) == before, 'asked again despite "always allow"'
 
@@ -136,20 +137,16 @@ async def test_a_credential_read_still_asks_every_time():
     tool = 'code_executor---shell_executor'
     ask = PermissionDecision(action='ask', reason='reads a sensitive path')
 
-    first = asyncio.create_task(
-        enforcer.check(
-            tool, {'command': 'cat ~/.ssh/id_rsa'}, force_decision=ask))
+    first = asyncio.create_task(enforcer.check(tool, {'command': 'cat ~/.ssh/id_rsa'}, force_decision=ask))
     await asyncio.sleep(0.05)
     handler.resolve(
         emitter.events[0]['request_id'],
-        PermissionResponse(
-            action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:cat *'))
+        PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=f'{tool}:cat *'),
+    )
     await first
 
     before = len(emitter.events)
-    second = asyncio.create_task(
-        enforcer.check(
-            tool, {'command': 'cat ~/.ssh/id_ed25519'}, force_decision=ask))
+    second = asyncio.create_task(enforcer.check(tool, {'command': 'cat ~/.ssh/id_ed25519'}, force_decision=ask))
     await asyncio.sleep(0.05)
     assert len(emitter.events) == before + 1, 'a credential read was waved through'
     second.cancel()

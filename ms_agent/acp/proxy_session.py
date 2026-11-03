@@ -5,6 +5,7 @@ from time import monotonic
 from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.logger import get_logger
+
 from .errors import MaxSessionsError, SessionNotFoundError
 
 logger = get_logger()
@@ -113,12 +114,15 @@ class ProxySessionStore:
         return entry
 
     def list_sessions(self) -> List[Dict[str, Any]]:
-        return [{
-            'session_id': e.id,
-            'backend': e.backend_name,
-            'cwd': e.cwd,
-            'is_running': e.is_running,
-        } for e in self._sessions.values()]
+        return [
+            {
+                'session_id': e.id,
+                'backend': e.backend_name,
+                'cwd': e.cwd,
+                'is_running': e.is_running,
+            }
+            for e in self._sessions.values()
+        ]
 
     async def remove(self, session_id: str) -> None:
         await self._cleanup_session(session_id)
@@ -134,8 +138,7 @@ class ProxySessionStore:
                 pass
 
     def _evict_lru(self) -> Optional[str]:
-        idle = [(sid, s) for sid, s in self._sessions.items()
-                if not s.is_running]
+        idle = [(sid, s) for sid, s in self._sessions.items() if not s.is_running]
         if not idle:
             return None
         return min(idle, key=lambda x: x[1].last_activity)[0]
@@ -147,13 +150,9 @@ class ProxySessionStore:
             return
         try:
             if entry.ctx_manager is not None:
-                asyncio.ensure_future(
-                    entry.ctx_manager.__aexit__(None, None, None))
+                asyncio.ensure_future(entry.ctx_manager.__aexit__(None, None, None))
         except Exception:
-            logger.warning(
-                'Error force-removing proxy session %s',
-                session_id,
-                exc_info=True)
+            logger.warning('Error force-removing proxy session %s', session_id, exc_info=True)
         logger.info('Proxy session force-removed: %s', session_id)
 
     async def _cleanup_session(self, session_id: str) -> None:
@@ -164,10 +163,7 @@ class ProxySessionStore:
             try:
                 await entry.ctx_manager.__aexit__(None, None, None)
             except Exception:
-                logger.warning(
-                    'Error cleaning up proxy session %s',
-                    session_id,
-                    exc_info=True)
+                logger.warning('Error cleaning up proxy session %s', session_id, exc_info=True)
         logger.info('Proxy session removed: %s', session_id)
 
     def _ensure_cleanup_running(self) -> None:
@@ -183,9 +179,9 @@ class ProxySessionStore:
             await asyncio.sleep(self.cleanup_interval)
             now = monotonic()
             expired = [
-                sid for sid, s in self._sessions.items()
-                if (now - s.last_activity > self.session_timeout
-                    and not s.is_running)
+                sid
+                for sid, s in self._sessions.items()
+                if (now - s.last_activity > self.session_timeout and not s.is_running)
             ]
             for sid in expired:
                 logger.info('Evicting timed-out proxy session %s', sid)

@@ -35,11 +35,9 @@ def extract_text_from_a2a_message(message: Any) -> str:
                 name = getattr(file_obj, 'name', 'unnamed')
                 mime = getattr(file_obj, 'mimeType', '')
                 if hasattr(file_obj, 'bytes'):
-                    text_parts.append(
-                        f'[File: {name} ({mime}), binary content]')
+                    text_parts.append(f'[File: {name} ({mime}), binary content]')
                 elif hasattr(file_obj, 'uri'):
-                    text_parts.append(
-                        f'[File: {name} ({mime}), uri={file_obj.uri}]')
+                    text_parts.append(f'[File: {name} ({mime}), uri={file_obj.uri}]')
         elif kind == 'data' or hasattr(part_obj, 'data'):
             data = getattr(part_obj, 'data', part_obj)
             try:
@@ -101,7 +99,7 @@ def collect_full_response(messages: List[Message]) -> str:
     where the LLM interleaves tool calls with text fragments.
     """
     parts: list[str] = []
-    for msg in (messages or []):
+    for msg in messages or []:
         if msg.role == 'assistant':
             content = msg.content
             if isinstance(content, str) and content.strip():

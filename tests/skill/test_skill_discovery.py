@@ -27,21 +27,17 @@ def _legacy_signature(root: Path) -> str:
             except OSError:
                 continue
             relative = path.relative_to(root).as_posix()
-            digest.update(
-                f'{relative}|{file_stat.st_mtime_ns}|{file_stat.st_size}\n'.
-                encode())
+            digest.update(f'{relative}|{file_stat.st_mtime_ns}|{file_stat.st_size}\n'.encode())
     return digest.hexdigest()[:16]
 
 
-def test_discovery_reads_metadata_without_support_tree_walk(
-        tmp_path, monkeypatch):
+def test_discovery_reads_metadata_without_support_tree_walk(tmp_path, monkeypatch):
     skill = _make_skill(tmp_path, 'alpha')
     (skill / 'references').mkdir()
     (skill / 'references' / 'large.md').write_text('payload', encoding='utf-8')
 
     def _unexpected_rglob(*args, **kwargs):
-        raise AssertionError(
-            'metadata discovery must not traverse support files')
+        raise AssertionError('metadata discovery must not traverse support files')
 
     monkeypatch.setattr(Path, 'rglob', _unexpected_rglob)
     discovered = SkillLoader().discover_skills(str(tmp_path))

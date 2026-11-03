@@ -2,32 +2,32 @@
 import os
 import unittest
 
+from modelscope.utils.test_utils import test_level
+from omegaconf import DictConfig, OmegaConf
+
 from ms_agent.agent.llm_agent import LLMAgent
 from ms_agent.llm.anthropic_llm import Anthropic
 from ms_agent.llm.utils import Message, Tool
-from omegaconf import DictConfig, OmegaConf
-
-from modelscope.utils.test_utils import test_level
 
 API_CALL_MAX_TOKEN = 500
 
 
 class OpenaiLLM(unittest.TestCase):
-    conf: DictConfig = OmegaConf.create({
-        'llm': {
-            'model': 'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-            'anthropic_api_key': os.getenv('MODELSCOPE_API_KEY'),
-            'anthropic_base_url': 'https://api-inference.modelscope.cn',
-            'service': 'anthropic'
-        },
-        'generation_config': {
-            'stream': False,
-            'extra_body': {
-                'enable_thinking': False
+    conf: DictConfig = OmegaConf.create(
+        {
+            'llm': {
+                'model': 'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+                'anthropic_api_key': os.getenv('MODELSCOPE_API_KEY'),
+                'anthropic_base_url': 'https://api-inference.modelscope.cn',
+                'service': 'anthropic',
             },
-            'max_tokens': API_CALL_MAX_TOKEN
+            'generation_config': {
+                'stream': False,
+                'extra_body': {'enable_thinking': False},
+                'max_tokens': API_CALL_MAX_TOKEN,
+            },
         }
-    })
+    )
     messages = [
         Message(role='assistant', content='You are a helpful assistant.'),
         Message(role='user', content='浙江的省会是哪里？'),
@@ -48,27 +48,19 @@ class OpenaiLLM(unittest.TestCase):
             description='将一个高德经纬度坐标转换为行政区划地址信息',
             parameters={
                 'type': 'object',
-                'properties': {
-                    'location': {
-                        'type': 'string',
-                        'description': '经纬度'
-                    }
-                },
-                'required': ['location']
-            }),
+                'properties': {'location': {'type': 'string', 'description': '经纬度'}},
+                'required': ['location'],
+            },
+        ),
         Tool(
             tool_name='mkdir',
             description='在文件系统创建目录',
             parameters={
                 'type': 'object',
-                'properties': {
-                    'dir_name': {
-                        'type': 'string',
-                        'description': '目录名'
-                    }
-                },
-                'required': ['dir_name']
-            })
+                'properties': {'dir_name': {'type': 'string', 'description': '目录名'}},
+                'required': ['dir_name'],
+            },
+        ),
     ]
     mcp_config = {
         'mcpServers': {
@@ -81,6 +73,7 @@ class OpenaiLLM(unittest.TestCase):
 
     def setUp(self):
         import asyncio
+
         from ms_agent.tools.mcp_client import MCPClient
 
         # warmup mcp server for test
@@ -88,7 +81,7 @@ class OpenaiLLM(unittest.TestCase):
             mcp_client = MCPClient(self.mcp_config)
             await mcp_client.connect()
             mcps = await mcp_client.get_tools()
-            assert ('fetch' in mcps)
+            assert 'fetch' in mcps
             await mcp_client.cleanup()
 
         asyncio.run(main())
@@ -98,7 +91,7 @@ class OpenaiLLM(unittest.TestCase):
         llm = Anthropic(self.conf)
         res = llm.generate(messages=self.messages, tools=None)
         print(res)
-        assert (res.content)
+        assert res.content
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_call_stream(self):
@@ -106,23 +99,22 @@ class OpenaiLLM(unittest.TestCase):
         res = llm.generate(messages=self.messages, tools=None, stream=True)
         for chunk in res:
             print(chunk)
-        assert (len(chunk.content))
+        assert len(chunk.content)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_tool_stream(self):
         llm = Anthropic(self.conf)
-        res = llm.generate(
-            messages=self.tool_messages, tools=self.tools, stream=True)
+        res = llm.generate(messages=self.tool_messages, tools=self.tools, stream=True)
         for chunk in res:
             print(chunk)
-        assert (len(chunk.tool_calls))
+        assert len(chunk.tool_calls)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_tool_no_stream(self):
         llm = Anthropic(self.conf)
         res = llm.generate(messages=self.tool_messages, tools=self.tools)
         print(res)
-        assert (len(res.tool_calls))
+        assert len(res.tool_calls)
 
     @unittest.skipUnless(test_level() >= 1, 'skip test in current test level')
     def test_stream_agent_multi_round_with_thinking(self):
@@ -139,8 +131,8 @@ class OpenaiLLM(unittest.TestCase):
             res = await agent.run('访问www.baidu.com', stream=True)
             async for chunk in res:
                 print('res: ', chunk)
-            assert ('robots.txt' in chunk[-1].content)
-            assert (chunk[-1].reasoning_content)
+            assert 'robots.txt' in chunk[-1].content
+            assert chunk[-1].reasoning_content
 
         asyncio.run(main())
 

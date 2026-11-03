@@ -1,4 +1,5 @@
 """Tests for ms_agent.cron.service."""
+
 import asyncio
 import os
 from pathlib import Path
@@ -121,8 +122,12 @@ class TestCronServiceCallbacks:
 
         job = service.create_job(schedule_str='every 60s', prompt='cb')
 
-        with patch.object(service._executor, 'execute', new_callable=AsyncMock,
-                          return_value=ExecutionResult(success=True, output='ok', duration_ms=10)):
+        with patch.object(
+            service._executor,
+            'execute',
+            new_callable=AsyncMock,
+            return_value=ExecutionResult(success=True, output='ok', duration_ms=10),
+        ):
             await service.run_job_now(job.id)
 
         assert job.id in started
@@ -139,8 +144,12 @@ class TestCronServiceCallbacks:
 
         job = service.create_job(schedule_str='every 60s', prompt='cb')
 
-        with patch.object(service._executor, 'execute', new_callable=AsyncMock,
-                          return_value=ExecutionResult(success=True, output='ok', duration_ms=10)):
+        with patch.object(
+            service._executor,
+            'execute',
+            new_callable=AsyncMock,
+            return_value=ExecutionResult(success=True, output='ok', duration_ms=10),
+        ):
             await service.run_job_now(job.id)
 
         assert len(completed) == 1

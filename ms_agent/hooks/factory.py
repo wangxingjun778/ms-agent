@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from typing import Any
+
+from omegaconf import DictConfig, OmegaConf
 
 from ms_agent.hooks.executor import HookExecutor
 from ms_agent.hooks.loaders.claude import ClaudeSettingsLoader
@@ -23,8 +24,7 @@ logger = get_logger()
 _EMPTY_REGISTRY = HookRegistry(_index={})
 
 
-def _empty_runtime(project_path: str = '',
-                   session_id: str = '') -> HookRuntime:
+def _empty_runtime(project_path: str = '', session_id: str = '') -> HookRuntime:
     return HookRuntime(
         registry=_EMPTY_REGISTRY,
         executor=HookExecutor(working_dir=project_path or None),
@@ -34,13 +34,9 @@ def _empty_runtime(project_path: str = '',
     )
 
 
-def _parse_hooks_meta(
-        raw: dict[str,
-                  Any]) -> tuple[frozenset[str], frozenset[str], bool, str]:
-    enabled_sources = frozenset(
-        raw.get('enabled_sources', ['native']) or ['native'])
-    enabled_executors = frozenset(
-        raw.get('enabled_executors', ['command']) or ['command'])
+def _parse_hooks_meta(raw: dict[str, Any]) -> tuple[frozenset[str], frozenset[str], bool, str]:
+    enabled_sources = frozenset(raw.get('enabled_sources', ['native']) or ['native'])
+    enabled_executors = frozenset(raw.get('enabled_executors', ['command']) or ['command'])
     fail_closed = bool(raw.get('fail_closed', False))
     default_model = str(raw.get('default_model', 'qwen-plus'))
     return enabled_sources, enabled_executors, fail_closed, default_model
@@ -63,8 +59,7 @@ def build_hook_runtime(
     if hasattr(config, 'hooks') and config.hooks:
         raw_hooks = OmegaConf.to_container(config.hooks, resolve=True) or {}
 
-    enabled_sources, enabled_executors, fail_closed, default_model = _parse_hooks_meta(
-        raw_hooks)
+    enabled_sources, enabled_executors, fail_closed, default_model = _parse_hooks_meta(raw_hooks)
 
     registry = HookRegistry(_index={})
     loaders: list[tuple[str, HookRegistry]] = []
@@ -73,63 +68,75 @@ def build_hook_runtime(
     if 'native' in enabled_sources:
         global_native = Path(global_ms_agent_dir) / 'hooks.yaml'
         if global_native.is_file():
-            loaders.append((
-                'global_native',
-                NativeYamlLoader.load_file(
-                    global_native,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'global_native',
+                    NativeYamlLoader.load_file(
+                        global_native,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
 
     if 'claude' in enabled_sources:
         claude_global = Path.home() / '.claude' / 'settings.json'
         if claude_global.is_file():
-            loaders.append((
-                'claude_global',
-                ClaudeSettingsLoader.load_file(
-                    claude_global,
-                    project_path,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'claude_global',
+                    ClaudeSettingsLoader.load_file(
+                        claude_global,
+                        project_path,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
         claude_project = Path(project_path) / '.claude' / 'settings.json'
         if claude_project.is_file():
-            loaders.append((
-                'claude_project',
-                ClaudeSettingsLoader.load_file(
-                    claude_project,
-                    project_path,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'claude_project',
+                    ClaudeSettingsLoader.load_file(
+                        claude_project,
+                        project_path,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
 
     if 'cursor' in enabled_sources:
         cursor_global = Path.home() / '.cursor' / 'hooks.json'
         if cursor_global.is_file():
-            loaders.append((
-                'cursor_global',
-                CursorHooksLoader.load_file(
-                    cursor_global,
-                    project_path,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'cursor_global',
+                    CursorHooksLoader.load_file(
+                        cursor_global,
+                        project_path,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
         cursor_project = Path(project_path) / '.cursor' / 'hooks.json'
         if cursor_project.is_file():
-            loaders.append((
-                'cursor_project',
-                CursorHooksLoader.load_file(
-                    cursor_project,
-                    project_path,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'cursor_project',
+                    CursorHooksLoader.load_file(
+                        cursor_project,
+                        project_path,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
 
     # agent.yaml hooks section (without meta keys) — native source, §5.3 priority 6
     if 'native' in enabled_sources:
         event_hooks = {
             k: v
-            for k, v in raw_hooks.items() if k not in (
+            for k, v in raw_hooks.items()
+            if k
+            not in (
                 'enabled_sources',
                 'enabled_executors',
                 'default_model',
@@ -139,33 +146,37 @@ def build_hook_runtime(
             )
         }
         if event_hooks:
-            loaders.append((
-                'agent_yaml',
-                HookRegistry.from_dict(
-                    event_hooks,
-                    enabled_executors=enabled_executors,
-                    source='agent.yaml',
-                ),
-            ))
+            loaders.append(
+                (
+                    'agent_yaml',
+                    HookRegistry.from_dict(
+                        event_hooks,
+                        enabled_executors=enabled_executors,
+                        source='agent.yaml',
+                    ),
+                )
+            )
 
     if 'native' in enabled_sources:
         from ms_agent.project.paths import project_internal_file
+
         ms_agent_hooks_json = project_internal_file(project_path, 'hooks.json')
         if ms_agent_hooks_json.is_file():
-            loaders.append((
-                'ms_agent_json',
-                NativeJsonLoader.load_file(
-                    ms_agent_hooks_json,
-                    enabled_executors=enabled_executors,
-                ),
-            ))
+            loaders.append(
+                (
+                    'ms_agent_json',
+                    NativeJsonLoader.load_file(
+                        ms_agent_hooks_json,
+                        enabled_executors=enabled_executors,
+                    ),
+                )
+            )
 
     if 'plugin' in enabled_sources:
         if plugin_hook_registries is not None:
             for contrib in plugin_hook_registries:
                 if not contrib.registry.is_empty:
-                    loaders.append(
-                        (f'plugin:{contrib.plugin_id}', contrib.registry))
+                    loaders.append((f'plugin:{contrib.plugin_id}', contrib.registry))
         else:
             plugin_roots = _discover_plugin_roots(config, project_path)
             seen_plugin_ids: set[str] = set()
@@ -174,8 +185,7 @@ def build_hook_runtime(
                 if plugin_id in seen_plugin_ids:
                     continue
                 seen_plugin_ids.add(plugin_id)
-                plugin_data_dir = Path.home(
-                ) / '.ms_agent' / 'plugins' / 'data' / plugin_id
+                plugin_data_dir = Path.home() / '.ms_agent' / 'plugins' / 'data' / plugin_id
                 reg = PluginHooksLoader.load_plugin(
                     root,
                     project_path=project_path,
@@ -193,10 +203,12 @@ def build_hook_runtime(
     if 'hermes' in enabled_sources:
         hermes_cfg = Path.home() / '.hermes' / 'config.yaml'
         if hermes_cfg.is_file():
-            loaders.append((
-                'hermes',
-                HermesShellLoader.load_file(hermes_cfg, project_path),
-            ))
+            loaders.append(
+                (
+                    'hermes',
+                    HermesShellLoader.load_file(hermes_cfg, project_path),
+                )
+            )
 
     for _name, reg in loaders:
         registry = registry.merge(reg)
@@ -229,8 +241,8 @@ def _discover_plugin_roots(config: Any, project_path: str) -> list[str]:
     managed_ids = registry.managed_plugin_ids(project_path)
     roots: list[str] = []
     seen: set[str] = set()
-    from ms_agent.project.paths import (legacy_local_internal_dir,
-                                        project_internal_dir)
+    from ms_agent.project.paths import legacy_local_internal_dir, project_internal_dir
+
     plugins_dir = project_internal_dir(project_path) / 'plugins'
     if not plugins_dir.is_dir():
         plugins_dir = legacy_local_internal_dir(project_path) / 'plugins'
@@ -244,7 +256,7 @@ def _discover_plugin_roots(config: Any, project_path: str) -> list[str]:
             seen.add(resolved)
             roots.append(str(child))
     if hasattr(config, 'plugins'):
-        for p in (config.plugins or []):
+        for p in config.plugins or []:
             path = Path(str(p))
             if not path.is_absolute():
                 path = Path(project_path) / path

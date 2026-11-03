@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from omegaconf import DictConfig
 from typing import List
+
+from omegaconf import DictConfig
 
 from ms_agent.agent.runtime import Runtime
 from ms_agent.callbacks.base import Callback
@@ -12,7 +13,6 @@ from ms_agent.llm.utils import Message
 
 
 class CallbackToHookBridge(Callback):
-
     def __init__(self, config: DictConfig, hook_runtime: HookRuntime) -> None:
         super().__init__(config)
         self._hooks = hook_runtime

@@ -4,6 +4,7 @@
 The tiers and wire shapes asserted here come from the vendors' own docs, checked
 2026-08-17; the module docstring of ``ms_agent/llm/thinking.py`` has the table.
 """
+
 import pytest
 
 from ms_agent.llm import thinking as T
@@ -17,8 +18,7 @@ from ms_agent.llm import thinking as T
     [
         ('https://dashscope.aliyuncs.com/compatible-mode/v1', 'dashscope'),
         # ATokenPlan and friends are Aliyun MaaS endpoints speaking DashScope.
-        ('https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
-         'dashscope'),
+        ('https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', 'dashscope'),
         ('https://api-inference.modelscope.cn/v1', 'modelscope'),
         ('https://api.deepseek.com', 'deepseek'),
         ('https://open.bigmodel.cn/api/paas/v4', 'zhipu'),
@@ -36,25 +36,27 @@ def test_family_comes_from_the_host(base_url, expected):
 def test_anthropic_protocol_beats_the_host():
     """DeepSeek serves an Anthropic-compatible gateway on its own domain. The
     body shape follows the protocol, not the vendor."""
-    assert T.endpoint_family('https://api.deepseek.com/anthropic',
-                             'anthropic') == 'anthropic'
+    assert T.endpoint_family('https://api.deepseek.com/anthropic', 'anthropic') == 'anthropic'
 
 
 # --------------------------------------------------------------------------- #
 # Canonical input
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize('raw,expected', [
-    (None, 'auto'),
-    ('', 'auto'),
-    ('auto', 'auto'),
-    ('  HIGH ', 'high'),
-    ('x-high', 'xhigh'),
-    ('none', 'off'),
-    ('disabled', 'off'),
-    (True, 'high'),
-    (False, 'off'),
-    ('turbo', None),
-])
+@pytest.mark.parametrize(
+    'raw,expected',
+    [
+        (None, 'auto'),
+        ('', 'auto'),
+        ('auto', 'auto'),
+        ('  HIGH ', 'high'),
+        ('x-high', 'xhigh'),
+        ('none', 'off'),
+        ('disabled', 'off'),
+        (True, 'high'),
+        (False, 'off'),
+        ('turbo', None),
+    ],
+)
 def test_effort_is_normalized_leniently(raw, expected):
     assert T.normalize_effort(raw) == expected
 
@@ -105,9 +107,7 @@ def test_dashscope_gets_both_knobs_because_they_do_different_jobs():
     take an effort tier. Sending one without the other loses half the models."""
     got = T.plan('low', base_url='https://dashscope.aliyuncs.com/v1')
     assert got['params'] == {
-        'extra_body': {
-            'enable_thinking': True
-        },
+        'extra_body': {'enable_thinking': True},
         'reasoning_effort': 'low',
     }
 
@@ -139,25 +139,14 @@ def test_a_hand_written_thinking_budget_suppresses_our_effort():
     settings hint invites people to add, so the two suggestions would collide.
     The hand-written key wins; only our effort is dropped, not the switch."""
     out = T.apply_effort(
-        {
-            'reasoning_effort': 'high',
-            'extra_body': {
-                'thinking_budget': 2048
-            }
-        },
-        base_url='https://dashscope.aliyuncs.com/v1')
-    assert out == {
-        'extra_body': {
-            'thinking_budget': 2048,
-            'enable_thinking': True
-        }
-    }
+        {'reasoning_effort': 'high', 'extra_body': {'thinking_budget': 2048}},
+        base_url='https://dashscope.aliyuncs.com/v1',
+    )
+    assert out == {'extra_body': {'thinking_budget': 2048, 'enable_thinking': True}}
     # The preview the settings page renders has to agree with that.
-    shown = T.plan('high',
-                   base_url='https://dashscope.aliyuncs.com/v1',
-                   existing={'extra_body': {
-                       'thinking_budget': 2048
-                   }})
+    shown = T.plan(
+        'high', base_url='https://dashscope.aliyuncs.com/v1', existing={'extra_body': {'thinking_budget': 2048}}
+    )
     assert 'reasoning_effort' not in shown['params']
 
 
@@ -199,16 +188,17 @@ def test_minimax_always_asks_for_the_reasoning_to_be_split_out():
 
     # Nobody else gets it: third-party hosts of the same weights reject the
     # parameter outright, and they are a different family here.
-    for base in ('https://api-inference.modelscope.cn/v1',
-                 'https://openrouter.ai/api/v1'):
+    for base in ('https://api-inference.modelscope.cn/v1', 'https://openrouter.ai/api/v1'):
         assert 'reasoning_split' not in str(T.plan('auto', base_url=base))
 
 
 def test_openrouter_uses_its_own_unified_object():
-    assert T.plan('low', base_url='https://openrouter.ai/api/v1')['params'] \
-        == {'extra_body': {'reasoning': {'effort': 'low'}}}
-    assert T.plan('off', base_url='https://openrouter.ai/api/v1')['params'] \
-        == {'extra_body': {'reasoning': {'enabled': False}}}
+    assert T.plan('low', base_url='https://openrouter.ai/api/v1')['params'] == {
+        'extra_body': {'reasoning': {'effort': 'low'}}
+    }
+    assert T.plan('off', base_url='https://openrouter.ai/api/v1')['params'] == {
+        'extra_body': {'reasoning': {'enabled': False}}
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -218,29 +208,24 @@ def test_auto_sends_nothing_almost_everywhere():
     """Vendor defaults are per-model and they move (DashScope alone has qwen3.5+
     defaulting ON and qwen-plus defaulting OFF). Sending nothing inherits
     whatever they tuned, which is the only thing that stays correct for free."""
-    for base_url in ('https://api-inference.modelscope.cn/v1',
-                     'https://api.deepseek.com',
-                     'https://open.bigmodel.cn/api/paas/v4',
-                     'https://api.openai.com/v1',
-                     'https://vllm.internal.corp:8000/v1'):
+    for base_url in (
+        'https://api-inference.modelscope.cn/v1',
+        'https://api.deepseek.com',
+        'https://open.bigmodel.cn/api/paas/v4',
+        'https://api.openai.com/v1',
+        'https://vllm.internal.corp:8000/v1',
+    ):
         assert T.plan('auto', base_url=base_url)['params'] == {}
 
 
 def test_auto_is_explicit_only_where_silence_would_mean_off():
     # Anthropic: our Messages transport always writes a `thinking` block and
     # absent means disabled, so Claude would never think.
-    assert T.plan(None, base_url='', protocol='anthropic')['params'] == {
-        'extra_body': {
-            'enable_thinking': True
-        }
-    }
+    assert T.plan(None, base_url='', protocol='anthropic')['params'] == {'extra_body': {'enable_thinking': True}}
     # DashScope: qwen-plus/turbo/flash and qwen3-max default thinking OFF.
-    assert T.plan(None, base_url='https://dashscope.aliyuncs.com/v1')[
-        'params'] == {
-            'extra_body': {
-                'enable_thinking': True
-            }
-        }
+    assert T.plan(None, base_url='https://dashscope.aliyuncs.com/v1')['params'] == {
+        'extra_body': {'enable_thinking': True}
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -249,39 +234,27 @@ def test_auto_is_explicit_only_where_silence_would_mean_off():
 def test_the_canonical_key_never_reaches_the_wire():
     """`auto` and `off` are ours, not any vendor's. Leaving the key in place
     would send `reasoning_effort: "auto"` to an endpoint that validates it."""
-    out = T.apply_effort({'reasoning_effort': 'auto', 'temperature': 0.3},
-                         base_url='https://api-inference.modelscope.cn/v1')
+    out = T.apply_effort(
+        {'reasoning_effort': 'auto', 'temperature': 0.3}, base_url='https://api-inference.modelscope.cn/v1'
+    )
     assert out == {'temperature': 0.3}
 
 
 def test_a_hand_written_wire_value_wins_over_the_knob():
     """extra_body is the escape hatch; someone who reached for it meant it."""
     out = T.apply_effort(
-        {
-            'reasoning_effort': 'high',
-            'extra_body': {
-                'enable_thinking': False
-            }
-        },
-        base_url='https://dashscope.aliyuncs.com/v1')
+        {'reasoning_effort': 'high', 'extra_body': {'enable_thinking': False}},
+        base_url='https://dashscope.aliyuncs.com/v1',
+    )
     assert out == {'extra_body': {'enable_thinking': False}}
 
 
 def test_unrelated_extra_body_keys_survive_lowering():
     out = T.apply_effort(
-        {
-            'reasoning_effort': 'high',
-            'extra_body': {
-                'thinking_budget': 2048
-            }
-        },
-        base_url='https://dashscope.aliyuncs.com/v1')
-    assert out == {
-        'extra_body': {
-            'thinking_budget': 2048,
-            'enable_thinking': True
-        }
-    }
+        {'reasoning_effort': 'high', 'extra_body': {'thinking_budget': 2048}},
+        base_url='https://dashscope.aliyuncs.com/v1',
+    )
+    assert out == {'extra_body': {'thinking_budget': 2048, 'enable_thinking': True}}
 
 
 def test_requests_without_the_knob_are_untouched_where_auto_is_silent():
@@ -293,32 +266,23 @@ def test_an_absent_knob_means_auto_not_nothing():
     """Unset has to behave exactly like an explicit `auto`, or the two endpoints
     where auto speaks up would depend on whether a caller bothered to write the
     key."""
-    out = T.apply_effort({'temperature': 0.3},
-                         base_url='https://dashscope.aliyuncs.com/v1')
-    assert out == {
-        'temperature': 0.3,
-        'extra_body': {
-            'enable_thinking': True
-        }
-    }
+    out = T.apply_effort({'temperature': 0.3}, base_url='https://dashscope.aliyuncs.com/v1')
+    assert out == {'temperature': 0.3, 'extra_body': {'enable_thinking': True}}
     # ...and it still yields to a hand-written wire value.
     kwargs = {'extra_body': {'enable_thinking': False}}
-    assert T.apply_effort(
-        kwargs, base_url='https://dashscope.aliyuncs.com/v1') == kwargs
+    assert T.apply_effort(kwargs, base_url='https://dashscope.aliyuncs.com/v1') == kwargs
 
 
 def test_a_reasoning_effort_refusal_is_recognized():
     """The fallback used to look only for qwen-style names, so a 400 on the
     modern field would not have been healed."""
-    assert T.is_thinking_refusal(
-        RuntimeError('Error code: 400 - unknown parameter reasoning_effort'))
+    assert T.is_thinking_refusal(RuntimeError('Error code: 400 - unknown parameter reasoning_effort'))
 
 
 # --------------------------------------------------------------------------- #
 # Through the real transports
 # --------------------------------------------------------------------------- #
 class _Recorder:
-
     def __init__(self):
         self.calls = []
 
@@ -360,8 +324,7 @@ def test_the_knob_is_not_an_anthropic_parameter():
     import inspect
 
     anthropic = pytest.importorskip('anthropic')
-    params = inspect.signature(
-        anthropic.Anthropic(api_key='x').messages.create).parameters
+    params = inspect.signature(anthropic.Anthropic(api_key='x').messages.create).parameters
     assert 'reasoning_effort' not in params
     assert 'extra_body' in params  # ...but the shape we lower into survives
 
@@ -373,15 +336,13 @@ def test_a_refused_tier_falls_all_the_way_back():
     from ms_agent.llm.transport import openai_compat as TC
 
     class _Refuser(_Recorder):
-
         def create(self, **kwargs):
             self.calls.append(kwargs)
-            asked = (kwargs.get('reasoning_effort')
-                     or (kwargs.get('extra_body') or {}).get('enable_thinking'))
+            asked = kwargs.get('reasoning_effort') or (kwargs.get('extra_body') or {}).get('enable_thinking')
             if asked:
                 raise RuntimeError(
-                    'Error code: 400 - The thinking_budget parameter must be a '
-                    'positive integer and not greater than 0')
+                    'Error code: 400 - The thinking_budget parameter must be a positive integer and not greater than 0'
+                )
             return 'completion'
 
     rec = _Refuser()
@@ -432,27 +393,30 @@ def test_generate_sends_the_tier_all_the_way_to_the_client():
         taking bare **kwargs would drop every argument — including `stream` —
         and quietly test nothing."""
 
-        def create(self,
-                   *,
-                   model=None,
-                   messages=None,
-                   tools=None,
-                   stream=None,
-                   max_tokens=None,
-                   extra_body=None,
-                   reasoning_effort=None,
-                   **kw):
-            self.calls.append({
-                'extra_body': extra_body,
-                'reasoning_effort': reasoning_effort,
-                'stream': stream,
-            })
+        def create(
+            self,
+            *,
+            model=None,
+            messages=None,
+            tools=None,
+            stream=None,
+            max_tokens=None,
+            extra_body=None,
+            reasoning_effort=None,
+            **kw,
+        ):
+            self.calls.append(
+                {
+                    'extra_body': extra_body,
+                    'reasoning_effort': reasoning_effort,
+                    'stream': stream,
+                }
+            )
             return 'completion'
 
     rec = _SigRecorder()
     tr = TC.OpenAICompatTransport.__new__(TC.OpenAICompatTransport)
-    tr.client = _fake_client(
-        rec, 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+    tr.client = _fake_client(rec, 'https://dashscope.aliyuncs.com/compatible-mode/v1')
     tr.model = 'qwen3.8-max'
     tr.args = {'reasoning_effort': 'max'}
     tr.max_continue_runs = 1
@@ -479,14 +443,11 @@ def test_mandatory_thinking_is_repaired_forwards_not_backwards():
     from ms_agent.llm.transport import openai_compat as TC
 
     class _Mandatory(_Recorder):
-
         def create(self, **kwargs):
             self.calls.append(kwargs)
             reasoning = (kwargs.get('extra_body') or {}).get('reasoning') or {}
             if reasoning.get('enabled') is False:
-                raise RuntimeError(
-                    'Error code: 400 - Reasoning is mandatory for this '
-                    'endpoint and cannot be disabled.')
+                raise RuntimeError('Error code: 400 - Reasoning is mandatory for this endpoint and cannot be disabled.')
             return 'completion'
 
     rec = _Mandatory()
@@ -539,13 +500,13 @@ def test_a_switch_only_endpoint_is_not_offered_a_ladder():
     assert T.offered_tiers('anthropic') == ('auto', 'off', 'on')
     # `on` is an alias of the single thinking tier, so it round-trips.
     assert T.normalize_effort('on') == 'high'
-    assert T.plan('on', base_url='https://api-inference.modelscope.cn/v1')[
-        'params'] == {'extra_body': {'enable_thinking': True}}
+    assert T.plan('on', base_url='https://api-inference.modelscope.cn/v1')['params'] == {
+        'extra_body': {'enable_thinking': True}
+    }
 
 
 def test_a_real_ladder_is_offered_in_full():
-    assert T.offered_tiers('zhipu') == ('auto', 'off', 'minimal', 'low',
-                                        'medium', 'high', 'xhigh', 'max')
+    assert T.offered_tiers('zhipu') == ('auto', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')
     # ...minus the rung DashScope rejects.
     assert 'max' not in T.offered_tiers('dashscope')
     assert 'xhigh' in T.offered_tiers('dashscope')
@@ -557,8 +518,10 @@ def test_a_real_ladder_is_offered_in_full():
 class _Boom400(Exception):
     """An Aliyun-family gateway answering 200 and then rejecting the params."""
 
-    MSG = ('<400> InternalError.Algo.InvalidParameter: The thinking_budget '
-           'parameter must be a positive integer and not greater than 0')
+    MSG = (
+        '<400> InternalError.Algo.InvalidParameter: The thinking_budget '
+        'parameter must be a positive integer and not greater than 0'
+    )
 
     def __init__(self, msg=MSG):
         super().__init__(msg)
@@ -566,7 +529,6 @@ class _Boom400(Exception):
 
 
 class _Log:
-
     def warning(self, *a, **k):
         pass
 
@@ -597,10 +559,10 @@ def test_stream_time_thinking_refusal_is_repaired():
     T.MODELS_REFUSING_THINKING.clear()
     create, seen = _streaming_factory()
     stream = T.create_with_thinking_fallback(
-        create, client=None, model='stream-model', logger=_Log(),
-        extra_body={'thinking_budget': 4096})
+        create, client=None, model='stream-model', logger=_Log(), extra_body={'thinking_budget': 4096}
+    )
     assert list(stream) == ['chunk-1', 'chunk-2']
-    assert seen == [True, False]          # asked, then repaired
+    assert seen == [True, False]  # asked, then repaired
     assert any(k[1] == 'stream-model' for k in T.MODELS_REFUSING_THINKING)
     T.MODELS_REFUSING_THINKING.clear()
 
@@ -619,14 +581,14 @@ def test_stream_failure_after_first_chunk_is_not_retried():
 
     T.MODELS_REFUSING_THINKING.clear()
     stream = T.create_with_thinking_fallback(
-        create, client=None, model='late-model', logger=_Log(),
-        extra_body={'thinking_budget': 4096})
+        create, client=None, model='late-model', logger=_Log(), extra_body={'thinking_budget': 4096}
+    )
     got = []
     with pytest.raises(_Boom400):
         for item in stream:
             got.append(item)
     assert got == ['chunk-1']
-    assert len(calls) == 1                 # already rendered; no restart
+    assert len(calls) == 1  # already rendered; no restart
     T.MODELS_REFUSING_THINKING.clear()
 
 
@@ -634,5 +596,4 @@ def test_non_stream_result_is_passed_through_untouched():
     def create(**kw):
         return 'completion'
 
-    assert T.create_with_thinking_fallback(
-        create, client=None, model='plain', logger=_Log()) == 'completion'
+    assert T.create_with_thinking_fallback(create, client=None, model='plain', logger=_Log()) == 'completion'

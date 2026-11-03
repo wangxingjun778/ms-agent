@@ -9,6 +9,7 @@ Improvement over the legacy engine: non-streaming responses now capture
 ``thinking`` blocks into ``reasoning_content`` (the legacy engine hardcoded it
 to an empty string).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -29,7 +30,6 @@ logger = get_logger()
 
 
 class AnthropicMessagesTransport(Transport):
-
     def __init__(
         self,
         model: str,
@@ -59,19 +59,21 @@ class AnthropicMessagesTransport(Transport):
         # can close it from another thread when the consumer abandons the stream.
         self._active_stream: Any = None
 
-    def format_tools(self,
-                     tools: Optional[List[Tool]]) -> Optional[List[Dict]]:
+    def format_tools(self, tools: Optional[List[Tool]]) -> Optional[List[Dict]]:
         if not tools:
             return None
-        return [{
-            'name': tool['tool_name'],
-            'description': tool.get('description', ''),
-            'input_schema': {
-                'type': 'object',
-                'properties': tool.get('parameters', {}).get('properties', {}),
-                'required': tool.get('parameters', {}).get('required', []),
+        return [
+            {
+                'name': tool['tool_name'],
+                'description': tool.get('description', ''),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': tool.get('parameters', {}).get('properties', {}),
+                    'required': tool.get('parameters', {}).get('required', []),
+                },
             }
-        } for tool in tools]
+            for tool in tools
+        ]
 
     @staticmethod
     def _as_text(value: Any) -> str:
@@ -127,30 +129,30 @@ class AnthropicMessagesTransport(Transport):
                 if url.startswith('data:') and ',' in url:
                     header, data = url.split(',', 1)
                     media_type = header[5:].split(';')[0] or 'image/png'
-                    out.append({
-                        'type': 'image',
-                        'source': {
-                            'type': 'base64',
-                            'media_type': media_type,
-                            'data': data,
-                        },
-                    })
+                    out.append(
+                        {
+                            'type': 'image',
+                            'source': {
+                                'type': 'base64',
+                                'media_type': media_type,
+                                'data': data,
+                            },
+                        }
+                    )
                 elif url:
-                    out.append({
-                        'type': 'image',
-                        'source': {
-                            'type': 'url',
-                            'url': url
-                        },
-                    })
+                    out.append(
+                        {
+                            'type': 'image',
+                            'source': {'type': 'url', 'url': url},
+                        }
+                    )
             else:
                 text = str(item.get('text') or '')
                 if text:
                     out.append({'type': 'text', 'text': text})
         return out
 
-    def _format_input_message(self,
-                              messages: List[Message]) -> List[Dict[str, Any]]:
+    def _format_input_message(self, messages: List[Message]) -> List[Dict[str, Any]]:
         formatted_messages = []
         # tool_use ids from the most recent assistant turn, awaiting their
         # results. Anthropic requires every tool_result to carry the matching
@@ -185,13 +187,10 @@ class AnthropicMessagesTransport(Transport):
                     attachments,
                     self._vision,
                     vision_supported=self._images_allowed(),
-                    reason=vision_delivery_reason(
-                        getattr(self.client, 'base_url', ''), self.model),
+                    reason=vision_delivery_reason(getattr(self.client, 'base_url', ''), self.model),
                     numbering=numbering,
-                    priors=[
-                        str((a or {}).get('delivery') or '')
-                        for a in attachments if isinstance(a, dict)
-                    ])
+                    priors=[str((a or {}).get('delivery') or '') for a in attachments if isinstance(a, dict)],
+                )
                 deliveries.extend(planned)
                 if isinstance(built, list):
                     content.extend(built)
@@ -204,45 +203,34 @@ class AnthropicMessagesTransport(Transport):
                 # block, silently destroying every image; convert instead.
                 content.extend(self._blocks_from_structured(msg.content))
             elif msg.content:
-                content.append({
-                    'type': 'text',
-                    'text': self._as_text(msg.content)
-                })
+                content.append({'type': 'text', 'text': self._as_text(msg.content)})
             if msg.tool_calls:
                 pending_tool_ids = []
                 for tool_call in msg.tool_calls:
                     tid = tool_call['id']
                     pending_tool_ids.append(tid)
-                    content.append({
-                        'type':
-                        'tool_use',
-                        'id':
-                        tid,
-                        'name':
-                        tool_call['tool_name'],
-                        'input':
-                        self._as_tool_input(tool_call.get('arguments'))
-                    })
+                    content.append(
+                        {
+                            'type': 'tool_use',
+                            'id': tid,
+                            'name': tool_call['tool_name'],
+                            'input': self._as_tool_input(tool_call.get('arguments')),
+                        }
+                    )
             if msg.role == 'tool':
-                tool_use_id = msg.tool_call_id or (pending_tool_ids.pop(0)
-                                                   if pending_tool_ids else '')
+                tool_use_id = msg.tool_call_id or (pending_tool_ids.pop(0) if pending_tool_ids else '')
                 # This protocol DOES allow image blocks inside tool_result, so a
                 # tool's images stay attached to the call that produced them —
                 # better than the hoist the OpenAI transports are forced into,
                 # because the association survives regardless of message order.
                 result_content: Any = self._as_text(msg.content)
-                if multimodal.tool_media_withheld(attachments, self._vision,
-                                                  self._images_allowed()):
+                if multimodal.tool_media_withheld(attachments, self._vision, self._images_allowed()):
                     # See the OpenAI transport: the tool's own text would
                     # otherwise be the last word on images this request drops.
-                    result_content = '\n'.join(
-                        filter(None,
-                               [result_content, multimodal.TOOL_MEDIA_WITHHELD]))
+                    result_content = '\n'.join(filter(None, [result_content, multimodal.TOOL_MEDIA_WITHHELD]))
                 image_blocks = multimodal.anthropic_tool_result_blocks(
-                    attachments,
-                    self._vision,
-                    vision_supported=self._images_allowed(),
-                    numbering=numbering)
+                    attachments, self._vision, vision_supported=self._images_allowed(), numbering=numbering
+                )
                 if image_blocks:
                     text = result_content
                     result_content = [*image_blocks]
@@ -260,17 +248,22 @@ class AnthropicMessagesTransport(Transport):
                 # (which the API rejects: "tool_use ... without tool_result
                 # immediately after").
                 prev = formatted_messages[-1] if formatted_messages else None
-                if (isinstance(prev, dict) and prev.get('role') == 'user'
-                        and isinstance(prev.get('content'), list)
-                        and prev['content']
-                        and isinstance(prev['content'][0], dict)
-                        and prev['content'][0].get('type') == 'tool_result'):
+                if (
+                    isinstance(prev, dict)
+                    and prev.get('role') == 'user'
+                    and isinstance(prev.get('content'), list)
+                    and prev['content']
+                    and isinstance(prev['content'][0], dict)
+                    and prev['content'][0].get('type') == 'tool_result'
+                ):
                     prev['content'].append(result_block)
                 else:
-                    formatted_messages.append({
-                        'role': 'user',
-                        'content': [result_block],
-                    })
+                    formatted_messages.append(
+                        {
+                            'role': 'user',
+                            'content': [result_block],
+                        }
+                    )
                 continue
             formatted_messages.append({'role': msg.role, 'content': content})
         self._last_deliveries = deliveries
@@ -292,16 +285,13 @@ class AnthropicMessagesTransport(Transport):
         requests the user most needs told about.
         """
         self._last_deliveries = [
-            d if d.state != multimodal.DELIVERED else replace(
-                d, state=multimodal.DEGRADED, reason=reason)
+            d if d.state != multimodal.DELIVERED else replace(d, state=multimodal.DEGRADED, reason=reason)
             for d in self._last_deliveries
         ]
 
-    def _call_llm(self,
-                  messages: List[Message],
-                  tools: Optional[List[Dict]] = None,
-                  stream: bool = False,
-                  **kwargs) -> Any:
+    def _call_llm(
+        self, messages: List[Message], tools: Optional[List[Dict]] = None, stream: bool = False, **kwargs
+    ) -> Any:
         formatted_messages = self._format_input_message(messages)
         formatted_messages = [m for m in formatted_messages if m['content']]
 
@@ -322,10 +312,7 @@ class AnthropicMessagesTransport(Transport):
             'model': self.model,
             'messages': formatted_messages,
             'max_tokens': max_tokens,
-            'thinking': {
-                'type': 'enabled' if enable_thinking else 'disabled',
-                'budget_tokens': thinking_budget
-            }
+            'thinking': {'type': 'enabled' if enable_thinking else 'disabled', 'budget_tokens': thinking_budget},
         }
         if system:
             params['system'] = system
@@ -339,8 +326,8 @@ class AnthropicMessagesTransport(Transport):
         # remember the model. Symmetric with OpenAICompatTransport so behaviour
         # does not depend on which protocol a gateway happens to speak.
         sent_images = any(
-            multimodal.has_image_blocks(m.get('content'))
-            for m in formatted_messages if isinstance(m, dict))
+            multimodal.has_image_blocks(m.get('content')) for m in formatted_messages if isinstance(m, dict)
+        )
 
         def _send(messages, **kw):
             call = dict(kw)
@@ -363,29 +350,23 @@ class AnthropicMessagesTransport(Transport):
         # retries compose instead of masking each other.
         def _create(messages, **kw):
             return create_with_thinking_fallback(
-                lambda **kw2: _send(messages, **kw2),
-                self.client,
-                self.model,
-                logger,
-                **kw)
+                lambda **kw2: _send(messages, **kw2), self.client, self.model, logger, **kw
+            )
 
         # Everything except `model` and `messages`, which the wrapper takes as
         # named arguments; leaving either in `params` would collide with them.
-        rest = {
-            k: v
-            for k, v in params.items() if k not in ('model', 'messages')
-        }
+        rest = {k: v for k, v in params.items() if k not in ('model', 'messages')}
         return create_with_vision_fallback(
             _create,
             base_url=getattr(self.client, 'base_url', ''),
             model=self.model,
             messages=params['messages'],
             sent_images=sent_images,
-            max_edge=getattr(
-                getattr(self, '_vision', None), 'max_edge', 0),
+            max_edge=getattr(getattr(self, '_vision', None), 'max_edge', 0),
             on_degrade=self._mark_images_degraded,
             logger_=logger,
-            **rest)
+            **rest,
+        )
 
     def generate(
         self,
@@ -406,15 +387,13 @@ class AnthropicMessagesTransport(Transport):
         sig_params = inspect.signature(self.client.messages.create).parameters
         filtered_args = {k: v for k, v in args.items() if k in sig_params}
 
-        completion = self._call_llm(messages, formatted_tools, stream,
-                                    **filtered_args)
+        completion = self._call_llm(messages, formatted_tools, stream, **filtered_args)
 
         if stream:
             return self._stream_format_output_message(completion)
         return self._format_output_message(completion)
 
-    def _stream_format_output_message(self,
-                                      stream_manager) -> Iterator[Message]:
+    def _stream_format_output_message(self, stream_manager) -> Iterator[Message]:
         current_message = Message(
             role='assistant',
             content='',
@@ -461,14 +440,12 @@ class AnthropicMessagesTransport(Transport):
                                 # signature so a multi-turn tool conversation can
                                 # replay the block verbatim (the provider rejects
                                 # a thinking turn that isn't passed back).
-                                current_message.reasoning_content = getattr(
-                                    block, 'thinking',
-                                    '') or current_message.reasoning_content
-                                current_message.reasoning_signature = getattr(
-                                    block, 'signature', '') or ''
+                                current_message.reasoning_content = (
+                                    getattr(block, 'thinking', '') or current_message.reasoning_content
+                                )
+                                current_message.reasoning_signature = getattr(block, 'signature', '') or ''
                             elif block.type == 'tool_use':
-                                tool_call_id = tool_call_id_map.get(
-                                    idx, block.id)
+                                tool_call_id = tool_call_id_map.get(idx, block.id)
                                 current_message.tool_calls.append(
                                     ToolCall(
                                         id=tool_call_id,
@@ -476,15 +453,16 @@ class AnthropicMessagesTransport(Transport):
                                         type='function',
                                         tool_name=block.name,
                                         arguments=block.input,
-                                    ))
+                                    )
+                                )
                         current_message.content = full_content
                         current_message.partial = False
                         current_message.completion_tokens = getattr(
-                            final_msg.usage, 'output_tokens',
-                            current_message.completion_tokens)
+                            final_msg.usage, 'output_tokens', current_message.completion_tokens
+                        )
                         current_message.prompt_tokens = getattr(
-                            final_msg.usage, 'input_tokens',
-                            current_message.prompt_tokens)
+                            final_msg.usage, 'input_tokens', current_message.prompt_tokens
+                        )
                         yield current_message
             finally:
                 if self._active_stream is stream:
@@ -534,7 +512,8 @@ class AnthropicMessagesTransport(Transport):
                         type='function',
                         arguments=block.input,
                         tool_name=block.name,
-                    ))
+                    )
+                )
         return Message(
             role='assistant',
             content=content,

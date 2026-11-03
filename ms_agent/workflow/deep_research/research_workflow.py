@@ -1,5 +1,3 @@
-# flake8: noqa
-# yapf: disable
 import copy
 import json
 import os
@@ -16,20 +14,23 @@ class ResearchWorkflow:
     """
     A workflow for conducting deep research tasks using LLMs and various tools.
     """
+
     RESOURCES = 'resources'
 
     WORKFLOW_NAME = 'ResearchWorkflow'
 
     def __init__(
-            self,
-            client: OpenAIChat,
-            principle: Optional['Principle'] = None,
-            search_engine=None,
-            workdir: str = None,
-            reuse: bool = False,
-            verbose: bool = False,
-            **kwargs):
+        self,
+        client: OpenAIChat,
+        principle: Optional['Principle'] = None,
+        search_engine=None,
+        workdir: str = None,
+        reuse: bool = False,
+        verbose: bool = False,
+        **kwargs,
+    ):
         from ms_agent.workflow.deep_research.principle import MECEPrinciple
+
         if principle is None:
             principle = MECEPrinciple()
         self._client = client
@@ -37,9 +38,10 @@ class ResearchWorkflow:
         self._search_engine = search_engine
         self._reuse = reuse
         self._verbose = verbose
-        self._use_ray = (
-            kwargs.pop('use_ray', False)
-            or str(os.environ.get('RAG_EXTRACT_USE_RAY', '0')).lower() in ('1', 'true', 'True')
+        self._use_ray = kwargs.pop('use_ray', False) or str(os.environ.get('RAG_EXTRACT_USE_RAY', '0')).lower() in (
+            '1',
+            'true',
+            'True',
         )
         if not self._use_ray:
             logger.warning(
@@ -65,8 +67,9 @@ class ResearchWorkflow:
         # Construct output directory for current workflow
         self.workdir = workdir
         self.report_prefix = kwargs.get('report_prefix', '')
-        self.workdir_structure: Dict[
-            str, str] = self._construct_workdir_structure(workdir, report_prefix=self.report_prefix)
+        self.workdir_structure: Dict[str, str] = self._construct_workdir_structure(
+            workdir, report_prefix=self.report_prefix
+        )
 
         if self._verbose:
             logger.info(f'Workflow workdir structure: {self.workdir_structure}')
@@ -110,20 +113,15 @@ class ResearchWorkflow:
             'report_md': report_path,
         }
 
-    def _chat(self,
-              messages: List[Dict[str, Any]],
-              tools: List[Dict[str, Any]] = None,
-              **kwargs):
+    def _chat(self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None, **kwargs):
 
         stream: bool = kwargs.get('stream', True)
 
         if stream:
-            stream_chunks = self._client.chat_stream(
-                messages=messages, tools=tools, **kwargs)
+            stream_chunks = self._client.chat_stream(messages=messages, tools=tools, **kwargs)
             chunk_list = []
             for chunk in stream_chunks:
-                chunk_new = copy.deepcopy(
-                    chunk)  # Ensure we do not modify the original chunk
+                chunk_new = copy.deepcopy(chunk)  # Ensure we do not modify the original chunk
                 chunk_list.append(chunk_new)
 
             aggregated_chunks = self._client.aggregate_stream_chunks(chunk_list)
@@ -140,19 +138,17 @@ class ResearchWorkflow:
         if self._reuse:
             if os.path.exists(self.workdir_structure['todo_list_md']):
                 logger.info(
-                    f"Skip breakdown, using existing todo list for `reuse` mode: {self.workdir_structure['todo_list_md']}"
+                    f'Skip breakdown, using existing todo list for `reuse` mode: {self.workdir_structure["todo_list_md"]}'
                 )
                 return
 
-        messages = [{
-            'role': 'system',
-            'content': self.default_system,
-        }, {
-            'role':
-                'user',
-            'content':
-                f'{user_prompt}{self._principle.breakdown_prompt}'
-        }]
+        messages = [
+            {
+                'role': 'system',
+                'content': self.default_system,
+            },
+            {'role': 'user', 'content': f'{user_prompt}{self._principle.breakdown_prompt}'},
+        ]
         self._history.extend(messages)
 
         round_d: Dict[str, Any] = self._chat(messages=messages, **kwargs)
@@ -175,21 +171,15 @@ class ResearchWorkflow:
 
         if self._reuse and self._load_todo_file():
             # Load existing todolist file if it exists
-            print(
-                f">>Loaded existing todo list from {self.workdir_structure['todo_list_md']}"
-            )
+            print(f'>>Loaded existing todo list from {self.workdir_structure["todo_list_md"]}')
             return
 
         messages: List[Dict[str, Any]] = [self._history[-1]]
-        user_todo_msg: Dict[str, Any] = {
-            'role': 'user',
-            'content': f'{self._principle.todo_prompt}'
-        }
+        user_todo_msg: Dict[str, Any] = {'role': 'user', 'content': f'{self._principle.todo_prompt}'}
         self._history.append(user_todo_msg)
         messages.append(user_todo_msg)
 
-        round_d: Dict[str, Any] = self._chat(
-            messages=messages, tools=None, **kwargs)
+        round_d: Dict[str, Any] = self._chat(messages=messages, tools=None, **kwargs)
 
         assistant_msg: Dict[str, Any] = self._client.convert_message(
             role='assistant',
@@ -203,37 +193,29 @@ class ResearchWorkflow:
         logger.info(f'>>todo_content: {todo_content}')
 
         # Convert `todo-list` to Python list format
-        messages_new: List[Dict[str, Any]] = [{
-            'role':
-                'user',
-            'content':
-                f'{todo_content}{self._principle.convert_todo_prompt}'
-        }]
-        round_d_new: Dict[str, Any] = self._chat(
-            messages=messages_new, tools=None, **kwargs)
+        messages_new: List[Dict[str, Any]] = [
+            {'role': 'user', 'content': f'{todo_content}{self._principle.convert_todo_prompt}'}
+        ]
+        round_d_new: Dict[str, Any] = self._chat(messages=messages_new, tools=None, **kwargs)
         todo_py_content: str = round_d_new['content']
-        assert todo_py_content.strip(
-        ), 'Converted todo content py-format cannot be empty.'
-        todo_py_list: List[Dict[str,
-        Any]] = self.parse_json_from_content(todo_py_content)
+        assert todo_py_content.strip(), 'Converted todo content py-format cannot be empty.'
+        todo_py_list: List[Dict[str, Any]] = self.parse_json_from_content(todo_py_content)
         self._todo_d['py'] = todo_py_list
 
         self._dump_todo_file()
 
     def search(self, search_request: 'SearchRequest') -> str:
         from ms_agent.tools.search.exa.schema import dump_batch_search_results
-        from ms_agent.tools.search.search_base import (SearchRequest,
-                                                       SearchResult)
+        from ms_agent.tools.search.search_base import SearchRequest, SearchResult
+
         if self._reuse:
             # Load existing search results if they exist
             if os.path.exists(self.workdir_structure['search']):
-                logger.info(
-                    f"Loaded existing search results from {self.workdir_structure['search']}"
-                )
+                logger.info(f'Loaded existing search results from {self.workdir_structure["search"]}')
                 return self.workdir_structure['search']
             else:
                 logger.warning(
-                    f"Warning: Search results file not found for `reuse` mode: {self.workdir_structure['search']}"
+                    f'Warning: Search results file not found for `reuse` mode: {self.workdir_structure["search"]}'
                 )
 
         # Perform search using the provided search request
@@ -247,9 +229,7 @@ class ResearchWorkflow:
             return single_res
 
         search_results: List[SearchResult] = [search_single_request(search_request)]
-        search_results = [
-            filter_search_res(single_res) for single_res in search_results
-        ]
+        search_results = [filter_search_res(single_res) for single_res in search_results]
 
         # TODO: Implement a more robust way to handle multiple search results
         dump_batch_search_results(results=search_results, file_path=self.workdir_structure['search'])
@@ -293,86 +273,64 @@ class ResearchWorkflow:
     def _dump_todo_file(self):
 
         md_content: str = self._todo_d.get('markdown', '')
-        with open(
-                self.workdir_structure['todo_list_md'], 'w',
-                encoding='utf-8') as f_md:
+        with open(self.workdir_structure['todo_list_md'], 'w', encoding='utf-8') as f_md:
             f_md.write(md_content)
 
-        with open(
-                self.workdir_structure['todo_list_json'], 'w',
-                encoding='utf-8') as f_json:
-            json.dump(
-                self._todo_d.get('py', []),
-                f_json,
-                ensure_ascii=False,
-                indent=2)
+        with open(self.workdir_structure['todo_list_json'], 'w', encoding='utf-8') as f_json:
+            json.dump(self._todo_d.get('py', []), f_json, ensure_ascii=False, indent=2)
 
         logger.info(
-            f"Todo list saved to {self.workdir_structure['todo_list_md']} and {self.workdir_structure['todo_list_json']}"
+            f'Todo list saved to {self.workdir_structure["todo_list_md"]} and {self.workdir_structure["todo_list_json"]}'
         )
 
     def _load_todo_file(self) -> bool:
         """
         Load the todo list from the markdown file and parse it into a Python list.
         """
-        if not os.path.exists(
-                self.workdir_structure['todo_list_md']) or not os.path.exists(
-            self.workdir_structure['todo_list_json']):
-            logger.warning(
-                f"Warning: Todo list markdown file not found: {self.workdir_structure['todo_list_md']}"
-            )
+        if not os.path.exists(self.workdir_structure['todo_list_md']) or not os.path.exists(
+            self.workdir_structure['todo_list_json']
+        ):
+            logger.warning(f'Warning: Todo list markdown file not found: {self.workdir_structure["todo_list_md"]}')
             return False
 
-        with open(
-                self.workdir_structure['todo_list_md'], 'r',
-                encoding='utf-8') as f_md:
+        with open(self.workdir_structure['todo_list_md'], 'r', encoding='utf-8') as f_md:
             md_content = f_md.read()
 
-        with open(
-                self.workdir_structure['todo_list_json'], 'r',
-                encoding='utf-8') as f_json:
+        with open(self.workdir_structure['todo_list_json'], 'r', encoding='utf-8') as f_json:
             try:
                 py_content = json.load(f_json)
             except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Error decoding JSON from {self.workdir_structure['todo_list_json']}: {e}"
-                )
+                raise ValueError(f'Error decoding JSON from {self.workdir_structure["todo_list_json"]}: {e}')
 
         self._todo_d['markdown'] = md_content
         self._todo_d['py'] = py_content
 
         return True
 
-    def run(self,
-            user_prompt: str,
-            urls_or_files: Optional[List[str]] = None,
-            **kwargs) -> None:
+    def run(self, user_prompt: str, urls_or_files: Optional[List[str]] = None, **kwargs) -> None:
         from ms_agent.rag.extraction_manager import extract_key_information
         from ms_agent.rag.schema import KeyInformation
         from ms_agent.tools.search.search_base import SearchResult
-        from ms_agent.tools.search.search_request import \
-            get_search_request_generator
+        from ms_agent.tools.search.search_request import get_search_request_generator
         from ms_agent.utils.utils import remove_resource_info, text_hash
+
         special_resources: List = []
         if urls_or_files:
             # If urls_or_files is provided, then disable search and use the provided resources directly
             special_resources: List[str] = [file for file in urls_or_files if file.endswith('.txt')]
-            prepared_resources: List[str] = [
-                file for file in urls_or_files if file not in special_resources
-            ]
+            prepared_resources: List[str] = [file for file in urls_or_files if file not in special_resources]
         else:
             engine_type = getattr(self._search_engine, 'engine_type', None)
             try:
                 search_request_generator = get_search_request_generator(
-                    engine_type=engine_type, user_prompt=user_prompt)
+                    engine_type=engine_type, user_prompt=user_prompt
+                )
             except ValueError as e:
                 raise ValueError(f'Error creating search request generator: {e}') from e
 
             prompt_rewrite: str = search_request_generator.get_rewrite_prompt()
             messages_rewrite = [{'role': 'user', 'content': prompt_rewrite}]
-            resp_d: Dict[str, Any] = self._chat(messages=messages_rewrite,
-                                                temperature=0.0,
-                                                stream=False)
+            resp_d: Dict[str, Any] = self._chat(messages=messages_rewrite, temperature=0.0, stream=False)
             search_prompt: str = resp_d.get('content', '')
             logger.info(f'Rewritten Prompt: {search_prompt}')
 
@@ -405,21 +363,19 @@ class ResearchWorkflow:
         )
 
         if len(special_resources) > 0 and all(file.endswith('.txt') for file in special_resources):
-            logger.warning(
-                'Some resources are text files, using the text content as key information instead.'
-            )
+            logger.warning('Some resources are text files, using the text content as key information instead.')
             for file in special_resources:
                 with open(file, 'r', encoding='utf-8') as f:
                     text_content = f.read()
-                    key_info_list.append(
-                        KeyInformation(text=text_content, resources=[]))
+                    key_info_list.append(KeyInformation(text=text_content, resources=[]))
 
         if self._verbose:
             logger.info(f'Extracted key information items: {len(key_info_list)}')
 
         # Dump pictures/table to resources directory
         resource_map: Dict[
-            str, str] = {}  # item_name -> item_relative_path, e.g. {'2506.02718v1.pdf@2728311679401389578@#/pictures/0': 'resources/d5a93ca4.png'}
+            str, str
+        ] = {}  # item_name -> item_relative_path, e.g. {'2506.02718v1.pdf@2728311679401389578@#/pictures/0': 'resources/d5a93ca4.png'}
         for item_name, dict_item in all_ref_items.items():
             doc_item = dict_item.get('item', None)
             if hasattr(doc_item, 'image') and doc_item.image:
@@ -431,8 +387,7 @@ class ResearchWorkflow:
 
                 resource_map[item_name] = os.path.join(ResearchWorkflow.RESOURCES, item_file_name)
 
-        context: str = '\n'.join(
-            [key_info.text for key_info in key_info_list if key_info.text])
+        context: str = '\n'.join([key_info.text for key_info in key_info_list if key_info.text])
 
         if not context.strip():
             logger.warning('No context extracted from the provided resources, workflow stopped!')
@@ -441,23 +396,27 @@ class ResearchWorkflow:
         if self._verbose:
             logger.info(f'\n\nContext:\n{context}\n\n')
 
-        prompt_sum: str = (f'结合用户输入：{user_prompt}，请帮我总结以下内容，生成一份markdown格式的报告；'
-                           f'其中图片被表示为<resource_info>xxx</resource_info>之间的placeholder，要求尽量保留重要的图片和表格，保持图片或表格以及附近对应上下文的位置关系；'
-                           f'公式使用LaTeX语法渲染；'
-                           f'符合MECE原则（Mutually Exclusive and Collectively Exhaustive）；'
-                           f'如果收集到的信息足够多，则尽量精简和结构化，保留其中最重要的信息，最终生成一份图文并茂的报告：\n\n')
+        prompt_sum: str = (
+            f'结合用户输入：{user_prompt}，请帮我总结以下内容，生成一份markdown格式的报告；'
+            f'其中图片被表示为<resource_info>xxx</resource_info>之间的placeholder，要求尽量保留重要的图片和表格，保持图片或表格以及附近对应上下文的位置关系；'
+            f'公式使用LaTeX语法渲染；'
+            f'符合MECE原则（Mutually Exclusive and Collectively Exhaustive）；'
+            f'如果收集到的信息足够多，则尽量精简和结构化，保留其中最重要的信息，最终生成一份图文并茂的报告：\n\n'
+        )
 
         prompt_sum_lite: str = f'结合用户输入：{user_prompt}，生成一份markdown格式的报告，要求符合MECE原则（Mutually Exclusive and Collectively Exhaustive）'
 
         messages_sum = [
             {'role': 'system', 'content': self.default_system},
-            {'role': 'user', 'content': f'{prompt_sum}{context}' if context.strip() else prompt_sum_lite}
+            {'role': 'user', 'content': f'{prompt_sum}{context}' if context.strip() else prompt_sum_lite},
         ]
 
         if self._verbose:
             logger.info(f'\n\nStart summarizing with messages: {messages_sum}')
 
-        aggregated_chunks = self._chat(messages=messages_sum, temperature=0.3, **self._client._kwargs.get('generation_config', {}))
+        aggregated_chunks = self._chat(
+            messages=messages_sum, temperature=0.3, **self._client._kwargs.get('generation_config', {})
+        )
         resp_content: str = aggregated_chunks.get('content', '')
         resp_content = resp_content.lstrip('```markdown\n').rstrip('```')
         logger.info(f'\n\nSummary Content:\n{resp_content}')
@@ -467,13 +426,11 @@ class ResearchWorkflow:
         resp_content = re.sub(replace_pattern, r'<resource_info>\1</resource_info>', resp_content)
         for item_name, item_relative_path in resource_map.items():
             resp_content = resp_content.replace(
-                f'src="<resource_info>{item_name}</resource_info>"',
-                f'src="{item_relative_path}"',
-                1
+                f'src="<resource_info>{item_name}</resource_info>"', f'src="{item_relative_path}"', 1
             ).replace(
                 f'<resource_info>{item_name}</resource_info>',
                 f'![{os.path.basename(item_relative_path)}]({item_relative_path})<br>',
-                1
+                1,
             )
 
         if self._verbose:

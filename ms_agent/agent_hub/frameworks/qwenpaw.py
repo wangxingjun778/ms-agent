@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """QwenPaw workspace specification (root-per-agent)."""
+
 from __future__ import annotations
 
 import json
@@ -7,9 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from ms_agent.utils.logger import get_logger
-from .._workspace import (ALL_AGENT_NAME, DEFAULT_AGENT_NAME,
-                          GLOBAL_AGENT_NAME, WorkspaceSpec,
-                          register_framework, scrub_json_secrets)
+
+from .._workspace import (
+    ALL_AGENT_NAME,
+    DEFAULT_AGENT_NAME,
+    GLOBAL_AGENT_NAME,
+    WorkspaceSpec,
+    register_framework,
+    scrub_json_secrets,
+)
 from ._bundled_skills import BundledSkillFilterMixin
 
 logger = get_logger()
@@ -188,7 +195,8 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         except (json.JSONDecodeError, ValueError):
             raise ValueError(
                 'agent.json is not valid JSON; cannot verify it is free of '
-                'secrets -- refusing to upload it. Fix the file and retry.')
+                'secrets -- refusing to upload it. Fix the file and retry.'
+            )
         if not isinstance(data, dict):
             return content
         self._strip_agent_json_secrets(data)
@@ -216,8 +224,7 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         try:
             cfg = json.loads(config_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, ValueError) as e:
-            logger.warning(
-                'Cannot read QwenPaw config.json (%s); skip register', e)
+            logger.warning('Cannot read QwenPaw config.json (%s); skip register', e)
             return
         if not isinstance(cfg, dict):
             return
@@ -232,11 +239,13 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         workspace_dir = str(self.root / 'workspaces' / agent_name)
         existing = profiles.get(agent_name)
         profile = existing if isinstance(existing, dict) else {}
-        profile.update({
-            'id': agent_name,
-            'workspace_dir': workspace_dir,
-            'enabled': True,
-        })
+        profile.update(
+            {
+                'id': agent_name,
+                'workspace_dir': workspace_dir,
+                'enabled': True,
+            }
+        )
         profiles[agent_name] = profile
         order = agents.get('agent_order')
         if not isinstance(order, list):
@@ -245,12 +254,9 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         if agent_name not in order:
             order.append(agent_name)
         try:
-            config_path.write_text(
-                json.dumps(cfg, ensure_ascii=False, indent=2),
-                encoding='utf-8')
+            config_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
         except OSError as e:
-            logger.warning(
-                'Cannot write QwenPaw config.json (%s); skip register', e)
+            logger.warning('Cannot write QwenPaw config.json (%s); skip register', e)
 
     def sanitize_inbound_file(self, rel_path: str, content: bytes) -> bytes:
         """Sanitize inbound ``agent.json`` (strip secrets, rebind identity).
@@ -294,7 +300,8 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         except UnicodeDecodeError:
             raise ValueError(
                 f'{rel_path} is not valid UTF-8; cannot verify it is free of '
-                f'secrets -- refusing to upload it. Fix the file and retry.')
+                f'secrets -- refusing to upload it. Fix the file and retry.'
+            )
         return self._strip_outbound_agent_json(text).encode('utf-8')
 
     def apply(self, resources: dict[str, str]) -> list[str]:
@@ -318,7 +325,9 @@ class QwenpawWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         if self._is_all():
             logger.info(
                 'Applied %d file(s) in all-mode; registry left unchanged '
-                '(agent visibility is owned by the QwenPaw UI).', len(written))
+                '(agent visibility is owned by the QwenPaw UI).',
+                len(written),
+            )
             return written
         agent_name = self.agent_name or DEFAULT_AGENT_NAME
         self._register_agent(agent_name)

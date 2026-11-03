@@ -1,4 +1,5 @@
 """Job executor: bridges cron jobs to AgentLoader/WorkflowLoader."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,8 +11,7 @@ from typing import Any, Optional
 
 from ms_agent.cron.types import CronJobSpec, ExecutionResult
 
-_CRON_CONTEXT: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    '_CRON_CONTEXT', default=False)
+_CRON_CONTEXT: contextvars.ContextVar[bool] = contextvars.ContextVar('_CRON_CONTEXT', default=False)
 
 
 def is_in_cron_context() -> bool:
@@ -46,11 +46,12 @@ def resolve_project_path(raw: str) -> str:
     if os.path.exists(raw):
         return os.path.abspath(raw)
 
-    stripped = raw[len('projects/'):] if raw.startswith('projects/') else None
+    stripped = raw[len('projects/') :] if raw.startswith('projects/') else None
     candidates = [raw] if stripped is None else [raw, stripped]
 
     try:
         from importlib import resources
+
         pkg_dir = Path(str(resources.files('ms_agent')))
 
         # Step 3: wheel install — ms_agent/projects/<candidate>
@@ -104,8 +105,7 @@ class JobExecutor:
             async with job_sema:
                 return await self._do_execute(job, config)
 
-    async def _do_execute(self, job: CronJobSpec,
-                          config: Any) -> ExecutionResult:
+    async def _do_execute(self, job: CronJobSpec, config: Any) -> ExecutionResult:
         if _CRON_CONTEXT.get(False):
             return ExecutionResult(
                 success=False,
@@ -141,8 +141,7 @@ class JobExecutor:
         except asyncio.TimeoutError:
             return ExecutionResult(
                 success=False,
-                error=
-                f'Execution timed out ({job.timeout or self._default_timeout}s)',
+                error=f'Execution timed out ({job.timeout or self._default_timeout}s)',
                 duration_ms=_now_ms() - start_ms,
             )
         except Exception as e:
@@ -166,6 +165,7 @@ class JobExecutor:
 
         if job.workflow:
             from ms_agent.workflow.loader import WorkflowLoader
+
             return WorkflowLoader.build(
                 config_dir_or_id=resolve_project_path(job.workflow),
                 config=config,
@@ -173,6 +173,7 @@ class JobExecutor:
             )
         elif job.project:
             from ms_agent.agent.loader import AgentLoader
+
             return AgentLoader.build(
                 config_dir_or_id=resolve_project_path(job.project),
                 config=config,
@@ -181,6 +182,7 @@ class JobExecutor:
             )
         else:
             from ms_agent.agent.loader import AgentLoader
+
             return AgentLoader.build(
                 config=config,
                 trust_remote_code=job.trust_remote_code,

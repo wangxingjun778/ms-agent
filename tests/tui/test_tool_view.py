@@ -1,26 +1,23 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Compact tool presentation: action headers + result summaries."""
+
 from ms_agent.tui.tool_view import tool_header, tool_summary
 
 
 def test_write_file_header():
-    assert tool_header('file_system---write_file',
-                       {'path': '/a/b.md', 'content': 'x'}) == 'Write /a/b.md'
+    assert tool_header('file_system---write_file', {'path': '/a/b.md', 'content': 'x'}) == 'Write /a/b.md'
 
 
 def test_shell_header():
-    assert tool_header('code_executor---shell_executor',
-                       {'command': 'git push'}) == 'Run git push'
+    assert tool_header('code_executor---shell_executor', {'command': 'git push'}) == 'Run git push'
 
 
 def test_search_header():
-    assert tool_header('web_search---exa_search',
-                       {'query': 'modelscope'}) == 'Search modelscope'
+    assert tool_header('web_search---exa_search', {'query': 'modelscope'}) == 'Search modelscope'
 
 
 def test_read_header_from_json_string_args():
-    assert tool_header('file_system---read_file',
-                       '{"path": "x.py"}') == 'Read x.py'
+    assert tool_header('file_system---read_file', '{"path": "x.py"}') == 'Read x.py'
 
 
 def test_generic_header_falls_back_to_action_and_arg():

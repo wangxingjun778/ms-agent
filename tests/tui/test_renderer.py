@@ -1,16 +1,28 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """RichEventSink: renders the AgentEvent stream and tracks status state."""
+
 from io import StringIO
 
 from rich.console import Console
 
 from ms_agent.tui.renderer import RichEventSink
 from ms_agent.tui.state import TuiState
-from ms_agent.ui.events import (ContentDelta, ContentEnd, ErrorRaised, Notice,
-                                PlanEntry, PlanUpdated, ReasoningDelta,
-                                ReasoningEnded, ReasoningStarted,
-                                ToolCallCompleted, ToolCallStarted, TurnCompleted,
-                                TurnStarted, UsageInfo)
+from ms_agent.ui.events import (
+    ContentDelta,
+    ContentEnd,
+    ErrorRaised,
+    Notice,
+    PlanEntry,
+    PlanUpdated,
+    ReasoningDelta,
+    ReasoningEnded,
+    ReasoningStarted,
+    ToolCallCompleted,
+    ToolCallStarted,
+    TurnCompleted,
+    TurnStarted,
+    UsageInfo,
+)
 
 
 def _sink():
@@ -34,10 +46,8 @@ def test_content_stream_renders_text():
 def test_tool_call_and_result_render():
     # Compact Codex-style lines: "• Search modelscope" then "  └ found it".
     sink, console, _ = _sink()
-    sink.emit(ToolCallStarted(call_id='c1', name='web_search---exa_search',
-                              arguments={'query': 'modelscope'}))
-    sink.emit(ToolCallCompleted(call_id='c1', name='web_search---exa_search',
-                                result='found it'))
+    sink.emit(ToolCallStarted(call_id='c1', name='web_search---exa_search', arguments={'query': 'modelscope'}))
+    sink.emit(ToolCallCompleted(call_id='c1', name='web_search---exa_search', result='found it'))
     out = _out(console)
     assert '•' in out and 'Search' in out and 'modelscope' in out
     assert '└' in out and 'found it' in out
@@ -45,26 +55,22 @@ def test_tool_call_and_result_render():
 
 def test_tool_error_render():
     sink, console, _ = _sink()
-    sink.emit(ToolCallStarted(call_id='c2', name='code_executor---shell',
-                              arguments={'command': 'bad'}))
-    sink.emit(ToolCallCompleted(call_id='c2', name='code_executor---shell',
-                                result='', error='command not found'))
+    sink.emit(ToolCallStarted(call_id='c2', name='code_executor---shell', arguments={'command': 'bad'}))
+    sink.emit(ToolCallCompleted(call_id='c2', name='code_executor---shell', result='', error='command not found'))
     assert 'error' in _out(console) and 'command not found' in _out(console)
 
 
 def test_config_output_syntax_highlighted():
     # /config-style YAML notice renders (no crash; content present).
     sink, console, _ = _sink()
-    sink.emit(Notice(level='info',
-                     text='llm:\n  model: qwen\n  service: openai\ntag: x'))
+    sink.emit(Notice(level='info', text='llm:\n  model: qwen\n  service: openai\ntag: x'))
     out = _out(console)
     assert 'model' in out and 'qwen' in out
 
 
 def test_turn_completed_updates_status_state():
     sink, _, state = _sink()
-    sink.emit(TurnCompleted(usage=UsageInfo(
-        total_prompt_tokens=100, total_completion_tokens=50)))
+    sink.emit(TurnCompleted(usage=UsageInfo(total_prompt_tokens=100, total_completion_tokens=50)))
     assert state.total_prompt_tokens == 100
     assert state.total_completion_tokens == 50
     assert state.total_tokens == 150
@@ -82,10 +88,8 @@ def test_reasoning_renders_thinking_block():
 def test_gap_between_tool_and_thinking():
     # A blank line must separate a tool result from a following Thinking block.
     sink, console, _ = _sink()
-    sink.emit(ToolCallStarted(call_id='c', name='skills---skill_view',
-                              arguments={}))
-    sink.emit(ToolCallCompleted(call_id='c', name='skills---skill_view',
-                                result='done'))
+    sink.emit(ToolCallStarted(call_id='c', name='skills---skill_view', arguments={}))
+    sink.emit(ToolCallCompleted(call_id='c', name='skills---skill_view', result='done'))
     sink.emit(ReasoningStarted())
     sink.emit(ReasoningDelta('hmm'))
     sink.emit(ReasoningEnded())
@@ -126,12 +130,9 @@ def test_hold_output_defers_draws_until_the_screen_is_released():
     finishing mid-menu must not print into it. Tool completions arrive per call
     now (LLMAgent.parallel_tool_call), so that overlap is reachable."""
     sink, console, _ = _sink()
-    sink.emit(ToolCallStarted(call_id='c1', name='file_system---read_file',
-                              arguments={'path': 'a.txt'}))
+    sink.emit(ToolCallStarted(call_id='c1', name='file_system---read_file', arguments={'path': 'a.txt'}))
     with sink.hold_output():
-        sink.emit(ToolCallCompleted(call_id='c1',
-                                    name='file_system---read_file',
-                                    result='aaa'))
+        sink.emit(ToolCallCompleted(call_id='c1', name='file_system---read_file', result='aaa'))
         sink.emit(PlanUpdated(entries=[PlanEntry('do X', 'completed')]))
         held = _out(console)
         assert 'aaa' not in held and 'do X' not in held

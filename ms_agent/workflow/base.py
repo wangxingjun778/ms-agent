@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from abc import ABC, abstractmethod
-from omegaconf import DictConfig
 from typing import Dict, Optional
+
+from omegaconf import DictConfig
 
 from ms_agent.config import Config
 
@@ -22,12 +23,14 @@ class Workflow(ABC):
             - mcp_server_file (Optional[str]): Path to an MCP server file if needed. Default is None.
     """
 
-    def __init__(self,
-                 config_dir_or_id: Optional[str] = None,
-                 config: Optional[DictConfig] = None,
-                 env: Optional[Dict[str, str]] = None,
-                 trust_remote_code: bool = False,
-                 **kwargs):
+    def __init__(
+        self,
+        config_dir_or_id: Optional[str] = None,
+        config: Optional[DictConfig] = None,
+        env: Optional[Dict[str, str]] = None,
+        trust_remote_code: bool = False,
+        **kwargs,
+    ):
         if config_dir_or_id is None:
             self.config = config
         else:

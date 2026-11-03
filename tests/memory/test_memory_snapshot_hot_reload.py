@@ -2,6 +2,7 @@
 """External edits to MEMORY.md (WebUI memory editor, hand edits) must reach a
 running session: the snapshot in the system prompt rebuilds when the file
 changes on disk, not only after the agent's own memory-tool writes."""
+
 import asyncio
 import os
 
@@ -42,9 +43,7 @@ def test_snapshot_reflects_external_edit(tmp_path):
     assert backend._get_or_build_snapshot() == first
 
     # External edit (editor/UI) -> next build sees it without any dirty flag.
-    path.write_text(
-        '规则A：发布前跑 make check。\n临时约定：本周试验固定 seed=42。\n',
-        encoding='utf-8')
+    path.write_text('规则A：发布前跑 make check。\n临时约定：本周试验固定 seed=42。\n', encoding='utf-8')
     _bump_mtime(path)
     second = backend._get_or_build_snapshot()
     assert 'seed=42' in second
@@ -128,20 +127,12 @@ def test_clearing_memory_removes_the_section(tmp_path):
 def test_memory_tool_remove_drops_the_entry_from_the_prompt(tmp_path):
     """Same through the agent's own memory tool (add -> remove -> gone)."""
     backend = _backend(tmp_path)
-    asyncio.run(
-        backend.handle_tool_call('memory', {
-            'action': 'add',
-            'content': '发布前跑 make check。'
-        }))
+    asyncio.run(backend.handle_tool_call('memory', {'action': 'add', 'content': '发布前跑 make check。'}))
     msgs = [{'role': 'system', 'content': 'S'}, {'role': 'user', 'content': 'q'}]
     out = asyncio.run(backend.inject([dict(m) for m in msgs]))
     assert 'make check' in out[0]['content']
 
-    asyncio.run(
-        backend.handle_tool_call('memory', {
-            'action': 'remove',
-            'content': '发布前跑 make check。'
-        }))
+    asyncio.run(backend.handle_tool_call('memory', {'action': 'remove', 'content': '发布前跑 make check。'}))
     out2 = asyncio.run(backend.inject(out))
     assert 'make check' not in out2[0]['content']
     assert '<long-term-memory>' not in out2[0]['content']

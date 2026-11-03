@@ -1,11 +1,12 @@
 """Tests for ms_agent.cron.executor."""
+
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ms_agent.cron.executor import JobExecutor, _CRON_CONTEXT, is_in_cron_context
+from ms_agent.cron.executor import _CRON_CONTEXT, JobExecutor, is_in_cron_context
 from ms_agent.cron.types import CronJobSpec, CronSchedule, ExecutionResult
 from ms_agent.llm.utils import Message
 
@@ -57,9 +58,11 @@ class TestJobExecutorExecution:
     @pytest.mark.asyncio
     async def test_successful_execution(self, executor):
         mock_engine = MagicMock()
-        mock_engine.run = AsyncMock(return_value=[
-            Message(role='assistant', content='mock result'),
-        ])
+        mock_engine.run = AsyncMock(
+            return_value=[
+                Message(role='assistant', content='mock result'),
+            ]
+        )
         mock_engine.cleanup_tools = AsyncMock()
 
         job = CronJobSpec(id='exec1', prompt='test prompt')
@@ -118,9 +121,11 @@ class TestJobExecutorExecution:
     @pytest.mark.asyncio
     async def test_cleanup_called_on_success(self, executor):
         mock_engine = MagicMock()
-        mock_engine.run = AsyncMock(return_value=[
-            Message(role='assistant', content='ok'),
-        ])
+        mock_engine.run = AsyncMock(
+            return_value=[
+                Message(role='assistant', content='ok'),
+            ]
+        )
         mock_engine.cleanup_tools = AsyncMock()
 
         job = CronJobSpec(id='cleanup1', prompt='test')
@@ -133,9 +138,11 @@ class TestJobExecutorExecution:
     @pytest.mark.asyncio
     async def test_output_file_written(self, executor, tmp_path):
         mock_engine = MagicMock()
-        mock_engine.run = AsyncMock(return_value=[
-            Message(role='assistant', content='written output'),
-        ])
+        mock_engine.run = AsyncMock(
+            return_value=[
+                Message(role='assistant', content='written output'),
+            ]
+        )
         mock_engine.cleanup_tools = AsyncMock()
 
         job = CronJobSpec(id='write1', prompt='test')

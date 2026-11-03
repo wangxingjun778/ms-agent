@@ -4,11 +4,13 @@ Core fields are used by all backends.  Backend-specific settings live in
 ``backend_options[backend_name]`` so that adding a new backend never
 changes the top-level schema.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from omegaconf import DictConfig, OmegaConf
 from typing import Any, Dict, Optional
+
+from omegaconf import DictConfig, OmegaConf
 
 
 @dataclass
@@ -70,8 +72,7 @@ class MemoryConfig:
         """Build from an OmegaConf node (the ``unified_memory`` sub-tree)."""
         if cfg is None:
             return cls()
-        raw = OmegaConf.to_container(
-            cfg, resolve=True) if isinstance(cfg, DictConfig) else cfg
+        raw = OmegaConf.to_container(cfg, resolve=True) if isinstance(cfg, DictConfig) else cfg
         if not isinstance(raw, dict):
             return cls()
 
@@ -86,34 +87,33 @@ class MemoryConfig:
                 flat[k] = file_cfg[k]
 
         retrieval = raw.get('retrieval', {}) or {}
-        flat['retrieval_strategy'] = retrieval.get('strategy',
-                                                   cls.retrieval_strategy)
+        flat['retrieval_strategy'] = retrieval.get('strategy', cls.retrieval_strategy)
         fts_cfg = retrieval.get('fts', {}) or {}
-        for k in ('auto_retrieve', 'auto_retrieve_max_chars',
-                  'max_search_results', 'summary_model'):
+        for k in ('auto_retrieve', 'auto_retrieve_max_chars', 'max_search_results', 'summary_model'):
             if k in fts_cfg:
                 flat[k] = fts_cfg[k]
 
         extraction = raw.get('extraction', {}) or {}
-        flat['extraction_strategy'] = extraction.get('strategy',
-                                                     cls.extraction_strategy)
+        flat['extraction_strategy'] = extraction.get('strategy', cls.extraction_strategy)
 
         session = raw.get('session', {}) or {}
-        for k in ('context_window_tokens', 'max_completion_tokens',
-                  'safety_buffer', 'max_consolidation_rounds',
-                  'consolidation_target_ratio'):
+        for k in (
+            'context_window_tokens',
+            'max_completion_tokens',
+            'safety_buffer',
+            'max_consolidation_rounds',
+            'consolidation_target_ratio',
+        ):
             if k in session:
                 flat[k] = session[k]
 
         facts = raw.get('facts', {}) or {}
-        for k in ('max_facts', 'confidence_threshold', 'debounce_seconds',
-                  'update_model'):
+        for k in ('max_facts', 'confidence_threshold', 'debounce_seconds', 'update_model'):
             if k in facts:
                 flat[k] = facts[k]
 
         lifecycle = raw.get('lifecycle', {}) or {}
-        for k in ('pre_condense_flush', 'security_scan',
-                  'raw_archive_threshold'):
+        for k in ('pre_condense_flush', 'security_scan', 'raw_archive_threshold'):
             if k in lifecycle:
                 flat[k] = lifecycle[k]
 
@@ -122,15 +122,13 @@ class MemoryConfig:
             if k in ns:
                 flat[k] = ns[k]
 
-        for k in ('enabled', 'base_dir', 'llm_config', 'ingest_interval',
-                  'recall_top_k'):
+        for k in ('enabled', 'base_dir', 'llm_config', 'ingest_interval', 'recall_top_k'):
             if k in raw:
                 flat[k] = raw[k]
 
         # Collect backend-specific sub-trees
         backend_options: Dict[str, Any] = {}
-        for bk in ('reme', 'mempalace', 'mem0', 'byterover', 'supermemory',
-                   'file'):
+        for bk in ('reme', 'mempalace', 'mem0', 'byterover', 'supermemory', 'file'):
             if bk in raw:
                 backend_options[bk] = raw[bk]
         if backend_options:

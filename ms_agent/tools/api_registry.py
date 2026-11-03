@@ -8,6 +8,7 @@ name. Agent-runtime code should see only this class — the adapter stays
 hidden behind :meth:`execute` so a future transport change (e.g. a
 batching proxy) is a drop-in replacement.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     import aiohttp  # type: ignore
+
     _HAS_AIOHTTP = True
 except ImportError:  # pragma: no cover — aiohttp is declared in requirements
     aiohttp = None  # type: ignore
@@ -25,6 +27,7 @@ except ImportError:  # pragma: no cover — aiohttp is declared in requirements
 
 try:
     import yaml  # type: ignore
+
     _HAS_YAML = True
 except ImportError:  # pragma: no cover — PyYAML is declared in requirements
     yaml = None  # type: ignore
@@ -113,11 +116,9 @@ def _output_from_dict(data: Optional[Dict[str, Any]]) -> OutputMapping:
 def _spec_from_dict(entry: Dict[str, Any]) -> APIToolSpec:
     """Validate and build an :class:`APIToolSpec` from one YAML tool entry."""
     if 'name' not in entry or 'description' not in entry:
-        raise ValueError(
-            f'Tool entry missing required name/description: {entry!r}')
+        raise ValueError(f'Tool entry missing required name/description: {entry!r}')
     if 'parameters' not in entry:
-        raise ValueError(
-            f'Tool {entry.get("name")!r} missing parameters JSON Schema')
+        raise ValueError(f'Tool {entry.get("name")!r} missing parameters JSON Schema')
     return APIToolSpec(
         name=str(entry['name']),
         description=str(entry['description']),
@@ -153,9 +154,7 @@ class APIToolRegistry:
     async def load_from_config(self, config_path: str) -> None:
         """Load tools from a YAML config file (``api_tools.yaml`` format)."""
         if not _HAS_YAML:
-            raise RuntimeError(
-                'PyYAML is required for load_from_config; '
-                "install via 'pip install pyyaml'")
+            raise RuntimeError("PyYAML is required for load_from_config; install via 'pip install pyyaml'")
         if not os.path.isfile(config_path):
             raise FileNotFoundError(f'API tools config not found: {config_path}')
         with open(config_path, 'r', encoding='utf-8') as fh:
@@ -212,8 +211,7 @@ class APIToolRegistry:
         YAML is at least visible in logs.
         """
         if spec.name in self._tools:
-            logger.warning(
-                'APIToolRegistry: replacing existing tool %r', spec.name)
+            logger.warning('APIToolRegistry: replacing existing tool %r', spec.name)
         adapter = APIToolAdapter(
             spec=spec,
             base_url=base_url,
@@ -235,10 +233,7 @@ class APIToolRegistry:
         runs — matches the ordering strategy in
         :meth:`ms_agent.tools.tool_manager.ToolManager.get_tools`.
         """
-        return [
-            tool.get_tool_spec()
-            for tool in sorted(self._tools.values(), key=lambda t: t.name)
-        ]
+        return [tool.get_tool_spec() for tool in sorted(self._tools.values(), key=lambda t: t.name)]
 
     def get_tool_names(self) -> List[str]:
         return sorted(self._tools)
@@ -248,8 +243,7 @@ class APIToolRegistry:
 
     # ---- Execution ----------------------------------------------------------
 
-    async def execute(self, tool_name: str,
-                      args: Dict[str, Any]) -> ToolResult:
+    async def execute(self, tool_name: str, args: Dict[str, Any]) -> ToolResult:
         """Execute a tool by name.
 
         Raises
@@ -272,9 +266,7 @@ class APIToolRegistry:
         if not _HAS_AIOHTTP:
             # Adapters will fall back to urllib-on-thread; log once so this
             # is visible when the fallback path is exercised in production.
-            logger.warning(
-                'aiohttp not available; API tools will use blocking urllib '
-                'in a worker thread')
+            logger.warning('aiohttp not available; API tools will use blocking urllib in a worker thread')
             return
         self._http_client = aiohttp.ClientSession()
         self._owns_client = True

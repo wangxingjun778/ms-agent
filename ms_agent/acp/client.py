@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from acp import spawn_agent_process, text_block
-from acp.interfaces import Client
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
+
+from acp import spawn_agent_process, text_block
+from acp.interfaces import Client
 
 from ms_agent.utils.logger import get_logger
 
@@ -21,8 +22,7 @@ class _CollectorClient(Client):
         self.collected: Dict[str, List[str]] = {}
         self.permission_policy = permission_policy
 
-    async def session_update(self, session_id: str, update: Any,
-                             **kwargs: Any) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         update_type = getattr(update, 'session_update', None)
         if update_type == 'agent_message_chunk':
             content = getattr(update, 'content', None)
@@ -30,14 +30,12 @@ class _CollectorClient(Client):
                 text = getattr(content, 'text', None) or str(content)
                 self.collected.setdefault(session_id, []).append(text)
 
-    async def request_permission(self, options: list, session_id: str,
-                                 tool_call: Any, **kwargs: Any):
-        from acp.schema import (AllowedOutcome, DeniedOutcome,
-                                RequestPermissionResponse)
+    async def request_permission(self, options: list, session_id: str, tool_call: Any, **kwargs: Any):
+        from acp.schema import AllowedOutcome, DeniedOutcome, RequestPermissionResponse
+
         if self.permission_policy == 'auto_approve':
             allow = next(
-                (o for o in options
-                 if 'allow' in (getattr(o, 'kind', '') or '')),
+                (o for o in options if 'allow' in (getattr(o, 'kind', '') or '')),
                 None,
             )
             if allow:
@@ -46,9 +44,9 @@ class _CollectorClient(Client):
                     outcome=AllowedOutcome(
                         outcome='selected',
                         option_id=option_id,
-                    ))
-        return RequestPermissionResponse(
-            outcome=DeniedOutcome(outcome='cancelled'))
+                    )
+                )
+        return RequestPermissionResponse(outcome=DeniedOutcome(outcome='cancelled'))
 
     def get_output(self, session_id: str) -> str:
         parts = self.collected.get(session_id, [])
@@ -115,8 +113,7 @@ class ACPClientManager:
                 except Exception:
                     pass
         except Exception as e:
-            logger.error(
-                'ACP call to %s failed: %s', agent_name, e, exc_info=True)
+            logger.error('ACP call to %s failed: %s', agent_name, e, exc_info=True)
             return f'Error calling ACP agent "{agent_name}": {e}'
 
     def list_agents(self) -> List[str]:

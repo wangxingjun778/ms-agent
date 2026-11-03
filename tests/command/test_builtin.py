@@ -1,5 +1,6 @@
-import pytest
 from dataclasses import dataclass
+
+import pytest
 
 from ms_agent.command.builtin import register_builtin_commands
 from ms_agent.command.router import CommandRouter

@@ -93,8 +93,7 @@ class TestBareCommandVariant:
     TOOL = 'code_executor---shell_executor'
 
     def _m(self, pattern: str, command: str) -> bool:
-        return PermissionMatcher().match_with_content(
-            f'{self.TOOL}:{pattern}', self.TOOL, {'command': command})
+        return PermissionMatcher().match_with_content(f'{self.TOOL}:{pattern}', self.TOOL, {'command': command})
 
     def test_argument_less_command_matches(self):
         assert self._m('whoami *', 'whoami')
@@ -120,5 +119,5 @@ class TestBareCommandVariant:
 
     def test_path_patterns_unaffected(self):
         assert not PermissionMatcher().match_with_content(
-            'file_system---read_file:~/.ssh/*', 'file_system---read_file',
-            {'path': '~/.ssh'})
+            'file_system---read_file:~/.ssh/*', 'file_system---read_file', {'path': '~/.ssh'}
+        )

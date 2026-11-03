@@ -5,6 +5,7 @@ property: a terminal-bound one deadlocks with N prompts fighting over one
 stdin, so the enforcer serializes it; a handler that declares
 ``supports_concurrent_asks`` gets them all at once (a web UI renders each
 pending ask as its own card)."""
+
 import asyncio
 
 import pytest
@@ -34,13 +35,10 @@ class _ConcurrencyProbe:
 async def test_parallel_asks_are_serialized(tmp_path):
     cfg = PermissionConfig.from_dict({'mode': 'restricted'})  # empty wl -> ask
     handler = _ConcurrencyProbe()
-    enf = PermissionEnforcer(
-        config=cfg, handler=handler,
-        memory=PermissionMemory(project_path=str(tmp_path)))
+    enf = PermissionEnforcer(config=cfg, handler=handler, memory=PermissionMemory(project_path=str(tmp_path)))
 
     # 5 concurrent checks, like 5 parallel tool calls in one round.
-    results = await asyncio.gather(
-        *[enf.check('some_tool', {'i': i}) for i in range(5)])
+    results = await asyncio.gather(*[enf.check('some_tool', {'i': i}) for i in range(5)])
 
     assert all(r.action == 'allow' for r in results)
     assert handler.calls == 5
@@ -50,6 +48,7 @@ async def test_parallel_asks_are_serialized(tmp_path):
 
 class _ConcurrentProbe(_ConcurrencyProbe):
     """Same probe, but declaring it can service several asks at once."""
+
     supports_concurrent_asks = True
 
 
@@ -59,12 +58,9 @@ async def test_concurrent_handler_asks_overlap(tmp_path):
     one-at-a-time behind whichever the user answers first."""
     cfg = PermissionConfig.from_dict({'mode': 'restricted'})
     handler = _ConcurrentProbe()
-    enf = PermissionEnforcer(
-        config=cfg, handler=handler,
-        memory=PermissionMemory(project_path=str(tmp_path)))
+    enf = PermissionEnforcer(config=cfg, handler=handler, memory=PermissionMemory(project_path=str(tmp_path)))
 
-    results = await asyncio.gather(
-        *[enf.check('some_tool', {'i': i}) for i in range(5)])
+    results = await asyncio.gather(*[enf.check('some_tool', {'i': i}) for i in range(5)])
 
     assert all(r.action == 'allow' for r in results)
     assert handler.calls == 5
@@ -78,12 +74,10 @@ class _AlwaysAllowOnce:
     def __init__(self):
         self.calls = 0
 
-    async def ask(self, tool_name, tool_args, context, suggestions=None,
-                  call_id=''):
+    async def ask(self, tool_name, tool_args, context, suggestions=None, call_id=''):
         self.calls += 1
         await asyncio.sleep(0.01)
-        return PermissionResponse(
-            action=PermissionAction.ALLOW_ALWAYS, pattern=tool_name)
+        return PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=tool_name)
 
 
 @pytest.mark.asyncio
@@ -93,12 +87,9 @@ async def test_queued_ask_skipped_once_memory_covers_it(tmp_path):
     ahead of it in the queue."""
     cfg = PermissionConfig.from_dict({'mode': 'restricted'})
     handler = _AlwaysAllowOnce()
-    enf = PermissionEnforcer(
-        config=cfg, handler=handler,
-        memory=PermissionMemory(project_path=str(tmp_path)))
+    enf = PermissionEnforcer(config=cfg, handler=handler, memory=PermissionMemory(project_path=str(tmp_path)))
 
-    results = await asyncio.gather(
-        *[enf.check('some_tool', {'i': i}) for i in range(4)])
+    results = await asyncio.gather(*[enf.check('some_tool', {'i': i}) for i in range(4)])
 
     assert all(r.action == 'allow' for r in results)
     assert handler.calls == 1  # the other three were covered by memory
@@ -107,11 +98,11 @@ async def test_queued_ask_skipped_once_memory_covers_it(tmp_path):
 class _CallIdCapture:
     """Handler that records the call_id it was asked with (and tolerates
     handlers that don't accept it — see enforcer._ask_user)."""
+
     def __init__(self):
         self.seen = []
 
-    async def ask(self, tool_name, tool_args, context, suggestions=None,
-                  call_id=''):
+    async def ask(self, tool_name, tool_args, context, suggestions=None, call_id=''):
         self.seen.append(call_id)
         return PermissionResponse(action=PermissionAction.ALLOW_ONCE)
 
@@ -122,9 +113,7 @@ async def test_call_id_threaded_to_handler(tmp_path):
     decision to the exact tool_call (parallel identical calls)."""
     cfg = PermissionConfig.from_dict({'mode': 'restricted'})
     handler = _CallIdCapture()
-    enf = PermissionEnforcer(
-        config=cfg, handler=handler,
-        memory=PermissionMemory(project_path=str(tmp_path)))
+    enf = PermissionEnforcer(config=cfg, handler=handler, memory=PermissionMemory(project_path=str(tmp_path)))
 
     await enf.check('some_tool', {'a': 1}, call_id='call-abc')
     assert handler.seen == ['call-abc']
@@ -136,9 +125,7 @@ async def test_legacy_handler_without_call_id_still_works(tmp_path):
     the enforcer strips the unknown kwarg."""
     cfg = PermissionConfig.from_dict({'mode': 'restricted'})
     handler = _ConcurrencyProbe()  # ask() has no call_id param
-    enf = PermissionEnforcer(
-        config=cfg, handler=handler,
-        memory=PermissionMemory(project_path=str(tmp_path)))
+    enf = PermissionEnforcer(config=cfg, handler=handler, memory=PermissionMemory(project_path=str(tmp_path)))
 
     r = await enf.check('some_tool', {'a': 1}, call_id='call-xyz')
     assert r.action == 'allow' and handler.calls == 1

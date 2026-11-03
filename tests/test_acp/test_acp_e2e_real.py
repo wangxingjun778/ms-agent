@@ -4,10 +4,8 @@ import sys
 
 import pytest
 
-_REPO_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_TEST_CONFIG = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'test_openai_config.yaml')
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_TEST_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test_openai_config.yaml')
 
 sys.path.insert(0, _REPO_ROOT)
 
@@ -16,6 +14,7 @@ _HAS_API_KEY = bool(os.environ.get('OPENAI_API_KEY'))
 try:
     from acp import spawn_agent_process, text_block
     from acp.interfaces import Client
+
     _HAS_ACP = True
 except ImportError:
     _HAS_ACP = False
@@ -64,7 +63,6 @@ class _StreamingTestClient(Client):
 @pytest.mark.skipif(not _HAS_API_KEY, reason='OPENAI_API_KEY not set')
 @pytest.mark.skipif(not os.path.isfile(_TEST_CONFIG), reason='Test config not found')
 class TestACPE2ERealLLM:
-
     @pytest.mark.asyncio
     async def test_full_prompt_with_real_llm(self):
         """Complete flow: initialize -> new_session -> prompt with real LLM."""
@@ -73,9 +71,11 @@ class TestACPE2ERealLLM:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _TEST_CONFIG,
+            '--config',
+            _TEST_CONFIG,
         ) as (conn, proc):
             init_resp = await conn.initialize(protocol_version=1)
             assert init_resp.protocol_version == 1
@@ -105,23 +105,22 @@ class TestACPE2ERealLLM:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _TEST_CONFIG,
+            '--config',
+            _TEST_CONFIG,
         ) as (conn, proc):
             await conn.initialize(protocol_version=1)
             session = await conn.new_session(cwd='/tmp', mcp_servers=[])
 
             await conn.prompt(
                 session_id=sid if (sid := session.session_id) else '',
-                prompt=[text_block(
-                    'List the first 5 prime numbers, one per line.'
-                )],
+                prompt=[text_block('List the first 5 prime numbers, one per line.')],
             )
 
             assert len(client.updates) > 0, 'Expected at least one update'
-            print(f'\n[Streaming] Got {len(client.updates)} updates, '
-                  f'{len(client.text_chunks)} text chunks')
+            print(f'\n[Streaming] Got {len(client.updates)} updates, {len(client.text_chunks)} text chunks')
             assert '2' in client.full_text
             assert '3' in client.full_text
             assert '5' in client.full_text
@@ -134,9 +133,11 @@ class TestACPE2ERealLLM:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _TEST_CONFIG,
+            '--config',
+            _TEST_CONFIG,
         ) as (conn, proc):
             await conn.initialize(protocol_version=1)
             session = await conn.new_session(cwd='/tmp', mcp_servers=[])
@@ -168,16 +169,17 @@ class TestACPE2ERealLLM:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _TEST_CONFIG,
+            '--config',
+            _TEST_CONFIG,
         ) as (conn, proc):
             await conn.initialize(protocol_version=1)
             session = await conn.new_session(cwd='/tmp', mcp_servers=[])
 
             assert session.config_options is not None
-            model_opt = next(
-                (o for o in session.config_options if o.id == 'model'), None)
+            model_opt = next((o for o in session.config_options if o.id == 'model'), None)
             assert model_opt is not None, 'Expected model config option'
             assert model_opt.current_value == 'qwen-plus'
             print(f'\n[Config] Model option: {model_opt.current_value}')
@@ -190,9 +192,11 @@ class TestACPE2ERealLLM:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _TEST_CONFIG,
+            '--config',
+            _TEST_CONFIG,
         ) as (conn, proc):
             await conn.initialize(protocol_version=1)
             session = await conn.new_session(cwd='/tmp', mcp_servers=[])

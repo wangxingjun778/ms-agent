@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Nanobot workspace specification (single-agent install)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +26,7 @@ class NanobotWorkspace(WorkspaceSpec):
     """
 
     # ``.nanobot`` (install root) -> ``.nanobot/workspace`` (data root).
-    _ROOT_SUBDIRS = ('workspace', )
+    _ROOT_SUBDIRS = ('workspace',)
 
     @property
     def product_name(self) -> str:

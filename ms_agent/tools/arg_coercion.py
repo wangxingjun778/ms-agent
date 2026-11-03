@@ -12,6 +12,7 @@ reading; ``"nineteen"`` is left exactly as it is, for the tool to refuse on its
 own terms. Where the schema says ``string``, nothing is touched at all — the
 quotes are the answer there.
 """
+
 from __future__ import annotations
 
 import json
@@ -95,23 +96,17 @@ def _coerce_value(value: Any, schema: Any) -> Any:
         return value
 
     if isinstance(value, dict) and 'object' in types:
-        properties = schema.get('properties') if isinstance(schema,
-                                                            dict) else None
+        properties = schema.get('properties') if isinstance(schema, dict) else None
         if not isinstance(properties, dict):
             for key in ('anyOf', 'oneOf', 'allOf'):
-                for branch in (schema.get(key) or ()) if isinstance(
-                        schema, dict) else ():
-                    if isinstance(branch, dict) and isinstance(
-                            branch.get('properties'), dict):
+                for branch in (schema.get(key) or ()) if isinstance(schema, dict) else ():
+                    if isinstance(branch, dict) and isinstance(branch.get('properties'), dict):
                         properties = branch['properties']
                         break
                 if properties:
                     break
         if isinstance(properties, dict):
-            return {
-                k: (_coerce_value(v, properties[k]) if k in properties else v)
-                for k, v in value.items()
-            }
+            return {k: (_coerce_value(v, properties[k]) if k in properties else v) for k, v in value.items()}
         return value
 
     if isinstance(value, list) and 'array' in types:

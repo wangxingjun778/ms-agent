@@ -1,6 +1,8 @@
 """Tests for ms_agent.cron.manager."""
-import pytest
+
 from pathlib import Path
+
+import pytest
 
 from ms_agent.cron.manager import JobManager
 from ms_agent.cron.types import CronJobSpec, CronSchedule, ExecutionResult, RepeatSpec

@@ -3,6 +3,7 @@ invisible Unicode tricks before anything is persisted to memory.
 
 Inspired by hermes-agent ``_scan_memory_content``.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,11 +17,11 @@ logger = get_logger()
 # Pattern groups
 # ---------------------------------------------------------------------------
 
-_INVISIBLE_UNICODE = re.compile(
-    r'[\u200b-\u200f\u2028-\u202f\u2060-\u2069\ufeff]')
+_INVISIBLE_UNICODE = re.compile(r'[\u200b-\u200f\u2028-\u202f\u2060-\u2069\ufeff]')
 
 _INJECTION_PATTERNS: List[re.Pattern] = [
-    re.compile(p, re.IGNORECASE) for p in (
+    re.compile(p, re.IGNORECASE)
+    for p in (
         r'ignore\s+(all\s+)?previous',
         r'disregard\s+(all\s+)?previous',
         r'you\s+are\s+now',
@@ -34,7 +35,8 @@ _INJECTION_PATTERNS: List[re.Pattern] = [
 ]
 
 _EXFIL_PATTERNS: List[re.Pattern] = [
-    re.compile(p, re.IGNORECASE) for p in (
+    re.compile(p, re.IGNORECASE)
+    for p in (
         r'curl\s+',
         r'wget\s+',
         r'fetch\s*\(',
@@ -76,5 +78,4 @@ def scan_content(text: str) -> Tuple[bool, str]:
 
 def sanitize_for_injection(text: str) -> str:
     """Strip leaked ``<memory-context>`` tags that may have been persisted."""
-    return re.sub(
-        r'</?memory-context[^>]*>', '', text, flags=re.IGNORECASE).strip()
+    return re.sub(r'</?memory-context[^>]*>', '', text, flags=re.IGNORECASE).strip()

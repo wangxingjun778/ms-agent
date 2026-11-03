@@ -1,4 +1,5 @@
 """I/O schema for the lightweight agent system."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -36,10 +37,7 @@ class Attachment:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Attachment':
         """Create an attachment while ignoring unknown transport fields."""
-        return cls(**{
-            key: value
-            for key, value in data.items() if key in cls.__dataclass_fields__
-        })
+        return cls(**{key: value for key, value in data.items() if key in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -58,7 +56,8 @@ class MessageInput:
         if isinstance(attachments, list):
             parsed = [
                 item if isinstance(item, Attachment) else Attachment.from_dict(item)
-                for item in attachments if isinstance(item, (Attachment, dict))
+                for item in attachments
+                if isinstance(item, (Attachment, dict))
             ]
         return cls(
             role=str(data.get('role', 'user')),
@@ -92,7 +91,8 @@ class AgentRequest:
         raw_messages = data.get('messages') or []
         messages = [
             item if isinstance(item, MessageInput) else MessageInput.from_dict(item)
-            for item in raw_messages if isinstance(item, (MessageInput, dict))
+            for item in raw_messages
+            if isinstance(item, (MessageInput, dict))
         ]
         session_id = data.get('session_id') or cls.new_session_id()
         overrides = data.get('config_overrides')
@@ -220,7 +220,8 @@ class MessageOutput:
         if isinstance(raw_calls, list):
             calls = [
                 item if isinstance(item, ToolCallInfo) else ToolCallInfo.from_dict(item)
-                for item in raw_calls if isinstance(item, (ToolCallInfo, dict))
+                for item in raw_calls
+                if isinstance(item, (ToolCallInfo, dict))
             ]
         return cls(
             role=str(data.get('role', 'assistant')),
@@ -277,11 +278,13 @@ class AgentResponse:
             session_id=str(data.get('session_id', '')),
             messages=[
                 item if isinstance(item, MessageOutput) else MessageOutput.from_dict(item)
-                for item in raw_messages if isinstance(item, (MessageOutput, dict))
+                for item in raw_messages
+                if isinstance(item, (MessageOutput, dict))
             ],
             tool_calls_made=[
                 item if isinstance(item, ToolCallRecord) else ToolCallRecord.from_dict(item)
-                for item in raw_records if isinstance(item, (ToolCallRecord, dict))
+                for item in raw_records
+                if isinstance(item, (ToolCallRecord, dict))
             ],
             usage=usage if isinstance(usage, UsageStats) else UsageStats.from_dict(usage),
             metadata=dict(metadata) if isinstance(metadata, dict) else {},
@@ -343,10 +346,13 @@ class AgentResponse:
                 if isinstance(raw_messages, list):
                     messages.extend(
                         item if isinstance(item, MessageOutput) else MessageOutput.from_dict(item)
-                        for item in raw_messages if isinstance(item, (MessageOutput, dict)))
+                        for item in raw_messages
+                        if isinstance(item, (MessageOutput, dict))
+                    )
                 elif isinstance(raw_message, (MessageOutput, dict)):
                     messages.append(
-                        raw_message if isinstance(raw_message, MessageOutput) else MessageOutput.from_dict(raw_message))
+                        raw_message if isinstance(raw_message, MessageOutput) else MessageOutput.from_dict(raw_message)
+                    )
                 elif 'role' in data or 'content' in data:
                     messages.append(MessageOutput.from_dict(data))
                 elif delta_parts or pending_calls:
@@ -355,7 +361,8 @@ class AgentResponse:
                             role='assistant',
                             content=''.join(delta_parts),
                             tool_calls=list(pending_calls) or None,
-                        ))
+                        )
+                    )
                 delta_parts.clear()
                 pending_calls.clear()
                 if isinstance(data.get('usage'), dict):
@@ -384,7 +391,8 @@ class AgentResponse:
                     role='assistant',
                     content=''.join(delta_parts),
                     tool_calls=pending_calls or None,
-                ))
+                )
+            )
         if usage.rounds == 0:
             usage.rounds = completed_rounds
         if usage.total_tokens == 0:

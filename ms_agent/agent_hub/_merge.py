@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Section-level Markdown merge engine for cross-framework workspace migration."""
+
 from __future__ import annotations
 
 import difflib
@@ -15,6 +16,7 @@ logger = get_logger()
 @dataclass
 class Section:
     """A markdown section: optional title (## heading) + body lines."""
+
     title: str  # e.g. "## Active Tasks", empty string for preamble
     body: str  # everything after the title line until the next ## heading
 
@@ -22,6 +24,7 @@ class Section:
 @dataclass
 class MergeAction:
     """Describes what happened to a single file or section during merge."""
+
     path: str
     action: str  # 'import' | 'default' | 'merged' | 'skip'
     detail: str  # human-readable description
@@ -35,6 +38,7 @@ class MergeAction:
 @dataclass
 class MergeResult:
     """Result of merging a single file."""
+
     content: str
     actions: list[MergeAction] = field(default_factory=list)
 
@@ -42,6 +46,7 @@ class MergeResult:
 @dataclass
 class FullMergeResult:
     """Result of merging an entire resource set."""
+
     merged_files: dict[str, str] = field(default_factory=dict)
     actions: list[MergeAction] = field(default_factory=list)
 
@@ -88,7 +93,8 @@ class SectionMerger:
                     Section(
                         title=current_title,
                         body='\n'.join(current_lines),
-                    ))
+                    )
+                )
                 current_title = line
                 current_lines = []
             else:
@@ -98,7 +104,8 @@ class SectionMerger:
             Section(
                 title=current_title,
                 body='\n'.join(current_lines),
-            ))
+            )
+        )
         return sections
 
     @staticmethod
@@ -178,8 +185,7 @@ class SectionMerger:
         3. For sections the user added: append at the end.
         4. Unchanged sections keep the target default version.
         """
-        unchanged, modified, added = self.diff_sections(
-            user_content, source_default)
+        unchanged, modified, added = self.diff_sections(user_content, source_default)
         target_secs = self.parse_sections(target_default)
 
         actions = []
@@ -202,9 +208,9 @@ class SectionMerger:
                     MergeAction(
                         path='',
                         action='user_modified',
-                        detail=
-                        f"Section '{tsec.title}' -- user modification preserved",
-                    ))
+                        detail=f"Section '{tsec.title}' -- user modification preserved",
+                    )
+                )
             elif not tsec.title and modified_by_title.get(''):
                 preamble_sec = modified_by_title.pop('')[0]
                 result_secs.append(preamble_sec)
@@ -213,7 +219,8 @@ class SectionMerger:
                         path='',
                         action='user_modified',
                         detail='Preamble -- user modification preserved',
-                    ))
+                    )
+                )
             else:
                 result_secs.append(tsec)
                 if tsec.title:
@@ -222,7 +229,8 @@ class SectionMerger:
                             path='',
                             action='keep_default',
                             detail=f"Section '{tsec.title}' -- target default",
-                        ))
+                        )
+                    )
 
         # Append user-added sections
         for sec in added:
@@ -231,9 +239,9 @@ class SectionMerger:
                 MergeAction(
                     path='',
                     action='user_added',
-                    detail=
-                    f"Section '{sec.title}' -- user custom section added",
-                ))
+                    detail=f"Section '{sec.title}' -- user custom section added",
+                )
+            )
 
         content = self.sections_to_content(result_secs)
 
@@ -242,8 +250,7 @@ class SectionMerger:
 
         return MergeResult(
             content=content,
-            actions=[MergeAction(path='', action='merged', detail=summary)]
-            + actions,
+            actions=[MergeAction(path='', action='merged', detail=summary)] + actions,
         )
 
 
@@ -301,14 +308,9 @@ class HeartbeatMerger(SectionMerger):
                 default_active_body = sec.body
                 break
 
-        default_task_lines = set(
-            line.strip()
-            for line in self._extract_task_lines(default_active_body))
+        default_task_lines = set(line.strip() for line in self._extract_task_lines(default_active_body))
         user_task_lines = self._extract_task_lines(user_active_body)
-        new_tasks = [
-            line for line in user_task_lines
-            if line.strip() not in default_task_lines
-        ]
+        new_tasks = [line for line in user_task_lines if line.strip() not in default_task_lines]
 
         result = super().merge(user_content, source_default, target_default)
 
@@ -323,8 +325,7 @@ class HeartbeatMerger(SectionMerger):
                 # in which case the new tasks are ALREADY in the result --
                 # appending them again would duplicate every task (BUG-028).
                 # Only insert the ones actually missing.
-                present = set(line.strip()
-                              for line in self._extract_task_lines(sec.body))
+                present = set(line.strip() for line in self._extract_task_lines(sec.body))
                 missing = [t for t in new_tasks if t.strip() not in present]
                 if not missing:
                     return result
@@ -351,16 +352,17 @@ class HeartbeatMerger(SectionMerger):
                 Section(
                     title=self.ACTIVE_TASKS_TITLE,
                     body='\n' + '\n'.join(new_tasks) + '\n',
-                ))
+                )
+            )
 
         result.content = self.sections_to_content(result_secs)
         result.actions.append(
             MergeAction(
                 path='',
                 action='task_merged',
-                detail=
-                f'{len(new_tasks)} user task(s) merged into Active Tasks',
-            ))
+                detail=f'{len(new_tasks)} user task(s) merged into Active Tasks',
+            )
+        )
         return result
 
 
@@ -368,63 +370,68 @@ class HeartbeatMerger(SectionMerger):
 
 PRODUCT_FILE_CLASSES = {
     'nanobot': {
-        'portable':
-        frozenset([
-            'SOUL.md',
-            'USER.md',
-            'memory/MEMORY.md',
-            'memory/history.jsonl',
-        ]),
-        'config':
-        frozenset([
-            'AGENTS.md',
-            'HEARTBEAT.md',
-        ]),
-        'heartbeat':
-        'HEARTBEAT.md',
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'USER.md',
+                'memory/MEMORY.md',
+                'memory/history.jsonl',
+            ]
+        ),
+        'config': frozenset(
+            [
+                'AGENTS.md',
+                'HEARTBEAT.md',
+            ]
+        ),
+        'heartbeat': 'HEARTBEAT.md',
     },
     'openclaw': {
-        'portable':
-        frozenset([
-            'SOUL.md',
-            'USER.md',
-            'IDENTITY.md',
-            'MEMORY.md',
-        ]),
-        'config':
-        frozenset([
-            'AGENTS.md',
-            'HEARTBEAT.md',
-            'TOOLS.md',
-            'BOOT.md',
-            'BOOTSTRAP.md',
-        ]),
-        'heartbeat':
-        'HEARTBEAT.md',
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'USER.md',
+                'IDENTITY.md',
+                'MEMORY.md',
+            ]
+        ),
+        'config': frozenset(
+            [
+                'AGENTS.md',
+                'HEARTBEAT.md',
+                'TOOLS.md',
+                'BOOT.md',
+                'BOOTSTRAP.md',
+            ]
+        ),
+        'heartbeat': 'HEARTBEAT.md',
     },
     'hermes': {
-        'portable':
-        frozenset([
-            'SOUL.md',
-            'memories/USER.md',
-            'memories/MEMORY.md',
-        ]),
-        'config':
-        frozenset([]),
-        'heartbeat':
-        '',
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'memories/USER.md',
+                'memories/MEMORY.md',
+            ]
+        ),
+        'config': frozenset([]),
+        'heartbeat': '',
     },
     'qwenpaw': {
-        'portable': frozenset([
-            'SOUL.md',
-            'PROFILE.md',
-            'MEMORY.md',
-        ]),
-        'config': frozenset([
-            'AGENTS.md',
-            'HEARTBEAT.md',
-            'BOOTSTRAP.md',
-        ]),
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'PROFILE.md',
+                'MEMORY.md',
+            ]
+        ),
+        'config': frozenset(
+            [
+                'AGENTS.md',
+                'HEARTBEAT.md',
+                'BOOTSTRAP.md',
+            ]
+        ),
         'heartbeat': 'HEARTBEAT.md',
     },
     'openhuman': {
@@ -433,21 +440,27 @@ PRODUCT_FILE_CLASSES = {
         # wiki/ vault is imported as-is (not a classified persona file).
         # MEMORY.md is the curated long-term memory injected every session
         # (the wiki mirrors the Memory Tree instead), so it travels too.
-        'portable': frozenset([
-            'SOUL.md',
-            'IDENTITY.md',
-            'MEMORY.md',
-        ]),
-        'config': frozenset([
-            'HEARTBEAT.md',
-        ]),
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'IDENTITY.md',
+                'MEMORY.md',
+            ]
+        ),
+        'config': frozenset(
+            [
+                'HEARTBEAT.md',
+            ]
+        ),
         'heartbeat': 'HEARTBEAT.md',
     },
     'qoder': {
         'portable': frozenset([]),
-        'config': frozenset([
-            'AGENTS.md',
-        ]),
+        'config': frozenset(
+            [
+                'AGENTS.md',
+            ]
+        ),
         'heartbeat': '',
     },
     'ms-agent': {
@@ -458,13 +471,17 @@ PRODUCT_FILE_CLASSES = {
         # config.yaml/settings.json/agent.yaml/skills.json files are ms-agent
         # private and preserved on same-framework sync only. Memory is not
         # here (runtime keeps it project-level), so ms-agent carries none.
-        'portable': frozenset([
-            'SOUL.md',
-            'PROFILE.md',
-        ]),
-        'config': frozenset([
-            'AGENTS.md',
-        ]),
+        'portable': frozenset(
+            [
+                'SOUL.md',
+                'PROFILE.md',
+            ]
+        ),
+        'config': frozenset(
+            [
+                'AGENTS.md',
+            ]
+        ),
         'heartbeat': '',
     },
 }
@@ -523,7 +540,7 @@ SEMANTIC_GROUPS = [
         'hermes': 'SOUL.md',
         'qwenpaw': 'SOUL.md',
         'openhuman': 'SOUL.md',
-        'ms-agent': 'SOUL.md'
+        'ms-agent': 'SOUL.md',
     },
     {
         # No qwenpaw / qoder entries: neither framework has a USER.md slot,
@@ -532,7 +549,7 @@ SEMANTIC_GROUPS = [
         'nanobot': 'USER.md',
         'openclaw': 'USER.md',
         'hermes': 'memories/USER.md',
-        'ms-agent': 'PROFILE.md'
+        'ms-agent': 'PROFILE.md',
     },
     {
         'nanobot': 'memory/MEMORY.md',
@@ -540,12 +557,9 @@ SEMANTIC_GROUPS = [
         'qwenpaw': 'MEMORY.md',
         'hermes': 'memories/MEMORY.md',
         'openhuman': 'MEMORY.md',
-        'qoder': 'memory/MEMORY.md'
+        'qoder': 'memory/MEMORY.md',
     },
-    {
-        'openclaw': 'IDENTITY.md',
-        'openhuman': 'IDENTITY.md'
-    },
+    {'openclaw': 'IDENTITY.md', 'openhuman': 'IDENTITY.md'},
     {
         'qwenpaw': 'PROFILE.md',
     },
@@ -559,30 +573,15 @@ SEMANTIC_GROUPS = [
         'openclaw': 'AGENTS.md',
         'qwenpaw': 'AGENTS.md',
         'qoder': 'AGENTS.md',
-        'ms-agent': 'AGENTS.md'
+        'ms-agent': 'AGENTS.md',
     },
-    {
-        'nanobot': 'HEARTBEAT.md',
-        'openclaw': 'HEARTBEAT.md',
-        'qwenpaw': 'HEARTBEAT.md',
-        'openhuman': 'HEARTBEAT.md'
-    },
-    {
-        'openclaw': 'TOOLS.md'
-    },
-    {
-        'openclaw': 'BOOTSTRAP.md',
-        'qwenpaw': 'BOOTSTRAP.md'
-    },
-    {
-        'nanobot': 'memory/history.jsonl'
-    },
+    {'nanobot': 'HEARTBEAT.md', 'openclaw': 'HEARTBEAT.md', 'qwenpaw': 'HEARTBEAT.md', 'openhuman': 'HEARTBEAT.md'},
+    {'openclaw': 'TOOLS.md'},
+    {'openclaw': 'BOOTSTRAP.md', 'qwenpaw': 'BOOTSTRAP.md'},
+    {'nanobot': 'memory/history.jsonl'},
 ]
 
-_ALL_PRODUCTS = [
-    'nanobot', 'openclaw', 'hermes', 'qwenpaw', 'openhuman', 'qoder',
-    'ms-agent'
-]
+_ALL_PRODUCTS = ['nanobot', 'openclaw', 'hermes', 'qwenpaw', 'openhuman', 'qoder', 'ms-agent']
 
 
 def _build_path_map():
@@ -590,8 +589,7 @@ def _build_path_map():
     for group in SEMANTIC_GROUPS:
         for src_product, src_path in group.items():
             targets = {
-                tgt_product: group.get(tgt_product)
-                for tgt_product in _ALL_PRODUCTS if tgt_product != src_product
+                tgt_product: group.get(tgt_product) for tgt_product in _ALL_PRODUCTS if tgt_product != src_product
             }
             path_map[(src_product, src_path)] = targets
     return path_map
@@ -600,68 +598,74 @@ def _build_path_map():
 PATH_MAP = _build_path_map()
 
 PRODUCT_KNOWN_FILES = {
-    'nanobot':
-    frozenset([
-        'SOUL.md',
-        'USER.md',
-        'AGENTS.md',
-        'HEARTBEAT.md',
-        'memory/MEMORY.md',
-        'memory/history.jsonl',
-    ]),
-    'openclaw':
-    frozenset([
-        'SOUL.md',
-        'USER.md',
-        'AGENTS.md',
-        'TOOLS.md',
-        'HEARTBEAT.md',
-        'IDENTITY.md',
-        'BOOT.md',
-        'BOOTSTRAP.md',
-        'MEMORY.md',
-    ]),
-    'hermes':
-    frozenset([
-        'SOUL.md',
-        'memories/USER.md',
-        'memories/MEMORY.md',
-        'config.yaml',
-    ]),
-    'qwenpaw':
-    frozenset([
-        'SOUL.md',
-        'PROFILE.md',
-        'AGENTS.md',
-        'MEMORY.md',
-        'HEARTBEAT.md',
-        'BOOTSTRAP.md',
-    ]),
-    'openhuman':
-    frozenset([
-        'SOUL.md',
-        'IDENTITY.md',
-        'HEARTBEAT.md',
-        'MEMORY.md',
-    ]),
-    'qoder':
-    frozenset([
-        'AGENTS.md',
-    ]),
-    'ms-agent':
-    frozenset([
-        'SOUL.md',
-        'AGENTS.md',
-        'PROFILE.md',
-        'settings.json',
-        'skills.json',
-        'mcp.json',
-    ]),
+    'nanobot': frozenset(
+        [
+            'SOUL.md',
+            'USER.md',
+            'AGENTS.md',
+            'HEARTBEAT.md',
+            'memory/MEMORY.md',
+            'memory/history.jsonl',
+        ]
+    ),
+    'openclaw': frozenset(
+        [
+            'SOUL.md',
+            'USER.md',
+            'AGENTS.md',
+            'TOOLS.md',
+            'HEARTBEAT.md',
+            'IDENTITY.md',
+            'BOOT.md',
+            'BOOTSTRAP.md',
+            'MEMORY.md',
+        ]
+    ),
+    'hermes': frozenset(
+        [
+            'SOUL.md',
+            'memories/USER.md',
+            'memories/MEMORY.md',
+            'config.yaml',
+        ]
+    ),
+    'qwenpaw': frozenset(
+        [
+            'SOUL.md',
+            'PROFILE.md',
+            'AGENTS.md',
+            'MEMORY.md',
+            'HEARTBEAT.md',
+            'BOOTSTRAP.md',
+        ]
+    ),
+    'openhuman': frozenset(
+        [
+            'SOUL.md',
+            'IDENTITY.md',
+            'HEARTBEAT.md',
+            'MEMORY.md',
+        ]
+    ),
+    'qoder': frozenset(
+        [
+            'AGENTS.md',
+        ]
+    ),
+    'ms-agent': frozenset(
+        [
+            'SOUL.md',
+            'AGENTS.md',
+            'PROFILE.md',
+            'settings.json',
+            'skills.json',
+            'mcp.json',
+        ]
+    ),
 }
 
 
-def _resolve_target_path(source_product: str, source_path: str,
-                         target_product: str) -> str | None:
+def _resolve_target_path(source_product: str, source_path: str, target_product: str) -> str | None:
     """Resolve the target path for a source file in a cross-product migration."""
     if source_product == target_product:
         return source_path
@@ -706,8 +710,7 @@ _HERMES_CHAR_LIMITS = {
     'memories/USER.md': 1375,
 }
 # Headings that are really file names add no entry context.
-_HERMES_HEADING_DROP_RE = re.compile(
-    r'\b(MEMORY|USER|SOUL|AGENTS|TOOLS|IDENTITY|CLAUDE)\.md\b', re.I)
+_HERMES_HEADING_DROP_RE = re.compile(r'\b(MEMORY|USER|SOUL|AGENTS|TOOLS|IDENTITY|CLAUDE)\.md\b', re.I)
 
 
 def _normalize_entry_text(text: str) -> str:
@@ -721,7 +724,7 @@ def _strip_yaml_frontmatter(text: str) -> str:
     if lines and lines[0].strip() == '---':
         for idx in range(1, len(lines)):
             if lines[idx].strip() in ('---', '...'):
-                return '\n'.join(lines[idx + 1:])
+                return '\n'.join(lines[idx + 1 :])
     return text
 
 
@@ -734,8 +737,7 @@ def _markdown_to_hermes_entries(text: str) -> list[str]:
     paragraph: list[str] = []
 
     def add_entry(content: str) -> None:
-        prefix = ' > '.join(
-            h for h in headings if h and not _HERMES_HEADING_DROP_RE.search(h))
+        prefix = ' > '.join(h for h in headings if h and not _HERMES_HEADING_DROP_RE.search(h))
         entries.append(f'{prefix}: {content}' if prefix else content)
 
     def flush() -> None:
@@ -758,15 +760,14 @@ def _markdown_to_hermes_entries(text: str) -> list[str]:
         heading = re.match(r'^(#{1,6})\s+(.*\S)\s*$', stripped)
         if heading:
             flush()
-            headings[len(heading.group(1)) - 1:] = [heading.group(2).strip()]
+            headings[len(heading.group(1)) - 1 :] = [heading.group(2).strip()]
             continue
         bullet = re.match(r'^\s*(?:[-*]|\d+\.)\s+(.*\S)\s*$', line)
         if bullet:
             flush()
             add_entry(bullet.group(1).strip())
             continue
-        if not stripped or (stripped.startswith('|')
-                            and stripped.endswith('|')):
+        if not stripped or (stripped.startswith('|') and stripped.endswith('|')):
             flush()
             continue
         paragraph.append(stripped)
@@ -782,8 +783,7 @@ def _markdown_to_hermes_entries(text: str) -> list[str]:
     return deduped
 
 
-def _merge_hermes_entries(existing: list[str], incoming: list[str],
-                          limit: int) -> tuple[list[str], dict]:
+def _merge_hermes_entries(existing: list[str], incoming: list[str], limit: int) -> tuple[list[str], dict]:
     """Dedupe *incoming* against *existing* under a cumulative char *limit*;
     entries that would bust it are skipped (never truncated) and counted."""
     merged = list(existing)
@@ -797,8 +797,7 @@ def _merge_hermes_entries(existing: list[str], incoming: list[str],
         if normalized in seen:
             stats['duplicates'] += 1
             continue
-        candidate = (len(entry) if not merged else
-                     current + len(_HERMES_ENTRY_DELIM) + len(entry))
+        candidate = len(entry) if not merged else current + len(_HERMES_ENTRY_DELIM) + len(entry)
         if candidate > limit:
             stats['overflowed'] += 1
             continue
@@ -818,8 +817,7 @@ def _hermes_entries_to_markdown(text: str) -> str:
     return ('\n\n'.join(entries) + '\n') if entries else text
 
 
-def _rehome_loose_memory(path: str, source_product: str,
-                         target_product: str) -> str | None:
+def _rehome_loose_memory(path: str, source_product: str, target_product: str) -> str | None:
     """Relocate one loose memory .md onto the target's layout; ``None`` means
     inline it into the target's single memory file. Non-``.md`` payloads and
     targets without a table entry keep the original path (the downstream
@@ -858,14 +856,12 @@ def _is_memory_slot(target_product: str, target_path: str) -> bool:
     """
     if target_path == _MEMORY_INDEX_PATHS.get(target_product):
         return True
-    return (target_product == 'hermes'
-            and target_path.startswith('memories/')
-            and target_path.endswith('.md'))
+    return target_product == 'hermes' and target_path.startswith('memories/') and target_path.endswith('.md')
 
 
-def _rewrite_memory_index(content: str, src_index_dir: str,
-                          moves: dict, tgt_index_dir: str,
-                          target_product: str) -> str:
+def _rewrite_memory_index(
+    content: str, src_index_dir: str, moves: dict, tgt_index_dir: str, target_product: str
+) -> str:
     """Keep index links resolvable after loose files moved or were inlined:
     moved links are rewritten to the new relative location, inlined ones
     de-linked. qoder discovers detail only through index references, so
@@ -879,8 +875,7 @@ def _rewrite_memory_index(content: str, src_index_dir: str,
     basenames: dict[str, list[str]] = {}
     for src_path, new_path in moves.items():
         rel = posixpath.relpath(src_path, src_index_dir or '.')
-        new_rel = (None if new_path is None else
-                   posixpath.relpath(new_path, tgt_index_dir or '.'))
+        new_rel = None if new_path is None else posixpath.relpath(new_path, tgt_index_dir or '.')
         forms[rel] = new_rel
         base = posixpath.basename(src_path)
         basenames.setdefault(base, []).append(rel)
@@ -932,9 +927,8 @@ def _extract_user_diff_text(user_content: str, source_default: str) -> str:
     user_lines = user_content.strip().split('\n')
     default_lines = source_default.strip().split('\n')
     matcher = difflib.SequenceMatcher(
-        a=[line.strip() for line in default_lines],
-        b=[line.strip() for line in user_lines],
-        autojunk=False)
+        a=[line.strip() for line in default_lines], b=[line.strip() for line in user_lines], autojunk=False
+    )
 
     diff_lines = []
     for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
@@ -1008,8 +1002,7 @@ def merge_resources(
     # cross-framework they are rendered as Markdown paragraphs first.
     if is_cross_product and source_product == 'hermes':
         incoming = {
-            p: (_hermes_entries_to_markdown(c)
-                if p.startswith('memories/') and p.endswith('.md') else c)
+            p: (_hermes_entries_to_markdown(c) if p.startswith('memories/') and p.endswith('.md') else c)
             for p, c in incoming.items()
         }
 
@@ -1035,7 +1028,7 @@ def merge_resources(
         # whole tree dropped by the target-spec filter downstream).
         skill_path = path
         if is_cross_product and path.startswith('optional-skills/'):
-            skill_path = 'skills/' + path[len('optional-skills/'):]
+            skill_path = 'skills/' + path[len('optional-skills/') :]
         # Qoder ``commands/<x>.md`` ARE skills: the host runs them via the
         # skill framework (a ``name``/``description`` frontmatter + body,
         # triggered by ``/<x>``), identical in shape to a ``SKILL.md``. No
@@ -1044,9 +1037,8 @@ def merge_resources(
         # imported but never loads). Cross-product, re-home each command as
         # its own skill dir ``skills/<x>/SKILL.md`` so the target loads it
         # like a native skill; same-product qoder->qoder keeps it as-is.
-        elif (is_cross_product and source_product == 'qoder'
-              and path.startswith('commands/') and path.endswith('.md')):
-            cmd_name = path[len('commands/'):-len('.md')]
+        elif is_cross_product and source_product == 'qoder' and path.startswith('commands/') and path.endswith('.md'):
+            cmd_name = path[len('commands/') : -len('.md')]
             if cmd_name:
                 skill_path = f'skills/{cmd_name}/SKILL.md'
         if skill_path.startswith('skills/'):
@@ -1054,36 +1046,38 @@ def merge_resources(
             skill_name = parts[1] if len(parts) > 1 else ''
             # Framework-private per-skill provenance sidecars never travel
             # across frameworks (BUG-0828).
-            if (is_cross_product and len(parts) == 3
-                    and parts[2] in _SKILL_PROVENANCE_FILES.get(
-                        source_product, ())):
+            if is_cross_product and len(parts) == 3 and parts[2] in _SKILL_PROVENANCE_FILES.get(source_product, ()):
                 result.actions.append(
                     MergeAction(
                         path=path,
                         action='skip',
-                        detail=(f'{path} is {source_product}-private skill '
-                                f'provenance, dropped'),
-                    ))
+                        detail=(f'{path} is {source_product}-private skill provenance, dropped'),
+                    )
+                )
                 continue
             if skill_name in existing_skill_set:
                 result.actions.append(
                     MergeAction(
                         path=path,
                         action='skip',
-                        detail=
-                        f"Skill '{skill_name}' already exists on target, skipped",
-                    ))
+                        detail=f"Skill '{skill_name}' already exists on target, skipped",
+                    )
+                )
                 continue
             result.merged_files[skill_path] = content
             result.actions.append(
                 MergeAction(
                     path=skill_path,
                     action='import',
-                    detail='Skill imported' if skill_path == path else
-                    (f'Qoder command converted to skill (from {path})'
-                     if path.startswith('commands/') else
-                     f'Optional skill imported (from {path})'),
-                ))
+                    detail='Skill imported'
+                    if skill_path == path
+                    else (
+                        f'Qoder command converted to skill (from {path})'
+                        if path.startswith('commands/')
+                        else f'Optional skill imported (from {path})'
+                    ),
+                )
+            )
             continue
 
         # Framework-private config/manifest with no cross-framework meaning
@@ -1096,10 +1090,9 @@ def merge_resources(
                 MergeAction(
                     path=path,
                     action='skip',
-                    detail=(f'{path} is {source_product}-private '
-                            f'(incompatible format on {target_product}), '
-                            f'dropped'),
-                ))
+                    detail=(f'{path} is {source_product}-private (incompatible format on {target_product}), dropped'),
+                )
+            )
             continue
 
         # The source's per-agent persona file (dynamic name, absent from the
@@ -1109,8 +1102,7 @@ def merge_resources(
         if is_cross_product and identity_source and path == identity_source:
             target_path = None
         else:
-            target_path = _resolve_target_path(source_product, path,
-                                               target_product)
+            target_path = _resolve_target_path(source_product, path, target_product)
 
         if target_path is None:
             if path.startswith('wiki/'):
@@ -1119,15 +1111,14 @@ def merge_resources(
                     MergeAction(
                         path=path,
                         action='import',
-                        detail=
-                        f'No mapping for {target_product}, imported as-is',
-                    ))
+                        detail=f'No mapping for {target_product}, imported as-is',
+                    )
+                )
                 continue
             if path.startswith('memory/') or path.startswith('memories/'):
                 # Unmapped memory file: re-home (or inline) onto the target's
                 # layout instead of dying on its spec filter.
-                new_path = _rehome_loose_memory(path, source_product,
-                                                target_product)
+                new_path = _rehome_loose_memory(path, source_product, target_product)
                 slot = _SINGLE_FILE_MEMORY_SLOTS.get(target_product, '')
                 if new_path is None:
                     loose_inline.append((path, content))
@@ -1136,11 +1127,11 @@ def merge_resources(
                         MergeAction(
                             path=slot,
                             action='merged',
-                            detail=(f'Loose memory detail {path} inlined into '
-                                    f'{slot}'),
+                            detail=(f'Loose memory detail {path} inlined into {slot}'),
                             src_path=path,
                             dst_path=slot,
-                        ))
+                        )
+                    )
                     continue
                 loose_moves[path] = new_path
                 result.merged_files[new_path] = content
@@ -1148,21 +1139,21 @@ def merge_resources(
                     MergeAction(
                         path=new_path,
                         action='import',
-                        detail=(f'No mapping for {target_product}, '
-                                'imported as-is') if new_path == path else
-                        (f'Loose memory file rehomed {path} -> {new_path}'),
-                    ))
+                        detail=(f'No mapping for {target_product}, imported as-is')
+                        if new_path == path
+                        else (f'Loose memory file rehomed {path} -> {new_path}'),
+                    )
+                )
                 continue
-            user_diff = _extract_user_diff_text(content,
-                                                source_defaults.get(path, ''))
+            user_diff = _extract_user_diff_text(content, source_defaults.get(path, ''))
             if not user_diff:
                 result.actions.append(
                     MergeAction(
                         path=path,
                         action='skip',
-                        detail=
-                        f'{path} has no equivalent in {target_product} and no user changes, skipped',
-                    ))
+                        detail=f'{path} has no equivalent in {target_product} and no user changes, skipped',
+                    )
+                )
                 continue
             catch_all = overflow_target or _catch_all_file(target_product)
             block = f'## Imported from {source_product} {path}\n\n{user_diff}\n'
@@ -1171,11 +1162,11 @@ def merge_resources(
                 MergeAction(
                     path=catch_all,
                     action='merged',
-                    detail=
-                    f'Mutually-exclusive content from {path} merged into {catch_all}',
+                    detail=f'Mutually-exclusive content from {path} merged into {catch_all}',
                     src_path=path,
                     dst_path=catch_all,
-                ))
+                )
+            )
             continue
 
         handled_target_paths.add(target_path)
@@ -1188,7 +1179,8 @@ def merge_resources(
                         path=path,
                         action='import',
                         detail='User data imported directly',
-                    ))
+                    )
+                )
             elif path in config_files:
                 result.merged_files[path] = content
                 result.actions.append(
@@ -1196,7 +1188,8 @@ def merge_resources(
                         path=path,
                         action='import',
                         detail='Same product, imported directly',
-                    ))
+                    )
+                )
             elif path.startswith('memory/') or path.startswith('memories/'):
                 result.merged_files[path] = content
                 result.actions.append(
@@ -1204,7 +1197,8 @@ def merge_resources(
                         path=path,
                         action='import',
                         detail='Memory file imported directly',
-                    ))
+                    )
+                )
             else:
                 result.merged_files[path] = content
                 result.actions.append(
@@ -1212,7 +1206,8 @@ def merge_resources(
                         path=path,
                         action='import',
                         detail='Imported directly',
-                    ))
+                    )
+                )
             continue
 
         # ---- Cross-product logic ----
@@ -1223,7 +1218,8 @@ def merge_resources(
                     path=target_path,
                     action='import',
                     detail=f'Memory file imported directly (from {path})',
-                ))
+                )
+            )
             continue
 
         if path in src_cls['portable']:
@@ -1239,37 +1235,40 @@ def merge_resources(
                         path=target_path,
                         action='merged',
                         detail=summary,
-                    ))
+                    )
+                )
             elif tgt_default:
                 user_diff = _extract_user_diff_text(content, src_default)
                 if user_diff:
-                    merged_content = tgt_default.rstrip() + \
-                        f'\n\n## Imported from {source_product} {path}\n\n{user_diff}\n'
+                    merged_content = (
+                        tgt_default.rstrip() + f'\n\n## Imported from {source_product} {path}\n\n{user_diff}\n'
+                    )
                     result.merged_files[target_path] = merged_content
                     result.actions.append(
                         MergeAction(
                             path=target_path,
                             action='merged',
                             detail=f'Target template + user data from {path}',
-                        ))
+                        )
+                    )
                 else:
                     result.merged_files[target_path] = tgt_default
                     result.actions.append(
                         MergeAction(
                             path=target_path,
                             action='default',
-                            detail=
-                            f'No user changes detected, using {target_product} default',
-                        ))
+                            detail=f'No user changes detected, using {target_product} default',
+                        )
+                    )
             else:
                 result.merged_files[target_path] = content
                 result.actions.append(
                     MergeAction(
                         path=target_path,
                         action='import',
-                        detail=f'Imported from {path}' +
-                        (f' -> {target_path}' if target_path != path else ''),
-                    ))
+                        detail=f'Imported from {path}' + (f' -> {target_path}' if target_path != path else ''),
+                    )
+                )
             continue
 
         if path in config_files:
@@ -1282,7 +1281,8 @@ def merge_resources(
                         path=target_path,
                         action='import',
                         detail='No target default available, imported as-is',
-                    ))
+                    )
+                )
             else:
                 merger = _heartbeat_merger if target_path == heartbeat_file else _section_merger
                 mr = merger.merge(content, src_default, tgt_default)
@@ -1293,24 +1293,24 @@ def merge_resources(
                         path=target_path,
                         action='merged',
                         detail=summary,
-                    ))
+                    )
+                )
             continue
 
         if path.startswith('memory/') or path.startswith('memories/'):
             # Mapped canonical files travel verbatim; unmapped loose files
             # re-home/inline onto the target's layout (never die silently).
-            if PATH_MAP.get((source_product, path), {}).get(
-                    target_product) is not None:
+            if PATH_MAP.get((source_product, path), {}).get(target_product) is not None:
                 result.merged_files[target_path] = content
                 result.actions.append(
                     MergeAction(
                         path=target_path,
                         action='import',
                         detail='Memory file imported directly',
-                    ))
+                    )
+                )
                 continue
-            new_path = _rehome_loose_memory(path, source_product,
-                                            target_product)
+            new_path = _rehome_loose_memory(path, source_product, target_product)
             slot = _SINGLE_FILE_MEMORY_SLOTS.get(target_product, '')
             if new_path is None:
                 loose_inline.append((path, content))
@@ -1319,11 +1319,11 @@ def merge_resources(
                     MergeAction(
                         path=slot,
                         action='merged',
-                        detail=(f'Loose memory detail {path} inlined into '
-                                f'{slot}'),
+                        detail=(f'Loose memory detail {path} inlined into {slot}'),
                         src_path=path,
                         dst_path=slot,
-                    ))
+                    )
+                )
                 continue
             loose_moves[path] = new_path
             result.merged_files[new_path] = content
@@ -1332,9 +1332,10 @@ def merge_resources(
                     path=new_path,
                     action='import',
                     detail='Memory file imported directly'
-                    if new_path == path else
-                    (f'Loose memory file rehomed {path} -> {new_path}'),
-                ))
+                    if new_path == path
+                    else (f'Loose memory file rehomed {path} -> {new_path}'),
+                )
+            )
             continue
 
         result.merged_files[target_path] = content
@@ -1343,7 +1344,8 @@ def merge_resources(
                 path=target_path,
                 action='import',
                 detail='Imported directly',
-            ))
+            )
+        )
 
     # Fill in missing files from target defaults (opt-in).
     # Skipped for convert / download so the target only receives files that
@@ -1357,20 +1359,21 @@ def merge_resources(
                         path=path,
                         action='default',
                         detail=f'Added from {target_product} default template',
-                    ))
+                    )
+                )
 
     # Append overflow blocks
     for catch_all, block in overflow_blocks:
         base = result.merged_files.get(catch_all)
         if base is None:
             base = target_defaults.get(catch_all, '')
-        result.merged_files[catch_all] = (
-            base.rstrip() + '\n\n' + block if base.strip() else block)
+        result.merged_files[catch_all] = base.rstrip() + '\n\n' + block if base.strip() else block
 
     # Rewrite the canonical index's links to follow the loose-file moves;
     # runs before the inline append and the hermes entry conversion.
     if is_cross_product and loose_moves:
         import posixpath
+
         tgt_idx = _MEMORY_INDEX_PATHS.get(target_product)
         if tgt_idx:
             src_idx = _MEMORY_INDEX_PATHS.get(source_product, '')
@@ -1379,13 +1382,12 @@ def merge_resources(
             index_content = result.merged_files.get(tgt_idx)
             if index_content is not None:
                 result.merged_files[tgt_idx] = _rewrite_memory_index(
-                    index_content, src_dir, loose_moves, tgt_dir,
-                    target_product)
+                    index_content, src_dir, loose_moves, tgt_dir, target_product
+                )
             elif target_product == 'qoder':
                 # No source index: qoder discovers detail only through index
                 # references, so build a minimal one for the moved files.
-                created = _rewrite_memory_index('', src_dir, loose_moves,
-                                                tgt_dir, target_product)
+                created = _rewrite_memory_index('', src_dir, loose_moves, tgt_dir, target_product)
                 if created.strip():
                     result.merged_files[tgt_idx] = created
 
@@ -1394,8 +1396,7 @@ def merge_resources(
     # skips and reports what would never be read.
     if loose_inline:
         slot = _SINGLE_FILE_MEMORY_SLOTS.get(target_product, '')
-        cap = (_OPENHUMAN_MEMORY_INJECT_CAP
-               if target_product == 'openhuman' else None)
+        cap = _OPENHUMAN_MEMORY_INJECT_CAP if target_product == 'openhuman' else None
         base = result.merged_files.get(slot, '').rstrip()
         overflowed: list[str] = []
         for src_path, detail in sorted(loose_inline):
@@ -1404,8 +1405,7 @@ def merge_resources(
                 # Inlined files sit mid-document, beyond the extractor's
                 # head-only frontmatter strip.
                 body = _strip_yaml_frontmatter(body).strip()
-            block = (f'## Imported from {source_product} {src_path}\n\n'
-                     f'{body}')
+            block = f'## Imported from {source_product} {src_path}\n\n{body}'
             candidate = f'{base}\n\n{block}' if base else block
             if cap is not None and len(candidate) > cap:
                 overflowed.append(src_path)
@@ -1416,12 +1416,15 @@ def merge_resources(
                 MergeAction(
                     path=slot,
                     action='skip',
-                    detail=(f'Loose memory detail {src_path} exceeds the '
-                            f'{target_product} injection cap ({cap} chars), '
-                            f'left out of {slot}'),
+                    detail=(
+                        f'Loose memory detail {src_path} exceeds the '
+                        f'{target_product} injection cap ({cap} chars), '
+                        f'left out of {slot}'
+                    ),
                     src_path=src_path,
                     dst_path=slot,
-                ))
+                )
+            )
         if base:
             result.merged_files[slot] = base + '\n'
 
@@ -1434,17 +1437,13 @@ def merge_resources(
                 continue
             entries = _markdown_to_hermes_entries(markdown)
             merged, stats = _merge_hermes_entries([], entries, limit)
-            result.merged_files[slot] = (
-                _HERMES_ENTRY_DELIM.join(merged) + '\n') if merged else ''
-            detail = (f'{slot} converted to hermes entry store: '
-                      f"{stats['added']} entries")
+            result.merged_files[slot] = (_HERMES_ENTRY_DELIM.join(merged) + '\n') if merged else ''
+            detail = f'{slot} converted to hermes entry store: {stats["added"]} entries'
             if stats['duplicates']:
-                detail += f", {stats['duplicates']} duplicates dropped"
+                detail += f', {stats["duplicates"]} duplicates dropped'
             if stats['overflowed']:
-                detail += (f", {stats['overflowed']} skipped over the "
-                           f'{limit}-char budget')
-            result.actions.append(
-                MergeAction(path=slot, action='merged', detail=detail))
+                detail += f', {stats["overflowed"]} skipped over the {limit}-char budget'
+            result.actions.append(MergeAction(path=slot, action='merged', detail=detail))
 
     return result
 
@@ -1457,5 +1456,4 @@ def merged_away_pairs(result: FullMergeResult) -> list[tuple[str, str]]:
     qwenpaw ``PROFILE.md`` -> openclaw ``AGENTS.md``). The CLI uses this to
     show a "merged" hint so such files are not perceived as silently lost.
     """
-    return [(a.src_path, a.dst_path) for a in result.actions
-            if a.action == 'merged' and a.src_path and a.dst_path]
+    return [(a.src_path, a.dst_path) for a in result.actions if a.action == 'merged' and a.src_path and a.dst_path]

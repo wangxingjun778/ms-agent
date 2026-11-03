@@ -22,6 +22,7 @@ Configuration::
           api_timeout: 5.0
           entity_context: "Conversation from an AI agent session."
 """
+
 from __future__ import annotations
 
 import json
@@ -50,7 +51,8 @@ _DEFAULT_ENTITY_CONTEXT = (
     'Remember lasting personal facts, preferences, routines, tools, '
     'ongoing projects, and working context. '
     'Do not remember temporary intents, one-time tasks, or in-progress status. '
-    'When in doubt, store less.')
+    'When in doubt, store less.'
+)
 
 _TRIVIAL_RE = re.compile(
     r'^(ok|okay|thanks|thank you|got it|sure|yes|no|yep|nope|k|ty|thx|np)\.?$',
@@ -140,8 +142,7 @@ _FORGET_SCHEMA = {
 
 _PROFILE_SCHEMA = {
     'tool_name': 'supermemory_profile',
-    'description':
-    ('Retrieve persistent profile facts and recent memory context.'),
+    'description': ('Retrieve persistent profile facts and recent memory context.'),
     'parameters': {
         'type': 'object',
         'properties': {
@@ -167,18 +168,15 @@ class SupermemoryBackend(BaseMemoryBackend):
         self._config = config
         opts = config.backend_options.get('supermemory', {})
         self._api_key = opts.get('api_key', '')
-        self._container_tag = _sanitize_tag(
-            opts.get('container_tag', _DEFAULT_CONTAINER_TAG))
+        self._container_tag = _sanitize_tag(opts.get('container_tag', _DEFAULT_CONTAINER_TAG))
         self._search_mode = opts.get('search_mode', _DEFAULT_SEARCH_MODE)
         if self._search_mode not in _VALID_SEARCH_MODES:
             self._search_mode = _DEFAULT_SEARCH_MODE
         self._auto_capture = opts.get('auto_capture', True)
-        self._min_capture_len = opts.get('min_capture_length',
-                                         _MIN_CAPTURE_LEN)
+        self._min_capture_len = opts.get('min_capture_length', _MIN_CAPTURE_LEN)
         self._max_recall = opts.get('max_recall_results', _DEFAULT_MAX_RECALL)
         self._api_timeout = opts.get('api_timeout', _DEFAULT_API_TIMEOUT)
-        self._entity_context = opts.get('entity_context',
-                                        _DEFAULT_ENTITY_CONTEXT)
+        self._entity_context = opts.get('entity_context', _DEFAULT_ENTITY_CONTEXT)
 
         self._client: Any = None
         self._active = False
@@ -191,24 +189,22 @@ class SupermemoryBackend(BaseMemoryBackend):
         api_key = self._api_key or os.environ.get('SUPERMEMORY_API_KEY', '')
         if not api_key:
             logger.warning(
-                '[supermemory_backend] No API key. '
-                'Set SUPERMEMORY_API_KEY env var or supermemory.api_key config.'
+                '[supermemory_backend] No API key. Set SUPERMEMORY_API_KEY env var or supermemory.api_key config.'
             )
             return
 
         try:
             from supermemory import Supermemory
+
             self._client = Supermemory(
                 api_key=api_key,
                 timeout=self._api_timeout,
                 max_retries=0,
             )
             self._active = True
-            logger.info('[supermemory_backend] Initialized (container=%s)',
-                        self._container_tag)
+            logger.info('[supermemory_backend] Initialized (container=%s)', self._container_tag)
         except ImportError:
-            logger.warning('[supermemory_backend] supermemory not installed. '
-                           'Install with: pip install supermemory')
+            logger.warning('[supermemory_backend] supermemory not installed. Install with: pip install supermemory')
         except Exception as e:
             logger.warning('[supermemory_backend] Init failed: %s', e)
 
@@ -241,29 +237,24 @@ class SupermemoryBackend(BaseMemoryBackend):
             return messages
 
         profile_data = getattr(profile, 'profile', None)
-        search_data = (
-            getattr(profile, 'search_results', None)
-            or getattr(profile, 'searchResults', None))
+        search_data = getattr(profile, 'search_results', None) or getattr(profile, 'searchResults', None)
 
-        static = (getattr(profile_data, 'static', [])
-                  or []) if profile_data else []
-        dynamic = (getattr(profile_data, 'dynamic', [])
-                   or []) if profile_data else []
+        static = (getattr(profile_data, 'static', []) or []) if profile_data else []
+        dynamic = (getattr(profile_data, 'dynamic', []) or []) if profile_data else []
 
-        raw_results = getattr(search_data, 'results',
-                              None) or search_data or []
+        raw_results = getattr(search_data, 'results', None) or search_data or []
         search_results = []
         if isinstance(raw_results, list):
-            for item in raw_results[:self._max_recall]:
+            for item in raw_results[: self._max_recall]:
                 if isinstance(item, dict):
                     search_results.append(item)
                 else:
-                    search_results.append({
-                        'memory':
-                        getattr(item, 'memory', ''),
-                        'similarity':
-                        getattr(item, 'similarity', None),
-                    })
+                    search_results.append(
+                        {
+                            'memory': getattr(item, 'memory', ''),
+                            'similarity': getattr(item, 'similarity', None),
+                        }
+                    )
 
         if not static and not dynamic and not search_results:
             return messages
@@ -272,18 +263,16 @@ class SupermemoryBackend(BaseMemoryBackend):
 
         # System prompt: profile facts
         profile_lines = []
-        for fact in static[:self._max_recall]:
+        for fact in static[: self._max_recall]:
             if fact:
                 profile_lines.append(f'- {fact}')
-        for fact in dynamic[:self._max_recall]:
+        for fact in dynamic[: self._max_recall]:
             if fact:
                 profile_lines.append(f'- {fact}')
 
         if profile_lines and messages and messages[0].get('role') == 'system':
             sys_msg = {**messages[0]}
-            block = ('\n\n<long-term-memory>\n'
-                     '# User Profile\n' + '\n'.join(profile_lines)
-                     + '\n</long-term-memory>')
+            block = '\n\n<long-term-memory>\n# User Profile\n' + '\n'.join(profile_lines) + '\n</long-term-memory>'
             if '<long-term-memory>' not in (sys_msg.get('content') or ''):
                 sys_msg['content'] = (sys_msg.get('content') or '') + block
                 messages[0] = sys_msg
@@ -302,9 +291,10 @@ class SupermemoryBackend(BaseMemoryBackend):
                     context_block = (
                         '\n\n<memory-context>\n'
                         '[System note: Retrieved from long-term memory]\n'
-                        + '\n'.join(memory_lines) + '\n</memory-context>')
-                    user_copy['content'] = ((user_copy.get('content') or '')
-                                            + context_block)
+                        + '\n'.join(memory_lines)
+                        + '\n</memory-context>'
+                    )
+                    user_copy['content'] = (user_copy.get('content') or '') + context_block
                     messages[i] = user_copy
                     break
 
@@ -327,20 +317,19 @@ class SupermemoryBackend(BaseMemoryBackend):
             if m.get('role') == 'user':
                 user_content = _clean_for_capture(str(m.get('content', '')))
             elif m.get('role') == 'assistant':
-                assistant_content = _clean_for_capture(
-                    str(m.get('content', '')))
+                assistant_content = _clean_for_capture(str(m.get('content', '')))
 
         if not user_content or not assistant_content:
             return
-        if (len(user_content) < self._min_capture_len
-                or len(assistant_content) < self._min_capture_len):
+        if len(user_content) < self._min_capture_len or len(assistant_content) < self._min_capture_len:
             return
         if _is_trivial(user_content):
             return
 
         content = (
             f'[role: user]\n{user_content[:3000]}\n[user:end]\n\n'
-            f'[role: assistant]\n{assistant_content[:3000]}\n[assistant:end]')
+            f'[role: assistant]\n{assistant_content[:3000]}\n[assistant:end]'
+        )
         self._background_add(content)
 
     # -- Tools -------------------------------------------------------------
@@ -386,7 +375,7 @@ class SupermemoryBackend(BaseMemoryBackend):
                 search_mode=self._search_mode,
             )
             entries = []
-            for item in (getattr(response, 'results', None) or []):
+            for item in getattr(response, 'results', None) or []:
                 entries.append(
                     MemoryEntry(
                         id=getattr(item, 'id', ''),
@@ -395,7 +384,8 @@ class SupermemoryBackend(BaseMemoryBackend):
                         metadata={
                             'similarity': getattr(item, 'similarity', None),
                         },
-                    ))
+                    )
+                )
             return entries
         except Exception as e:
             logger.debug('[supermemory_backend] search failed: %s', e)
@@ -435,8 +425,7 @@ class SupermemoryBackend(BaseMemoryBackend):
             except Exception as e:
                 logger.debug('[supermemory_backend] add failed: %s', e)
 
-        self._sync_thread = threading.Thread(
-            target=_add, daemon=True, name='supermemory-add')
+        self._sync_thread = threading.Thread(target=_add, daemon=True, name='supermemory-add')
         self._sync_thread.start()
 
     def _tool_store(self, args: Dict[str, Any]) -> str:
@@ -456,11 +445,13 @@ class SupermemoryBackend(BaseMemoryBackend):
                 entity_context=self._entity_context,
                 metadata=metadata,
             )
-            return json.dumps({
-                'saved': True,
-                'id': getattr(result, 'id', ''),
-                'preview': content[:80],
-            })
+            return json.dumps(
+                {
+                    'saved': True,
+                    'id': getattr(result, 'id', ''),
+                    'preview': content[:80],
+                }
+            )
         except Exception as e:
             return json.dumps({'error': f'Store failed: {e}'})
 
@@ -478,7 +469,7 @@ class SupermemoryBackend(BaseMemoryBackend):
                 search_mode=self._search_mode,
             )
             results = []
-            for item in (getattr(response, 'results', None) or []):
+            for item in getattr(response, 'results', None) or []:
                 entry: Dict[str, Any] = {
                     'id': getattr(item, 'id', ''),
                     'content': getattr(item, 'memory', ''),
@@ -502,8 +493,7 @@ class SupermemoryBackend(BaseMemoryBackend):
 
         try:
             if memory_id:
-                self._client.memories.forget(
-                    container_tag=self._container_tag, id=memory_id)
+                self._client.memories.forget(container_tag=self._container_tag, id=memory_id)
                 return json.dumps({'forgotten': True, 'id': memory_id})
 
             response = self._client.search.memories(
@@ -521,14 +511,15 @@ class SupermemoryBackend(BaseMemoryBackend):
             if not target_id:
                 return json.dumps({'error': 'Best match has no id.'})
 
-            self._client.memories.forget(
-                container_tag=self._container_tag, id=target_id)
+            self._client.memories.forget(container_tag=self._container_tag, id=target_id)
             preview = (getattr(target, 'memory', '') or '')[:100]
-            return json.dumps({
-                'forgotten': True,
-                'id': target_id,
-                'preview': preview,
-            })
+            return json.dumps(
+                {
+                    'forgotten': True,
+                    'id': target_id,
+                    'preview': preview,
+                }
+            )
         except Exception as e:
             return json.dumps({'error': f'Forget failed: {e}'})
 
@@ -540,24 +531,22 @@ class SupermemoryBackend(BaseMemoryBackend):
                 q=query,
             )
             profile_data = getattr(profile, 'profile', None)
-            static = (getattr(profile_data, 'static', [])
-                      or []) if profile_data else []
-            dynamic = (getattr(profile_data, 'dynamic', [])
-                       or []) if profile_data else []
+            static = (getattr(profile_data, 'static', []) or []) if profile_data else []
+            dynamic = (getattr(profile_data, 'dynamic', []) or []) if profile_data else []
 
             sections = []
             if static:
-                sections.append('## Persistent Facts\n'
-                                + '\n'.join(f'- {item}' for item in static))
+                sections.append('## Persistent Facts\n' + '\n'.join(f'- {item}' for item in static))
             if dynamic:
-                sections.append('## Recent Context\n'
-                                + '\n'.join(f'- {item}' for item in dynamic))
+                sections.append('## Recent Context\n' + '\n'.join(f'- {item}' for item in dynamic))
 
-            return json.dumps({
-                'profile': '\n\n'.join(sections),
-                'static_count': len(static),
-                'dynamic_count': len(dynamic),
-            })
+            return json.dumps(
+                {
+                    'profile': '\n\n'.join(sections),
+                    'static_count': len(static),
+                    'dynamic_count': len(dynamic),
+                }
+            )
         except Exception as e:
             return json.dumps({'error': f'Profile failed: {e}'})
 

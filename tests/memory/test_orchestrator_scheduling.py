@@ -12,6 +12,7 @@ without corrupting the store or silently losing writes:
 * ``flush_pending`` is a real barrier, so teardown cannot drop the last write;
 * ``mark_ingested`` advances the ledger without ingesting (interrupted turns).
 """
+
 import asyncio
 import json
 import os
@@ -24,7 +25,6 @@ from ms_agent.memory.unified.orchestrator import MemoryOrchestrator
 
 
 class RecordingBackend:
-
     def __init__(self):
         self.batches = []
         self.closed = False
@@ -60,9 +60,7 @@ class RecordingBackend:
 
 
 def _orch(tmp_path, backend, **cfg_kwargs):
-    orch = MemoryOrchestrator(
-        MemoryConfig(
-            base_dir=str(tmp_path), storage_backend='file', **cfg_kwargs))
+    orch = MemoryOrchestrator(MemoryConfig(base_dir=str(tmp_path), storage_backend='file', **cfg_kwargs))
     orch._backend = backend
     orch._started = True
     return orch
@@ -70,9 +68,7 @@ def _orch(tmp_path, backend, **cfg_kwargs):
 
 def _msgs(*contents, roles=None):
     roles = roles or ['user', 'assistant'] * len(contents)
-    return [
-        Message(role=r, content=c) for r, c in zip(roles, contents)
-    ]
+    return [Message(role=r, content=c) for r, c in zip(roles, contents)]
 
 
 def test_schedule_add_ingests_in_background_and_flush_waits(tmp_path):
@@ -95,12 +91,14 @@ def test_system_and_tool_rows_never_reach_the_backend(tmp_path):
     async def main():
         backend = RecordingBackend()
         orch = _orch(tmp_path, backend)
-        await orch.add([
-            Message(role='system', content='prompt'),
-            Message(role='user', content='q'),
-            Message(role='tool', content='{"ok":true}', tool_call_id='1'),
-            Message(role='assistant', content='a'),
-        ])
+        await orch.add(
+            [
+                Message(role='system', content='prompt'),
+                Message(role='user', content='q'),
+                Message(role='tool', content='{"ok":true}', tool_call_id='1'),
+                Message(role='assistant', content='a'),
+            ]
+        )
         assert [m['role'] for m in backend.batches[0]] == ['user', 'assistant']
 
     asyncio.run(main())
@@ -115,9 +113,7 @@ def test_second_ingest_sends_only_the_delta(tmp_path):
         await orch.add(history)
         history += _msgs('turn two', 'answer two')
         await orch.add(history)
-        assert [m['content'] for m in backend.batches[1]] == [
-            'turn two', 'answer two'
-        ]
+        assert [m['content'] for m in backend.batches[1]] == ['turn two', 'answer two']
 
     asyncio.run(main())
 
@@ -144,7 +140,6 @@ def test_failed_ingest_is_retried_on_the_next_turn(tmp_path):
     async def main():
 
         class Failing(RecordingBackend):
-
             async def on_messages(self, messages, **kwargs):
                 raise RuntimeError('provider down')
 
@@ -157,9 +152,7 @@ def test_failed_ingest_is_retried_on_the_next_turn(tmp_path):
         backend = RecordingBackend()
         orch._backend = backend
         await orch.add(_msgs('important fact', 'noted'))
-        assert [m['content'] for m in backend.batches[0]] == [
-            'important fact', 'noted'
-        ]
+        assert [m['content'] for m in backend.batches[0]] == ['important fact', 'noted']
 
     asyncio.run(main())
 
@@ -172,9 +165,7 @@ def test_mark_ingested_skips_interrupted_content(tmp_path):
         interrupted = _msgs('do something', 'half-finished ans')
         orch.mark_ingested(interrupted)
         await orch.add(interrupted + _msgs('next turn', 'done'))
-        assert [m['content'] for m in backend.batches[0]] == [
-            'next turn', 'done'
-        ]
+        assert [m['content'] for m in backend.batches[0]] == ['next turn', 'done']
 
     asyncio.run(main())
 
@@ -204,9 +195,7 @@ def test_ingest_interval_batches_turns(tmp_path):
         history += _msgs('turn two', 'answer two')
         await orch.add(history)
         # The firing ingest carries everything not yet ingested.
-        assert [m['content'] for m in backend.batches[0]] == [
-            'turn one', 'answer one', 'turn two', 'answer two'
-        ]
+        assert [m['content'] for m in backend.batches[0]] == ['turn one', 'answer one', 'turn two', 'answer two']
 
     asyncio.run(main())
 

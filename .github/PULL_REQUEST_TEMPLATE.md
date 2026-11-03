@@ -12,5 +12,5 @@
 
 * [ ] The pull request title is a good summary of the changes - it will be used in the changelog
 * [ ] Unit tests for the changes exist
-* [ ] Run `pre-commit install` and `pre-commit run --all-files` before git commit, and passed lint check.
+* [ ] Run `make lint` (or `ruff check .` and `ruff format --check .`) before git commit, and passed lint check.
 * [ ] Documentation reflects the changes where applicable

@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyi
 *$py.class
+.ruff_cache/
 test.py
 ssrf_protect.py
 ssrf.patch

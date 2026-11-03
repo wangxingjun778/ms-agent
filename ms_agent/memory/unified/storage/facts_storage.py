@@ -2,6 +2,7 @@
 
 Supports confidence-based eviction, deduplication, and atomic writes.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.atomic_file import atomic_write_json
 from ms_agent.utils.logger import get_logger
+
 from ..config import MemoryConfig
 from ..protocols import MemoryEntry
 from ..security import scan_content
@@ -59,9 +61,7 @@ class FactsStorage:
 
         for entry in entries:
             if entry.confidence < self.confidence_threshold:
-                logger.debug(
-                    f'[facts] Skipped low-confidence ({entry.confidence}): '
-                    f'{entry.content[:60]}')
+                logger.debug(f'[facts] Skipped low-confidence ({entry.confidence}): {entry.content[:60]}')
                 continue
             if self.security_scan:
                 safe, reason = scan_content(entry.content)
@@ -72,38 +72,30 @@ class FactsStorage:
             if key in existing_keys:
                 for f in facts:
                     if f['content'].casefold().strip() == key:
-                        f['confidence'] = max(f['confidence'],
-                                              entry.confidence)
+                        f['confidence'] = max(f['confidence'], entry.confidence)
                         f['updatedAt'] = datetime.now(timezone.utc).isoformat()
                         break
             else:
-                facts.append({
-                    'id':
-                    entry.id,
-                    'content':
-                    entry.content,
-                    'category':
-                    entry.category
-                    if entry.category in FACT_CATEGORIES else 'knowledge',
-                    'confidence':
-                    entry.confidence,
-                    'createdAt':
-                    entry.created_at,
-                    'updatedAt':
-                    entry.updated_at,
-                    'source':
-                    entry.source,
-                    'metadata':
-                    entry.metadata,
-                })
+                facts.append(
+                    {
+                        'id': entry.id,
+                        'content': entry.content,
+                        'category': entry.category if entry.category in FACT_CATEGORIES else 'knowledge',
+                        'confidence': entry.confidence,
+                        'createdAt': entry.created_at,
+                        'updatedAt': entry.updated_at,
+                        'source': entry.source,
+                        'metadata': entry.metadata,
+                    }
+                )
                 existing_keys.add(key)
             ids.append(entry.id)
 
         # evict lowest confidence if over capacity
         if len(facts) > self.max_facts:
             facts.sort(key=lambda f: f['confidence'], reverse=True)
-            evicted = facts[self.max_facts:]
-            facts = facts[:self.max_facts]
+            evicted = facts[self.max_facts :]
+            facts = facts[: self.max_facts]
             logger.info(f'[facts] Evicted {len(evicted)} low-confidence facts')
 
         data['facts'] = facts
@@ -123,16 +115,12 @@ class FactsStorage:
     async def delete(self, ids: List[str]) -> bool:
         data = self._load()
         id_set = set(ids)
-        data['facts'] = [
-            f for f in data.get('facts', []) if f['id'] not in id_set
-        ]
+        data['facts'] = [f for f in data.get('facts', []) if f['id'] not in id_set]
         data['lastUpdated'] = datetime.now(timezone.utc).isoformat()
         self._save(data)
         return True
 
-    async def list_all(
-            self,
-            filters: Optional[Dict[str, Any]] = None) -> List[MemoryEntry]:
+    async def list_all(self, filters: Optional[Dict[str, Any]] = None) -> List[MemoryEntry]:
         data = self._load()
         facts = data.get('facts', [])
         if filters:
@@ -141,18 +129,12 @@ class FactsStorage:
                 facts = [f for f in facts if f.get('category') == cat]
             min_conf = filters.get('min_confidence')
             if min_conf is not None:
-                facts = [
-                    f for f in facts if f.get('confidence', 0) >= min_conf
-                ]
+                facts = [f for f in facts if f.get('confidence', 0) >= min_conf]
         facts.sort(key=lambda f: f.get('confidence', 0), reverse=True)
         return [self._fact_to_entry(f) for f in facts]
 
     async def clear(self) -> bool:
-        self._save({
-            'version': '1.0',
-            'lastUpdated': datetime.now(timezone.utc).isoformat(),
-            'facts': []
-        })
+        self._save({'version': '1.0', 'lastUpdated': datetime.now(timezone.utc).isoformat(), 'facts': []})
         return True
 
     # ------------------------------------------------------------------
@@ -177,14 +159,11 @@ class FactsStorage:
     def format_for_prompt(self, max_chars: int = 800) -> str:
         """Render top facts as a compact string for system prompt injection."""
         data = self._load()
-        facts = sorted(
-            data.get('facts', []),
-            key=lambda f: f.get('confidence', 0),
-            reverse=True)
+        facts = sorted(data.get('facts', []), key=lambda f: f.get('confidence', 0), reverse=True)
         lines: List[str] = []
         total = 0
         for f in facts:
-            line = f"- [{f.get('category', '?')}] {f['content']}"
+            line = f'- [{f.get("category", "?")}] {f["content"]}'
             if total + len(line) + 1 > max_chars:
                 break
             lines.append(line)
@@ -217,13 +196,8 @@ class FactsStorage:
                 self._cache = data
                 return data
             except (json.JSONDecodeError, OSError) as e:
-                logger.warning(
-                    f'[facts] Failed to load {self.facts_path}: {e}')
-        default = {
-            'version': '1.0',
-            'lastUpdated': datetime.now(timezone.utc).isoformat(),
-            'facts': []
-        }
+                logger.warning(f'[facts] Failed to load {self.facts_path}: {e}')
+        default = {'version': '1.0', 'lastUpdated': datetime.now(timezone.utc).isoformat(), 'facts': []}
         self._cache = default
         return default
 

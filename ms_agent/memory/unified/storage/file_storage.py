@@ -1,6 +1,7 @@
 """FileMemoryStorage — MEMORY.md backed storage with atomic writes,
 character budget, and entry-level add / replace / remove operations.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.atomic_file import atomic_write_text
 from ms_agent.utils.logger import get_logger
+
 from ..config import MemoryConfig
 from ..protocols import MemoryEntry
 from ..security import scan_content
@@ -66,24 +68,16 @@ class FileMemoryStorage:
         """
         content = self._read()
         if content:
-            return [
-                MemoryEntry(
-                    id='memory_md', content=content, category='knowledge')
-            ]
+            return [MemoryEntry(id='memory_md', content=content, category='knowledge')]
         return []
 
     async def delete(self, ids: List[str]) -> bool:
         return True
 
-    async def list_all(
-            self,
-            filters: Optional[Dict[str, Any]] = None) -> List[MemoryEntry]:
+    async def list_all(self, filters: Optional[Dict[str, Any]] = None) -> List[MemoryEntry]:
         content = self._read()
         if content:
-            return [
-                MemoryEntry(
-                    id='memory_md', content=content, category='knowledge')
-            ]
+            return [MemoryEntry(id='memory_md', content=content, category='knowledge')]
         return []
 
     async def clear(self) -> bool:
@@ -102,7 +96,8 @@ class FileMemoryStorage:
         if len(new_content) > self.char_limit:
             logger.warning(
                 f'[file_storage] MEMORY.md would exceed char limit '
-                f'({len(new_content)} > {self.char_limit}), skipping add')
+                f'({len(new_content)} > {self.char_limit}), skipping add'
+            )
             return False
         self._write(new_content)
         return True
@@ -140,11 +135,10 @@ class FileMemoryStorage:
         if self.security_scan:
             safe, reason = scan_content(content)
             if not safe:
-                logger.warning(
-                    f'[file_storage] Full replace blocked: {reason}')
+                logger.warning(f'[file_storage] Full replace blocked: {reason}')
                 return False
         if len(content) > self.char_limit:
-            content = content[:self.char_limit]
+            content = content[: self.char_limit]
             logger.warning('[file_storage] Truncated to char limit')
         self._write(content)
         return True

@@ -3,12 +3,14 @@
 The LLM receives the recent conversation + existing facts and outputs
 a structured ``{ "newFacts": [...], "factsToRemove": [...] }`` delta.
 """
+
 from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.logger import get_logger
+
 from ..config import MemoryConfig
 from ..protocols import MemoryEntry
 
@@ -64,9 +66,11 @@ class LLMMergeExtractor:
             return []
 
         system_content = MERGE_SYSTEM_PROMPT.format(
-            existing_facts=existing_facts or '[]', )
+            existing_facts=existing_facts or '[]',
+        )
 
         from ms_agent.llm.utils import Message
+
         llm_messages = [Message(role='system', content=system_content)]
         for m in messages:
             if isinstance(m, Message):
@@ -76,7 +80,8 @@ class LLMMergeExtractor:
                     Message(
                         role=m.get('role', 'user'),
                         content=m.get('content', ''),
-                    ))
+                    )
+                )
 
         try:
             response = self.llm.generate(llm_messages)
@@ -96,9 +101,7 @@ class LLMMergeExtractor:
         # Strip markdown code fences if present
         if text.startswith('```'):
             lines = text.split('\n')
-            lines = [
-                line for line in lines if not line.strip().startswith('```')
-            ]
+            lines = [line for line in lines if not line.strip().startswith('```')]
             text = '\n'.join(lines)
 
         try:

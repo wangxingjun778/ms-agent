@@ -1,13 +1,13 @@
-# yapf: disable
 import asyncio
-import click
 import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from rich.prompt import Confirm, Prompt
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import click
+from rich.prompt import Confirm, Prompt
 
 from ms_agent.llm.openai import OpenAIChat
 from ms_agent.rag.extraction_manager import extract_key_information
@@ -17,10 +17,12 @@ from ms_agent.tools.search.search_request import get_search_request_generator
 from ms_agent.utils.logger import get_logger
 from ms_agent.utils.utils import remove_resource_info, text_hash
 from ms_agent.workflow.deep_research.principle import MECEPrinciple, Principle
-from ms_agent.workflow.deep_research.research_utils import (LearningsResponse,
-                                                            ProgressTracker,
-                                                            ResearchProgress,
-                                                            ResearchResult)
+from ms_agent.workflow.deep_research.research_utils import (
+    LearningsResponse,
+    ProgressTracker,
+    ResearchProgress,
+    ResearchResult,
+)
 from ms_agent.workflow.deep_research.research_workflow import ResearchWorkflow
 
 logger = get_logger()
@@ -29,9 +31,9 @@ logger = get_logger()
 class ResourcePool:
     """Global resource pool to manage threads and Ray processes."""
 
-    def __init__(self, max_concurrent_searches: int = 2,
-                 max_concurrent_llm_calls: int = 8,
-                 max_concurrent_extractions: int = 1):
+    def __init__(
+        self, max_concurrent_searches: int = 2, max_concurrent_llm_calls: int = 8, max_concurrent_extractions: int = 1
+    ):
         """
         Args:
             max_concurrent_searches: Maximum concurrent search operations
@@ -44,14 +46,8 @@ class ResourcePool:
         self.extraction_semaphore = asyncio.Semaphore(max_concurrent_extractions)
 
         # Create dedicated thread pools to avoid starvation
-        self.search_executor = ThreadPoolExecutor(
-            max_workers=max_concurrent_searches,
-            thread_name_prefix='search_'
-        )
-        self.llm_executor = ThreadPoolExecutor(
-            max_workers=max_concurrent_llm_calls,
-            thread_name_prefix='llm_'
-        )
+        self.search_executor = ThreadPoolExecutor(max_workers=max_concurrent_searches, thread_name_prefix='search_')
+        self.llm_executor = ThreadPoolExecutor(max_workers=max_concurrent_llm_calls, thread_name_prefix='llm_')
 
         cpu_count = (os.cpu_count() - 2) or 8
         self.ray_workers_per_slot = max(1, cpu_count // max_concurrent_extractions)
@@ -71,8 +67,9 @@ class ResourcePool:
 class ProgressManager:
     """Thread-safe progress manager for deep research workflow."""
 
-    def __init__(self, initial_progress: ResearchProgress,
-                 callback: Optional[Callable[[ResearchProgress], None]] = None):
+    def __init__(
+        self, initial_progress: ResearchProgress, callback: Optional[Callable[[ResearchProgress], None]] = None
+    ):
         self.progress = initial_progress
         self.callback = callback
         self.lock = threading.Lock()
@@ -141,16 +138,17 @@ class ResearchWorkflowBeta(ResearchWorkflow):
        - Semaphore-based backpressure to prevent resource exhaustion.
     """
 
-    def __init__(self,
-                 client: OpenAIChat,
-                 principle: Principle = MECEPrinciple(),
-                 search_engine=None,
-                 workdir: str = None,
-                 reuse: bool = False,
-                 verbose: bool = False,
-                 **kwargs):
-        super().__init__(client, principle, search_engine, workdir, reuse,
-                         verbose, **kwargs)
+    def __init__(
+        self,
+        client: OpenAIChat,
+        principle: Principle = MECEPrinciple(),
+        search_engine=None,
+        workdir: str = None,
+        reuse: bool = False,
+        verbose: bool = False,
+        **kwargs,
+    ):
+        super().__init__(client, principle, search_engine, workdir, reuse, verbose, **kwargs)
 
         # Additional initialization for ResearchWorkflowBeta can be added here
         self.default_system = (
@@ -161,11 +159,11 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             f'- The user is a highly experienced analyst, no need to simplify it, '
             f'be as detailed as possible and make sure your response is correct.'
             f'- Be highly organized.'
-            f'- Suggest solutions that I didn\'t think about.'
+            f"- Suggest solutions that I didn't think about."
             f'- Be proactive and anticipate my needs.'
             f'- Treat me as an expert in all subject matter.'
             f'- Mistakes erode my trust, so be accurate and thorough.'
-            f'- Provide detailed explanations, I\'m comfortable with lots of detail.'
+            f"- Provide detailed explanations, I'm comfortable with lots of detail."
             f'- Value good arguments over authorities, the source is irrelevant.'
             f'- Consider new technologies and contrarian ideas, not just the conventional wisdom.'
             f'You may use high levels of speculation or prediction, just flag it for me.'
@@ -180,7 +178,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         self._resource_pool = ResourcePool(
             max_concurrent_searches=max_concurrent_searches,
             max_concurrent_llm_calls=max_concurrent_llm_calls,
-            max_concurrent_extractions=max_concurrent_extractions
+            max_concurrent_extractions=max_concurrent_extractions,
         )
 
         self._kwargs = kwargs
@@ -225,19 +223,14 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             'report_md': report_path,
         }
 
-    async def _chat_async(self,
-                          messages: List[Dict[str, Any]],
-                          tools: List[Dict[str, Any]] = None,
-                          **kwargs) -> Dict[str, Any]:
+    async def _chat_async(
+        self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None, **kwargs
+    ) -> Dict[str, Any]:
         """Non-blocking wrapper with controlled concurrency."""
         async with self._resource_pool.llm_semaphore:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
-                self._resource_pool.llm_executor,
-                self._chat_sync,
-                messages,
-                tools,
-                kwargs
+                self._resource_pool.llm_executor, self._chat_sync, messages, tools, kwargs
             )
 
     def _chat_sync(self, messages, tools, kwargs_dict):
@@ -263,28 +256,25 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             return single_res
 
         search_results: List[SearchResult] = [search_single_request(search_request)]
-        search_results = [
-            filter_search_res(single_res) for single_res in search_results
-        ]
+        search_results = [filter_search_res(single_res) for single_res in search_results]
 
         # TODO: Implement a more robust way to handle multiple search results
         dump_batch_search_results(
             results=search_results,
-            file_path=save_path if save_path else os.path.join(self.workdir_structure['search'], 'search.json')
+            file_path=save_path if save_path else os.path.join(self.workdir_structure['search'], 'search.json'),
         )
 
         return save_path if save_path else os.path.join(self.workdir_structure['search'], 'search.json')
 
-    async def generate_feedback(self,
-                                query: str = '',
-                                num_questions: int = 3) -> List[str]:
+    async def generate_feedback(self, query: str = '', num_questions: int = 3) -> List[str]:
         """Generate follow-up questions for the query to clarify the research direction."""
 
         user_prompt = (
             f'Given the following query from the user, ask some follow up questions '
             f'to clarify the research direction. Return a maximum of {num_questions} '
             f'questions, but feel free to return less if the original query is clear: '
-            f'<query>{query}</query>')
+            f'<query>{query}</query>'
+        )
         json_schema = {
             'name': 'follow_up_questions',
             'strict': True,
@@ -293,26 +283,21 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 'properties': {
                     'questions': {
                         'type': 'array',
-                        'items': {
-                            'type': 'string'
-                        },
-                        'description': f'Follow up questions to clarify the research direction, '
-                                       f'max of {num_questions}',
+                        'items': {'type': 'string'},
+                        'description': f'Follow up questions to clarify the research direction, max of {num_questions}',
                         'minItems': 1,
-                        'maxItems': num_questions
+                        'maxItems': num_questions,
                     }
                 },
-                'required': ['questions']
-            }
+                'required': ['questions'],
+            },
         }
         enhanced_prompt = f'{user_prompt}\n\nPlease respond with valid JSON that matches this schema:\n{json_schema}'
 
         response = await self._chat_async(
-            messages=[
-                {'role': 'system', 'content': self.default_system},
-                {'role': 'user', 'content': enhanced_prompt}
-            ],
-            stream=True)
+            messages=[{'role': 'system', 'content': self.default_system}, {'role': 'user', 'content': enhanced_prompt}],
+            stream=True,
+        )
         question_prompt = response.get('content', '')
         follow_up_questions = ResearchWorkflow.parse_json_from_content(question_prompt)
         # TODO: More robust way to handle the response
@@ -329,15 +314,13 @@ class ResearchWorkflowBeta(ResearchWorkflow):
 
         try:
             search_request_generator = get_search_request_generator(
-                engine_type=getattr(self._search_engine, 'engine_type', None),
-                user_prompt=query)
+                engine_type=getattr(self._search_engine, 'engine_type', None), user_prompt=query
+            )
         except Exception as e:
-            logger.error(
-                f'Error creating search request generator: {e}')
+            logger.error(f'Error creating search request generator: {e}')
             return []
 
-        json_schema = search_request_generator.get_json_schema(
-            num_queries=num_queries)
+        json_schema = search_request_generator.get_json_schema(num_queries=num_queries)
 
         learnings_prompt = ''
         if learnings:
@@ -370,16 +353,13 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         )
 
         response = await self._chat_async(
-            messages=[
-                {'role': 'system', 'content': self.default_system},
-                {'role': 'user', 'content': rewrite_prompt}
-            ],
-            stream=True)
+            messages=[{'role': 'system', 'content': self.default_system}, {'role': 'user', 'content': rewrite_prompt}],
+            stream=True,
+        )
 
         try:
             search_requests_json = response.get('content', '')
-            search_requests_data = ResearchWorkflow.parse_json_from_content(
-                search_requests_json)
+            search_requests_data = ResearchWorkflow.parse_json_from_content(search_requests_json)
         except Exception as e:
             logger.error(f'Error parsing JSON from response: {e}')
             fix_prompt = (
@@ -390,13 +370,13 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             response = await self._chat_async(
                 messages=[
                     {'role': 'system', 'content': 'You are a helpful assistant.'},
-                    {'role': 'user', 'content': fix_prompt}
+                    {'role': 'user', 'content': fix_prompt},
                 ],
-                stream=True)
+                stream=True,
+            )
             try:
                 search_requests_json = response.get('content', '')
-                search_requests_data = ResearchWorkflow.parse_json_from_content(
-                    search_requests_json)
+                search_requests_data = ResearchWorkflow.parse_json_from_content(search_requests_json)
             except Exception as e:
                 print(f'Error parsing JSON from fixed response: {search_requests_json}')
                 raise ValueError(f'Error parsing JSON from fixed response: {e}') from e
@@ -414,49 +394,38 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                     search_requests_data = []
 
             search_requests = [
-                search_request_generator.create_request(search_request)
-                for search_request in search_requests_data
+                search_request_generator.create_request(search_request) for search_request in search_requests_data
             ][:num_queries]
-            logger.info(
-                f'Generated {len(search_requests)} search requests based on the query:\n{query}'
-            )
+            logger.info(f'Generated {len(search_requests)} search requests based on the query:\n{query}')
         else:
             logger.warning('Warning: No search requests generated from the prompt, using default query.')
-            search_requests = [search_request_generator.create_request({
-                'query': query,
-                'num_results': 20,
-                'research_goal': 'General research on the topic'
-            })]
+            search_requests = [
+                search_request_generator.create_request(
+                    {'query': query, 'num_results': 20, 'research_goal': 'General research on the topic'}
+                )
+            ]
 
         return search_requests
 
-    async def _search_with_extraction(
-        self, search_query: SearchRequest
-    ) -> Tuple[List[str], Dict[str, str], List[str]]:
+    async def _search_with_extraction(self, search_query: SearchRequest) -> Tuple[List[str], Dict[str, str], List[str]]:
         """Perform search with extraction, using controlled concurrency."""
 
         # Use search semaphore to limit concurrent searches
         async with self._resource_pool.search_semaphore:
             save_path: str = os.path.join(
-                self.workdir_structure['search'],
-                f'search_{text_hash(search_query.query)}.json')
+                self.workdir_structure['search'], f'search_{text_hash(search_query.query)}.json'
+            )
 
             loop = asyncio.get_event_loop()
             search_res_file: str = await loop.run_in_executor(
-                self._resource_pool.search_executor,
-                self.search,
-                search_query,
-                save_path
+                self._resource_pool.search_executor, self.search, search_query, save_path
             )
 
-        search_results: List[Dict[str, Any]] = SearchResult.load_from_disk(
-            file_path=search_res_file)
+        search_results: List[Dict[str, Any]] = SearchResult.load_from_disk(file_path=search_res_file)
 
         if not search_results:
             logger.warning('Warning: No search results found.')
-        prepared_resources = [
-            res_d['url'] for res_d in search_results[0]['results']
-        ]
+        prepared_resources = [res_d['url'] for res_d in search_results[0]['results']]
 
         # Use extraction semaphore to control concurrent extraction slots
         # Each slot uses limited Ray workers to prevent resource overload
@@ -472,12 +441,10 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 self._use_ray,
                 self._verbose,
                 ray_num_workers,  # Use calculated workers per slot
-                float(os.environ.get('RAG_EXTRACT_RAY_CPUS_PER_TASK', '1'))
+                float(os.environ.get('RAG_EXTRACT_RAY_CPUS_PER_TASK', '1')),
             )
 
-        context: List[str] = [
-            key_info.text for key_info in key_info_list if key_info.text
-        ]
+        context: List[str] = [key_info.text for key_info in key_info_list if key_info.text]
         resource_map: Dict[str, str] = {}
         for item_name, dict_item in all_ref_items.items():
             doc_item = dict_item.get('item', None)
@@ -485,21 +452,15 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 # Get the item extension from mimetype such as `image/png`
                 item_ext: str = doc_item.image.mimetype.split('/')[-1]
                 item_file_name: str = f'{text_hash(item_name)}.{item_ext}'
-                item_path: str = os.path.join(
-                    self.workdir_structure['resources_dir'],
-                    f'{item_file_name}')
+                item_path: str = os.path.join(self.workdir_structure['resources_dir'], f'{item_file_name}')
                 doc_item.image.pil_image.save(item_path)
-                resource_map[item_name] = os.path.join(
-                    ResearchWorkflow.RESOURCES, item_file_name)
+                resource_map[item_name] = os.path.join(ResearchWorkflow.RESOURCES, item_file_name)
 
         return context, resource_map, prepared_resources
 
     async def process_search_results(
-            self,
-            query: str,
-            search_results: List[str],
-            num_learnings: int = 20,
-            num_follow_up_questions: int = 3) -> LearningsResponse:
+        self, query: str, search_results: List[str], num_learnings: int = 20, num_follow_up_questions: int = 3
+    ) -> LearningsResponse:
         """Process search results and extract learnings.
 
         Args:
@@ -515,8 +476,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         # TODO: Process image and table in the search results
 
         if not search_results:
-            logger.info(
-                f'No content found and extracted for query: {query}')
+            logger.info(f'No content found and extracted for query: {query}')
             return LearningsResponse(learnings=[], follow_up_questions=[])
 
         json_schema = {
@@ -528,24 +488,20 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                     'learnings': {
                         'type': 'array',
                         'items': {'type': 'string'},
-                        'description': f'List of learnings, max of {num_learnings}'
+                        'description': f'List of learnings, max of {num_learnings}',
                     },
                     'follow_up_questions': {
                         'type': 'array',
                         'items': {'type': 'string'},
-                        'description': f'List of follow-up questions, '
-                                       f'max of {num_follow_up_questions}'
-                    }
+                        'description': f'List of follow-up questions, max of {num_follow_up_questions}',
+                    },
                 },
-                'required': ['learnings', 'follow_up_questions']
-            }
+                'required': ['learnings', 'follow_up_questions'],
+            },
         }
 
         if isinstance(search_results, List):
-            contents_text = '\n'.join([
-                f'<content>\n{content}\n</content>'
-                for content in search_results
-            ])
+            contents_text = '\n'.join([f'<content>\n{content}\n</content>' for content in search_results])
         else:
             contents_text = ''
 
@@ -607,15 +563,12 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         )
 
         response = await self._chat_async(
-            messages=[
-                {'role': 'system', 'content': self.default_system},
-                {'role': 'user', 'content': user_prompt}
-            ],
-            stream=True)
+            messages=[{'role': 'system', 'content': self.default_system}, {'role': 'user', 'content': user_prompt}],
+            stream=True,
+        )
 
         try:
-            response_data = ResearchWorkflow.parse_json_from_content(
-                response.get('content', ''))
+            response_data = ResearchWorkflow.parse_json_from_content(response.get('content', ''))
             # TODO: More robust way to handle the response
             response_data = response_data.get('learnings_extraction', {}) or response_data
         except Exception as e:
@@ -624,13 +577,11 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             return LearningsResponse(learnings=[], follow_up_questions=[])
 
         learnings = response_data.get('learnings', [])[:num_learnings]
-        follow_up_questions = response_data.get('follow_up_questions',
-                                                [])[:num_follow_up_questions]
+        follow_up_questions = response_data.get('follow_up_questions', [])[:num_follow_up_questions]
 
         logger.info(f'Created {len(follow_up_questions)} follow-up questions:\n{follow_up_questions}')
 
-        return LearningsResponse(
-            learnings=learnings, follow_up_questions=follow_up_questions)
+        return LearningsResponse(learnings=learnings, follow_up_questions=follow_up_questions)
 
     async def _process_single_query(
         self,
@@ -640,13 +591,12 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         learnings: Optional[List[str]] = None,
         visited_urls: Optional[List[str]] = None,
         resource_map: Optional[Dict[str, str]] = None,
-        progress_manager: Optional[ProgressManager] = None
+        progress_manager: Optional[ProgressManager] = None,
     ) -> ResearchResult:
         """Process a single search query."""
         try:
             # Perform search and extraction
-            search_result, new_resource_map, new_urls = await self._search_with_extraction(
-                search_request)
+            search_result, new_resource_map, new_urls = await self._search_with_extraction(search_request)
 
             # Process results
             new_breadth = max(1, breadth // 2)
@@ -656,7 +606,8 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 query=search_request.query,
                 search_results=search_result,
                 num_learnings=20,  # TODO: Make it configurable
-                num_follow_up_questions=new_breadth)
+                num_follow_up_questions=new_breadth,
+            )
 
             all_learnings = learnings + processed_results.learnings
             all_urls = visited_urls + new_urls
@@ -691,16 +642,14 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                     learnings=all_learnings,
                     visited_urls=all_urls,
                     resource_map=all_resource_map,
-                    _progress_manager=progress_manager  # Pass through the same progress manager
+                    _progress_manager=progress_manager,  # Pass through the same progress manager
                 )
                 return deeper_result
             else:
-                return ResearchResult(
-                    learnings=all_learnings, visited_urls=all_urls, resource_map=all_resource_map)
+                return ResearchResult(learnings=all_learnings, visited_urls=all_urls, resource_map=all_resource_map)
 
         except Exception as e:
-            logger.error(
-                f"Error processing query '{search_request.query}': {e}", exc_info=True)
+            logger.error(f"Error processing query '{search_request.query}': {e}", exc_info=True)
             return ResearchResult(learnings=[], visited_urls=[], resource_map={})
 
     async def deep_research(
@@ -712,7 +661,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         visited_urls: Optional[List[str]] = None,
         resource_map: Optional[Dict[str, str]] = None,
         on_progress: Optional[Callable[[ResearchProgress], None]] = None,
-        _progress_manager: Optional[ProgressManager] = None
+        _progress_manager: Optional[ProgressManager] = None,
     ) -> ResearchResult:
         """Perform deep research on a query with controlled concurrency.
 
@@ -746,7 +695,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                     current_breadth=breadth,
                     total_breadth=breadth,
                     total_queries=0,
-                    completed_queries=0
+                    completed_queries=0,
                 )
                 progress_manager = ProgressManager(initial_progress, on_progress)
             else:
@@ -754,8 +703,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         else:
             progress_manager = _progress_manager
 
-        search_queries = await self.generate_search_queries(
-            query=query, learnings=learnings, num_queries=breadth)
+        search_queries = await self.generate_search_queries(query=query, learnings=learnings, num_queries=breadth)
 
         # Update initial progress if progress tracking is enabled
         if progress_manager is not None:
@@ -765,7 +713,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             progress_manager.update(
                 total_queries=new_total_queries,
                 current_query=search_queries[0].query if search_queries else '',
-                current_depth=current_progress.total_depth - depth + 1
+                current_depth=current_progress.total_depth - depth + 1,
             )
 
         # Process search queries with controlled concurrency
@@ -780,7 +728,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 learnings=learnings,
                 visited_urls=visited_urls,
                 resource_map=resource_map,
-                progress_manager=progress_manager
+                progress_manager=progress_manager,
             )
             tasks.append(task)
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -816,30 +764,20 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 unique_urls.append(url)
                 seen_urls.add(url)
 
-        return ResearchResult(
-            learnings=unique_learnings,
-            visited_urls=unique_urls,
-            resource_map=all_resource_map
-        )
+        return ResearchResult(learnings=unique_learnings, visited_urls=unique_urls, resource_map=all_resource_map)
 
-    async def write_final_report(self, prompt: str,
-                                 learnings: List[str],
-                                 visited_urls: List[str],
-                                 resource_map: Dict[str, str]) -> str:
+    async def write_final_report(
+        self, prompt: str, learnings: List[str], visited_urls: List[str], resource_map: Dict[str, str]
+    ) -> str:
         # TODO: move json schema to improve robustness
         json_schema = {
             'name': 'report_markdown',
             'strict': True,
             'schema': {
                 'type': 'object',
-                'properties': {
-                    'report': {
-                        'type': 'string',
-                        'description': 'Final report on the topic in Markdown'
-                    }
-                },
-                'required': ['report']
-            }
+                'properties': {'report': {'type': 'string', 'description': 'Final report on the topic in Markdown'}},
+                'required': ['report'],
+            },
         }
 
         multimodal_prompt = (
@@ -857,8 +795,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             '"<!-- Figure 1: An example query from the Kramabench dataset which a handcrafted '
             'semantic operator program struggles to perform well on. -->"'
         )
-        learnings_text = '\n'.join(
-            [f'<learning>\n{learning}\n</learning>' for learning in learnings])
+        learnings_text = '\n'.join([f'<learning>\n{learning}\n</learning>' for learning in learnings])
         user_prompt = (
             f'Given the following prompt from the user, write a final report on the '
             f'topic using the learnings from research. Please be sure not to use the first person.'
@@ -873,15 +810,12 @@ class ResearchWorkflowBeta(ResearchWorkflow):
         )
 
         response = await self._chat_async(
-            messages=[
-                {'role': 'system', 'content': self.default_system},
-                {'role': 'user', 'content': user_prompt}
-            ],
-            stream=True)
+            messages=[{'role': 'system', 'content': self.default_system}, {'role': 'user', 'content': user_prompt}],
+            stream=True,
+        )
 
         try:
-            response_data = ResearchWorkflow.parse_json_from_content(
-                response.get('content', ''))
+            response_data = ResearchWorkflow.parse_json_from_content(response.get('content', ''))
         except Exception as e:
             logger.error(f'Error parsing JSON from response: {e}')
             # try to fix the response
@@ -893,12 +827,12 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             response = await self._chat_async(
                 messages=[
                     {'role': 'system', 'content': 'You are a helpful assistant.'},
-                    {'role': 'user', 'content': fix_prompt}
+                    {'role': 'user', 'content': fix_prompt},
                 ],
-                stream=True)
+                stream=True,
+            )
             try:
-                response_data = ResearchWorkflow.parse_json_from_content(
-                    response.get('content', ''))
+                response_data = ResearchWorkflow.parse_json_from_content(response.get('content', ''))
             except Exception as e:
                 logger.error(f'Error parsing JSON from fixed response: {e}')
                 return response.get('content', '')
@@ -912,39 +846,30 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             report = re.sub(replace_pattern, r'<resource_info>\1</resource_info>', report)
             for item_name, item_relative_path in resource_map.items():
                 report = report.replace(
-                    f'src="<resource_info>{item_name}</resource_info>"',
-                    f'src="{item_relative_path}"',
-                    1
+                    f'src="<resource_info>{item_name}</resource_info>"', f'src="{item_relative_path}"', 1
                 ).replace(
                     f'<resource_info>{item_name}</resource_info>',
                     f'![{os.path.basename(item_relative_path)}]({item_relative_path})<br>',
-                    1
+                    1,
                 )
             report = remove_resource_info(report)
 
         # Append sources section
-        sources_section = f"\n\n## Sources\n\n{chr(10).join([f'- {url}' for url in visited_urls])}"
+        sources_section = f'\n\n## Sources\n\n{chr(10).join([f"- {url}" for url in visited_urls])}'
         return report + sources_section
 
-    async def write_final_answer(self, prompt: str,
-                                 learnings: List[str]) -> str:
+    async def write_final_answer(self, prompt: str, learnings: List[str]) -> str:
         json_schema = {
             'name': 'exact_answer',
             'strict': True,
             'schema': {
                 'type': 'object',
-                'properties': {
-                    'answer': {
-                        'type': 'string',
-                        'description': 'The final answer, short and concise'
-                    }
-                },
-                'required': ['answer']
-            }
+                'properties': {'answer': {'type': 'string', 'description': 'The final answer, short and concise'}},
+                'required': ['answer'],
+            },
         }
 
-        learnings_text = '\n'.join(
-            [f'<learning>\n{learning}\n</learning>' for learning in learnings])
+        learnings_text = '\n'.join([f'<learning>\n{learning}\n</learning>' for learning in learnings])
         user_prompt = (
             f'Given the following prompt from the user, write a final answer on the '
             f'topic using the learnings from research. Follow the format specified in '
@@ -957,19 +882,16 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             f'to help answer the prompt:\n\n'
             f'<learnings>\n{learnings_text}\n</learnings>'
             f'\n\nPlease respond with valid JSON that matches provided schema:\n{json_schema}\n'
-            f'Please respond in the language of the prompt.')
+            f'Please respond in the language of the prompt.'
+        )
 
         response = await self._chat_async(
-            messages=[
-                {'role': 'system', 'content': self.default_system},
-                {'role': 'user', 'content': user_prompt}
-            ],
-            stream=True
+            messages=[{'role': 'system', 'content': self.default_system}, {'role': 'user', 'content': user_prompt}],
+            stream=True,
         )
 
         try:
-            response_data = ResearchWorkflow.parse_json_from_content(
-                response.get('content', ''))
+            response_data = ResearchWorkflow.parse_json_from_content(response.get('content', ''))
         except Exception as e:
             logger.error(f'Error parsing JSON from response: {e}')
             return response.get('content', '')
@@ -982,55 +904,45 @@ class ResearchWorkflowBeta(ResearchWorkflow):
 
         return response_data.get('answer', '')
 
-    async def _run(self,
-                   user_prompt: str,
-                   breadth: int = 4,
-                   depth: int = 2,
-                   is_report: bool = False,
-                   show_progress: bool = False,
-                   use_feedback: bool = True,
-                   **kwargs) -> None:
+    async def _run(
+        self,
+        user_prompt: str,
+        breadth: int = 4,
+        depth: int = 2,
+        is_report: bool = False,
+        show_progress: bool = False,
+        use_feedback: bool = True,
+        **kwargs,
+    ) -> None:
 
         if not user_prompt:
-            initial_query = Prompt.ask(
-                '\n[bold]What would you like to research?[/bold]')
-            breadth = click.prompt(
-                'Enter research breadth (recommended 2-10)',
-                type=int,
-                default=4,
-                show_default=True)
-            depth = click.prompt(
-                'Enter research depth (recommended 1-5)',
-                type=int,
-                default=2,
-                show_default=True)
+            initial_query = Prompt.ask('\n[bold]What would you like to research?[/bold]')
+            breadth = click.prompt('Enter research breadth (recommended 2-10)', type=int, default=4, show_default=True)
+            depth = click.prompt('Enter research depth (recommended 1-5)', type=int, default=2, show_default=True)
             # Choose output format
-            is_report = not Confirm.ask(
-                'Generate specific answer instead of detailed report?',
-                default=False)
+            is_report = not Confirm.ask('Generate specific answer instead of detailed report?', default=False)
         else:
             initial_query = user_prompt
 
         if use_feedback:
             try:
-                follow_up_questions: List[str] = await self.generate_feedback(
-                    query=initial_query, num_questions=3)
+                follow_up_questions: List[str] = await self.generate_feedback(query=initial_query, num_questions=3)
                 if follow_up_questions:
-                    logger.info('Follow-up questions:\n'
-                                + '\n'.join(follow_up_questions))
+                    logger.info('Follow-up questions:\n' + '\n'.join(follow_up_questions))
                     answer = input('Please enter you answer: ')
                     questions_text = '\n'.join(follow_up_questions)
                     combined_query = (
                         f'Initial Query:\n{initial_query}\n'
                         f'Follow-up Questions:\n{questions_text}\n'
-                        f'User\'s Answers:\n{answer}')
+                        f"User's Answers:\n{answer}"
+                    )
                 else:
                     combined_query = initial_query
                     logger.info('No follow-up questions generated, proceeding with initial query only...')
             except Exception as e:
                 logger.info(
-                    'Error generating follow-up questions, proceeding with initial query only...\n'
-                    + f'Error: {e}')
+                    'Error generating follow-up questions, proceeding with initial query only...\n' + f'Error: {e}'
+                )
                 combined_query = initial_query
         else:
             combined_query = initial_query
@@ -1041,16 +953,13 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             with ProgressTracker() as tracker:
                 try:
                     result = await self.deep_research(
-                        query=combined_query,
-                        breadth=breadth,
-                        depth=depth,
-                        on_progress=tracker.update_progress)
+                        query=combined_query, breadth=breadth, depth=depth, on_progress=tracker.update_progress
+                    )
                 except Exception as e:
                     logger.error(f'Error during deep research: {e}', exc_info=True)
                     return
         else:
-            result = await self.deep_research(
-                query=combined_query, breadth=breadth, depth=depth)
+            result = await self.deep_research(query=combined_query, breadth=breadth, depth=depth)
 
         # Display results
         logger.info('Research Complete!')
@@ -1071,33 +980,27 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                     prompt=combined_query,
                     learnings=result.learnings,
                     visited_urls=result.visited_urls,
-                    resource_map=result.resource_map)
+                    resource_map=result.resource_map,
+                )
 
                 if self._verbose:
                     logger.info(f'\n\nFinal Report Content:\n{report}')
 
                 # Dump report to markdown file
-                with open(
-                        self.workdir_structure['report_md'], 'w',
-                        encoding='utf-8') as f_report:
+                with open(self.workdir_structure['report_md'], 'w', encoding='utf-8') as f_report:
                     f_report.write(report)
-                logger.info(
-                    f'Report saved to {self.workdir_structure["report_md"]}')
+                logger.info(f'Report saved to {self.workdir_structure["report_md"]}')
             else:
                 # Generate and save answer
-                answer = await self.write_final_answer(
-                    prompt=combined_query, learnings=result.learnings)
+                answer = await self.write_final_answer(prompt=combined_query, learnings=result.learnings)
 
                 if self._verbose:
                     logger.info(f'\n\nFinal Answer:\n{answer}')
 
                 # Dump answer to markdown file
-                with open(
-                        self.workdir_structure['report_md'], 'w',
-                        encoding='utf-8') as f_answer:
+                with open(self.workdir_structure['report_md'], 'w', encoding='utf-8') as f_answer:
                     f_answer.write(answer)
-                logger.info(
-                    f'Answer saved to {self.workdir_structure["report_md"]}')
+                logger.info(f'Answer saved to {self.workdir_structure["report_md"]}')
 
             return self.workdir_structure['report_md']
 
@@ -1105,14 +1008,16 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             logger.error(f'Error generating final output: {e}', exc_info=True)
             return None
 
-    async def run(self,
-                  user_prompt: str,
-                  breadth: int = 4,
-                  depth: int = 2,
-                  is_report: bool = False,
-                  show_progress: bool = False,
-                  use_feedback: bool = True,
-                  **kwargs) -> None:
+    async def run(
+        self,
+        user_prompt: str,
+        breadth: int = 4,
+        depth: int = 2,
+        is_report: bool = False,
+        show_progress: bool = False,
+        use_feedback: bool = True,
+        **kwargs,
+    ) -> None:
         """
         Public interface for running the research workflow with proper resource cleanup.
         """
@@ -1124,7 +1029,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
                 is_report=is_report,
                 show_progress=show_progress,
                 use_feedback=use_feedback,
-                **kwargs
+                **kwargs,
             )
             return result if result else None
         finally:
@@ -1139,6 +1044,7 @@ class ResearchWorkflowBeta(ResearchWorkflow):
             # Clean up Ray resources to prevent atexit callback errors
             try:
                 import ray
+
                 ray_available = True
             except ImportError:
                 ray_available = False

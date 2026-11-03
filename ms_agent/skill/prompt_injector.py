@@ -20,12 +20,9 @@ Check `safety_status` in skills_list and `safety`/`warning` fields in skill_view
 Exercise caution with skills marked as "warning" or "dangerous".
 """
 
-    ALWAYS_SKILLS_HEADER = (
-        '## Active Skills\n\n'
-        'The following skills are always active. Follow their instructions.\n')
+    ALWAYS_SKILLS_HEADER = '## Active Skills\n\nThe following skills are always active. Follow their instructions.\n'
 
-    DISCOVERY_HINT = (
-        '\nUse `skills_list(query=...)` to discover available skills.\n')
+    DISCOVERY_HINT = '\nUse `skills_list(query=...)` to discover available skills.\n'
 
     #: Appended when the host emits skill-update notices into the
     #: conversation (``skills.update_notice``): the prompt's own list is a
@@ -42,11 +39,7 @@ current list appears in the conversation.
   mention notices or list changes to the user unless asked.
 """
 
-    def __init__(self,
-                 catalog,
-                 *,
-                 prompt_injection: str = 'all',
-                 update_notice: bool = False):
+    def __init__(self, catalog, *, prompt_injection: str = 'all', update_notice: bool = False):
         """
         Args:
             catalog: The SkillCatalog instance.
@@ -100,5 +93,4 @@ current list appears in the conversation.
     @staticmethod
     def _strip_frontmatter(content: str) -> str:
         """Remove YAML frontmatter from markdown content."""
-        return re.sub(
-            r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()
+        return re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()

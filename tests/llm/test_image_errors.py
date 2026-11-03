@@ -11,10 +11,10 @@ not the ones checking that a known string maps to a known verdict — they are:
   vendor prose acceptable at all: an unrecognised message can only ever cost an
   extra round-trip, never a wrong lasting conclusion.
 """
+
 import unittest
 
-from ms_agent.llm.image_errors import (ImageFailure, classify, edge_ladder,
-                                       parse_max_edge, status_of)
+from ms_agent.llm.image_errors import ImageFailure, classify, edge_ladder, parse_max_edge, status_of
 
 
 class _Err(Exception):
@@ -35,8 +35,7 @@ class TestTheOutage(unittest.TestCase):
 
     # Verbatim apart from the request id, which is dropped: it identifies one
     # call on one account and proves nothing the message does not.
-    MESSAGE = ("Error code: 400 - {'error': {'message': 'input size exceed "
-               "limit 2048x2048,current input:(1183,2560)'}}")
+    MESSAGE = "Error code: 400 - {'error': {'message': 'input size exceed limit 2048x2048,current input:(1183,2560)'}}"
 
     def test_size_complaint_is_never_a_capability_verdict(self):
         diag = classify(_Err(400, self.MESSAGE), sent_images=True)
@@ -60,35 +59,33 @@ class TestTheOutage(unittest.TestCase):
 # Ordering
 # --------------------------------------------------------------------------- #
 class TestOrdering(unittest.TestCase):
-
     def test_structural_signal_beats_everything(self):
         # Even a textbook capability sentence is not ours to act on if this
         # request carried no images.
-        diag = classify(
-            _Err(400, 'this model is text-only'), sent_images=False)
+        diag = classify(_Err(400, 'this model is text-only'), sent_images=False)
         self.assertIs(diag.failure, ImageFailure.NOT_IMAGE_RELATED)
 
     def test_non_4xx_is_not_ours(self):
         for status in (401, 403, 404, 429, 500, 503):
-            diag = classify(_Err(status, 'model does not support image input'),
-                            sent_images=True)
-            self.assertIs(diag.failure, ImageFailure.NOT_IMAGE_RELATED,
-                          f'HTTP {status} must not be blamed on the images')
+            diag = classify(_Err(status, 'model does not support image input'), sent_images=True)
+            self.assertIs(
+                diag.failure, ImageFailure.NOT_IMAGE_RELATED, f'HTTP {status} must not be blamed on the images'
+            )
 
     def test_size_wins_over_capability_when_both_words_appear(self):
         # Providers do mix vocabularies. Shrinking is cheaper than concluding
         # blindness and is reversible, so it goes first.
         diag = classify(
-            _Err(400, 'image exceeds the maximum allowed size: 1024; this '
-                 'model does not support images larger than that'),
-            sent_images=True)
+            _Err(
+                400, 'image exceeds the maximum allowed size: 1024; this model does not support images larger than that'
+            ),
+            sent_images=True,
+        )
         self.assertIs(diag.failure, ImageFailure.TOO_LARGE)
         self.assertFalse(diag.remember)
 
     def test_veto_wins_over_size(self):
-        diag = classify(
-            _Err(400, 'context length exceeded: image exceeds budget'),
-            sent_images=True)
+        diag = classify(_Err(400, 'context length exceeded: image exceeds budget'), sent_images=True)
         self.assertIs(diag.failure, ImageFailure.NOT_IMAGE_RELATED)
 
 
@@ -96,7 +93,6 @@ class TestOrdering(unittest.TestCase):
 # Semantic vetoes
 # --------------------------------------------------------------------------- #
 class TestVetoes(unittest.TestCase):
-
     CASES = {
         'content filter': 'blocked by content_filter',
         'moderation': 'flagged by moderation',
@@ -111,8 +107,9 @@ class TestVetoes(unittest.TestCase):
     def test_none_of_these_are_about_capability(self):
         for label, msg in self.CASES.items():
             diag = classify(_Err(400, msg), sent_images=True)
-            self.assertIs(diag.failure, ImageFailure.NOT_IMAGE_RELATED,
-                          f'{label!r} must not be treated as an image failure')
+            self.assertIs(
+                diag.failure, ImageFailure.NOT_IMAGE_RELATED, f'{label!r} must not be treated as an image failure'
+            )
             self.assertFalse(diag.remember)
 
     def test_413_shrinks_but_never_remembers(self):
@@ -128,21 +125,19 @@ class TestVetoes(unittest.TestCase):
 # Capability — the only class allowed to write memory
 # --------------------------------------------------------------------------- #
 class TestCapability(unittest.TestCase):
-
     MEASURED = {
-        'DashScope 2026-08-18':
-        ('<400> InternalError.Algo.InvalidParameter: The provided messages '
-         'input is invalid. The error info is [Unexpected item type in '
-         'content.]'),
-        'Zhipu glm-5.2 2026-08-21':
-        ("Error code: 400 - {'error': {'code': '1210', 'message': "
-         "\"messages.content.type 参数非法，取值范围 ['text']\"}}"),
-        'generic text-only':
-        'this deployment is text-only',
-        'generic unsupported':
-        "the model doesn't support multimodal input",
-        'vision disabled':
-        'vision is not enabled for this deployment',
+        'DashScope 2026-08-18': (
+            '<400> InternalError.Algo.InvalidParameter: The provided messages '
+            'input is invalid. The error info is [Unexpected item type in '
+            'content.]'
+        ),
+        'Zhipu glm-5.2 2026-08-21': (
+            "Error code: 400 - {'error': {'code': '1210', 'message': "
+            '"messages.content.type 参数非法，取值范围 [\'text\']"}}'
+        ),
+        'generic text-only': 'this deployment is text-only',
+        'generic unsupported': "the model doesn't support multimodal input",
+        'vision disabled': 'vision is not enabled for this deployment',
     }
 
     def test_measured_refusals_are_recognised(self):
@@ -152,10 +147,12 @@ class TestCapability(unittest.TestCase):
             self.assertTrue(diag.remember, label)
 
     def test_shape_complaints_are_not_capability(self):
-        for msg in ('you may send at most 1 image per request',
-                    'multiple images are not supported in one message',
-                    'animated GIF is not accepted',
-                    'aspect ratio must be below 200:1'):
+        for msg in (
+            'you may send at most 1 image per request',
+            'multiple images are not supported in one message',
+            'animated GIF is not accepted',
+            'aspect ratio must be below 200:1',
+        ):
             diag = classify(_Err(400, msg), sent_images=True)
             self.assertIs(diag.failure, ImageFailure.SHAPE_REJECTED, msg)
             self.assertFalse(diag.remember, msg)
@@ -165,26 +162,21 @@ class TestCapability(unittest.TestCase):
 # The property that makes prose matching safe
 # --------------------------------------------------------------------------- #
 class TestStaleTableIsSafe(unittest.TestCase):
-
     def test_unrecognised_message_degrades_to_unknown(self):
-        diag = classify(
-            _Err(400, 'ERR_7731: constraint violated on field q'),
-            sent_images=True)
+        diag = classify(_Err(400, 'ERR_7731: constraint violated on field q'), sent_images=True)
         self.assertIs(diag.failure, ImageFailure.UNKNOWN)
 
     def test_unknown_never_remembers(self):
         # A provider rewording its errors must cost one extra round-trip, never
         # a persistent belief about a model. Every pattern table in this module
         # is allowed to go stale precisely because of this.
-        for msg in ('some new wording nobody has seen',
-                    'まったく新しいエラーです', ''):
+        for msg in ('some new wording nobody has seen', 'まったく新しいエラーです', ''):
             diag = classify(_Err(400, msg), sent_images=True)
             self.assertFalse(diag.remember, msg)
 
     def test_only_one_failure_class_can_ever_remember(self):
         remembering = set()
-        for msg in ('input size exceed limit 2048x2048', 'text-only',
-                    'multiple images', 'nonsense', 'content_filter'):
+        for msg in ('input size exceed limit 2048x2048', 'text-only', 'multiple images', 'nonsense', 'content_filter'):
             diag = classify(_Err(400, msg), sent_images=True)
             if diag.remember:
                 remembering.add(diag.failure)
@@ -195,11 +187,9 @@ class TestStaleTableIsSafe(unittest.TestCase):
 # Helpers
 # --------------------------------------------------------------------------- #
 class TestStatusExtraction(unittest.TestCase):
-
     def test_reads_nested_response(self):
 
         class Wrapped(Exception):
-
             class response:  # noqa: N801
                 status_code = 400
 
@@ -214,13 +204,11 @@ class TestStatusExtraction(unittest.TestCase):
     def test_missing_status_still_classifies_on_text(self):
         # Some SDK wrappers lose the status entirely; the prose is then all we
         # have, and it must still be usable.
-        diag = classify(
-            Exception('the model is text-only'), sent_images=True)
+        diag = classify(Exception('the model is text-only'), sent_images=True)
         self.assertIs(diag.failure, ImageFailure.MODEL_NO_VISION)
 
 
 class TestEdgeParsing(unittest.TestCase):
-
     def test_parses_common_shapes(self):
         self.assertEqual(parse_max_edge('exceed limit 2048x2048'), 2048)
         self.assertEqual(parse_max_edge('exceeds limit 1024 x 768'), 768)
@@ -233,7 +221,6 @@ class TestEdgeParsing(unittest.TestCase):
 
 
 class TestEdgeLadder(unittest.TestCase):
-
     def test_stated_ceiling_first_then_halving(self):
         self.assertEqual(edge_ladder(2048, 2560), [2048, 1280, 640])
 

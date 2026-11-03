@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Lightweight BM25 retriever -- zero external dependencies beyond stdlib."""
+
 import math
 import re
 from typing import Dict, List, Optional
@@ -37,14 +38,10 @@ class BM25Retriever(BaseRetriever):
     #  BaseRetriever interface
     # ------------------------------------------------------------------ #
 
-    def index(self,
-              documents: List[str],
-              doc_ids: Optional[List[str]] = None) -> None:
+    def index(self, documents: List[str], doc_ids: Optional[List[str]] = None) -> None:
         self.reset()
         self._documents = list(documents)
-        self._doc_ids = (
-            list(doc_ids)
-            if doc_ids else [str(i) for i in range(len(documents))])
+        self._doc_ids = list(doc_ids) if doc_ids else [str(i) for i in range(len(documents))]
 
         self._tokenized = [_tokenize(d) for d in self._documents]
         self._build_stats()
@@ -65,7 +62,8 @@ class BM25Retriever(BaseRetriever):
                     doc_id=self._doc_ids[idx],
                     text=self._documents[idx],
                     score=score,
-                ))
+                )
+            )
         return results
 
     def reset(self) -> None:
@@ -119,8 +117,6 @@ class BM25Retriever(BaseRetriever):
                 numer = tf * (self.k1 + 1)
                 # Guard _avgdl == 0 (all docs empty/no valid tokens) to avoid
                 # ZeroDivisionError; length-normalization is then a no-op.
-                denom = tf + self.k1 * (
-                    1 - self.b + self.b *
-                    (dl / self._avgdl if self._avgdl > 0 else 1.0))
+                denom = tf + self.k1 * (1 - self.b + self.b * (dl / self._avgdl if self._avgdl > 0 else 1.0))
                 scores[i] += idf * (numer / denom)
         return scores

@@ -6,15 +6,19 @@ the second. These tests pin the two pieces a WebUI relies on that the TUI
 doesn't itself exercise via rendering: the serialized event stream (what gets
 forwarded over a socket) and the async permission round-trip.
 """
+
 import asyncio
 import json
 
-from ms_agent.permission.handler import (PermissionAction, PermissionResponse,
-                                         WebPermissionHandler)
-from ms_agent.ui.events import (ContentDelta, JsonlEventSink,
-                                PermissionRequested, RecordingSink,
-                                TeeEventSink, ToolCallStarted)
-
+from ms_agent.permission.handler import PermissionAction, PermissionResponse, WebPermissionHandler
+from ms_agent.ui.events import (
+    ContentDelta,
+    JsonlEventSink,
+    PermissionRequested,
+    RecordingSink,
+    TeeEventSink,
+    ToolCallStarted,
+)
 
 # ── event fan-out + serialization ─────────────────────────────────────────
 
@@ -32,7 +36,7 @@ def test_jsonl_sink_writes_wire_payloads(tmp_path):
     sink.emit(ContentDelta('hello'))
     sink.emit(ToolCallStarted(call_id='c1', name='shell', arguments={'cmd': 'ls'}))
     sink.close()
-    lines = [json.loads(l) for l in path.read_text().splitlines()]
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
     assert lines[0] == {'type': 'content_delta', 'text': 'hello'}
     assert lines[1]['type'] == 'tool_call_started'
     assert lines[1]['call_id'] == 'c1'
@@ -54,8 +58,7 @@ def test_web_permission_roundtrip():
     async def run():
         em = _Emitter()
         handler = WebPermissionHandler(em, timeout=5.0)
-        task = asyncio.create_task(
-            handler.ask('web_search---exa', {'q': 'x'}, 'needs approval'))
+        task = asyncio.create_task(handler.ask('web_search---exa', {'q': 'x'}, 'needs approval'))
         await asyncio.sleep(0.01)  # let ask() emit the request
 
         assert len(em.events) == 1
@@ -64,14 +67,11 @@ def test_web_permission_roundtrip():
         assert ev['tool_name'] == 'web_search---exa'
         # The emitted dict must carry every field the PermissionRequested event
         # models, so a WebUI can render from either representation.
-        for field in ('request_id', 'tool_name', 'tool_args', 'context',
-                      'options'):
+        for field in ('request_id', 'tool_name', 'tool_args', 'context', 'options'):
             assert field in ev
         assert set(PermissionRequested().to_dict()) - {'type'} <= set(ev)
 
-        handler.resolve(
-            ev['request_id'],
-            PermissionResponse(action=PermissionAction.ALLOW_ONCE))
+        handler.resolve(ev['request_id'], PermissionResponse(action=PermissionAction.ALLOW_ONCE))
         resp = await task
         assert resp.action == PermissionAction.ALLOW_ONCE
 

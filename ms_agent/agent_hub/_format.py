@@ -56,7 +56,7 @@ def style(text: str, *names: str, stream: IO | None = None) -> str:
     codes = ''.join(_ANSI.get(n, '') for n in names)
     if not codes:
         return text
-    return f"{codes}{text}{_ANSI['reset']}"
+    return f'{codes}{text}{_ANSI["reset"]}'
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ def _cell(value: object, max_width: int) -> str:
     """Stringify a cell, replacing ``None`` with ``-`` and truncating overlong text."""
     text = '-' if value is None else str(value)
     if len(text) > max_width:
-        return text[:max_width - 1] + '…'
+        return text[: max_width - 1] + '…'
     return text
 
 
@@ -120,9 +120,9 @@ def tabulate(
     if max_width < 1:
         raise ValueError(f'max_width must be >= 1, got {max_width}')
     ncols = len(headers)
-    str_rows: list[list[str]] = [[
-        _cell(row[i] if i < len(row) else '', max_width) for i in range(ncols)
-    ] for row in rows]
+    str_rows: list[list[str]] = [
+        [_cell(row[i] if i < len(row) else '', max_width) for i in range(ncols)] for row in rows
+    ]
 
     widths = [len(h) for h in headers]
     for row in str_rows:

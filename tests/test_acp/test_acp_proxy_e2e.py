@@ -28,10 +28,8 @@ try:
 except ImportError:
     _SKIP_REASON = 'agent-client-protocol not installed'
 
-_REPO_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_PROXY_CONFIG = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'proxy_opencode.yaml')
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_PROXY_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'proxy_opencode.yaml')
 
 
 def _have_opencode() -> bool:
@@ -50,8 +48,7 @@ class _TestClient(Client):
         self.permission_requests: list = []
         self.update_types: list[str] = []
 
-    async def session_update(self, session_id: str, update: Any,
-                             **kwargs: Any) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(update)
         update_type = getattr(update, 'session_update', None)
         if update_type:
@@ -72,15 +69,15 @@ class _TestClient(Client):
         elif update_type == 'tool_call_update':
             self.tool_results.append(update)
 
-    async def request_permission(self, options: list, session_id: str,
-                                 tool_call: Any, **kwargs: Any) -> Any:
-        self.permission_requests.append({
-            'session_id': session_id,
-            'tool_call': tool_call,
-        })
+    async def request_permission(self, options: list, session_id: str, tool_call: Any, **kwargs: Any) -> Any:
+        self.permission_requests.append(
+            {
+                'session_id': session_id,
+                'tool_call': tool_call,
+            }
+        )
         allow = next(
-            (o for o in options
-             if 'allow' in (getattr(o, 'kind', '') or '')),
+            (o for o in options if 'allow' in (getattr(o, 'kind', '') or '')),
             None,
         )
         if allow:
@@ -90,9 +87,7 @@ class _TestClient(Client):
                     option_id=getattr(allow, 'option_id', 'allow_once'),
                 )
             )
-        return RequestPermissionResponse(
-            outcome=DeniedOutcome(outcome='cancelled')
-        )
+        return RequestPermissionResponse(outcome=DeniedOutcome(outcome='cancelled'))
 
     @property
     def collected_text(self) -> str:
@@ -112,9 +107,11 @@ async def _spawn_proxy(client):
     ctx = spawn_agent_process(
         client,
         sys.executable,
-        '-m', 'ms_agent.cli.cli',
+        '-m',
+        'ms_agent.cli.cli',
         'acp-proxy',
-        '--config', _PROXY_CONFIG,
+        '--config',
+        _PROXY_CONFIG,
     )
     conn, proc = await ctx.__aenter__()
     try:
@@ -126,10 +123,8 @@ async def _spawn_proxy(client):
             pass
 
 
-@pytest.mark.skipif(
-    _SKIP_REASON is not None, reason=_SKIP_REASON or '')
-@pytest.mark.skipif(
-    not _have_opencode(), reason='opencode not installed')
+@pytest.mark.skipif(_SKIP_REASON is not None, reason=_SKIP_REASON or '')
+@pytest.mark.skipif(not _have_opencode(), reason='opencode not installed')
 @pytest.mark.asyncio
 async def test_proxy_initialize_and_new_session():
     """Proxy boots, negotiates protocol, and creates a session via opencode."""
@@ -146,10 +141,8 @@ async def test_proxy_initialize_and_new_session():
         break
 
 
-@pytest.mark.skipif(
-    _SKIP_REASON is not None, reason=_SKIP_REASON or '')
-@pytest.mark.skipif(
-    not _have_opencode(), reason='opencode not installed')
+@pytest.mark.skipif(_SKIP_REASON is not None, reason=_SKIP_REASON or '')
+@pytest.mark.skipif(not _have_opencode(), reason='opencode not installed')
 @pytest.mark.asyncio
 async def test_proxy_prompt_streaming():
     """Send a trivial prompt through the proxy to opencode and verify
@@ -163,10 +156,7 @@ async def test_proxy_prompt_streaming():
         prompt_resp = await asyncio.wait_for(
             conn.prompt(
                 session_id=sid,
-                prompt=[text_block(
-                    'Reply with exactly: PROXY_TEST_OK. '
-                    'Do not include any other text.'
-                )],
+                prompt=[text_block('Reply with exactly: PROXY_TEST_OK. Do not include any other text.')],
             ),
             timeout=120,
         )
@@ -183,10 +173,8 @@ async def test_proxy_prompt_streaming():
         break
 
 
-@pytest.mark.skipif(
-    _SKIP_REASON is not None, reason=_SKIP_REASON or '')
-@pytest.mark.skipif(
-    not _have_opencode(), reason='opencode not installed')
+@pytest.mark.skipif(_SKIP_REASON is not None, reason=_SKIP_REASON or '')
+@pytest.mark.skipif(not _have_opencode(), reason='opencode not installed')
 @pytest.mark.asyncio
 async def test_proxy_real_task_with_tools():
     """Give opencode a real task that requires tool use (reading a file
@@ -206,18 +194,19 @@ async def test_proxy_real_task_with_tools():
         client = _TestClient()
         async for conn, _proc in _spawn_proxy(client):
             await conn.initialize(protocol_version=1)
-            session = await conn.new_session(
-                cwd=tmpdir, mcp_servers=[])
+            session = await conn.new_session(cwd=tmpdir, mcp_servers=[])
             sid = session.session_id
 
             prompt_resp = await asyncio.wait_for(
                 conn.prompt(
                     session_id=sid,
-                    prompt=[text_block(
-                        f'Read the file {target_file} and tell me: '
-                        f'who has the highest score? '
-                        f'Reply with just the name and score.'
-                    )],
+                    prompt=[
+                        text_block(
+                            f'Read the file {target_file} and tell me: '
+                            f'who has the highest score? '
+                            f'Reply with just the name and score.'
+                        )
+                    ],
                 ),
                 timeout=120,
             )
@@ -247,8 +236,7 @@ async def test_proxy_real_task_with_tools():
                         text = str(content)[:200]
                 print(f'  [{i}] type={utype}')
                 print(f'       content_text={text[:200] if text else None}')
-                for attr in ('tool_call_id', 'call_id', 'name',
-                             'tool_name', 'arguments'):
+                for attr in ('tool_call_id', 'call_id', 'name', 'tool_name', 'arguments'):
                     val = getattr(u, attr, None)
                     if val is not None:
                         print(f'       {attr}={str(val)[:100]}')
@@ -264,18 +252,13 @@ async def test_proxy_real_task_with_tools():
                         t = getattr(content, 'text', None) or str(content)
                         all_text.append(t)
             full_response = ''.join(all_text)
-            print(f'\nFull response (agent+user chunks): '
-                  f'{full_response[:300]}')
+            print(f'\nFull response (agent+user chunks): {full_response[:300]}')
 
-            assert len(full_response) > 0, (
-                f'No response text in any chunk type. '
-                f'Types: {sorted(unique_types)}'
-            )
+            assert len(full_response) > 0, f'No response text in any chunk type. Types: {sorted(unique_types)}'
 
             response_lower = full_response.lower()
             assert 'diana' in response_lower or '95' in response_lower, (
-                f'Expected Diana/95 in response, got: '
-                f'{full_response[:200]}'
+                f'Expected Diana/95 in response, got: {full_response[:200]}'
             )
 
             has_tool_activity = (
@@ -285,7 +268,6 @@ async def test_proxy_real_task_with_tools():
                 or 'tool_call_update' in unique_types
             )
             assert has_tool_activity, (
-                f'Expected tool use for file reading, but got none. '
-                f'Update types: {sorted(unique_types)}'
+                f'Expected tool use for file reading, but got none. Update types: {sorted(unique_types)}'
             )
             break

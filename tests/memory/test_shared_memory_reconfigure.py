@@ -11,6 +11,7 @@ for it, which raises two questions these tests pin down:
   be shared, because embedded vector stores take an exclusive file lock and a
   second instance on the same path cannot open the store at all.
 """
+
 import asyncio
 
 import pytest
@@ -57,27 +58,21 @@ def _clean_instances():
 
 def _cfg(tmp_path, *, model='m1', recall=10, backend='file', options=None):
     node = {
-        'storage': {
-            'backend': backend
-        },
-        'namespace': {
-            'user_id': 'p1'
-        },
+        'storage': {'backend': backend},
+        'namespace': {'user_id': 'p1'},
         'user_id': 'p1',
         'base_dir': str(tmp_path),
         'recall_top_k': recall,
     }
     if options is not None:
         node['mem0'] = options
-    return OmegaConf.create({
-        'output_dir': str(tmp_path),
-        'llm': {
-            'model': model
-        },
-        'memory': {
-            'unified_memory': node
-        },
-    })
+    return OmegaConf.create(
+        {
+            'output_dir': str(tmp_path),
+            'llm': {'model': model},
+            'memory': {'unified_memory': node},
+        }
+    )
 
 
 def _orch(tmp_path, **cfg_kwargs):
@@ -119,13 +114,8 @@ def test_store_affecting_change_rebuilds_the_backend(tmp_path):
     backend = orch._backend
 
     torn_down = asyncio.run(
-        orch.reconfigure(
-            _cfg(
-                tmp_path,
-                backend='mem0',
-                options={'embedder': {
-                    'provider': 'fastembed'
-                }})))
+        orch.reconfigure(_cfg(tmp_path, backend='mem0', options={'embedder': {'provider': 'fastembed'}}))
+    )
 
     assert torn_down is True
     assert backend.closed is True  # store released, so its lock is too
@@ -141,10 +131,8 @@ def test_switching_models_shares_one_instance(tmp_path):
     """
 
     async def main():
-        first = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, model='m1'), 'unified_memory')
-        second = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, model='m2'), 'unified_memory')
+        first = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, model='m1'), 'unified_memory')
+        second = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, model='m2'), 'unified_memory')
         return first, second
 
     first, second = asyncio.run(main())
@@ -155,10 +143,8 @@ def test_switching_models_shares_one_instance(tmp_path):
 def test_manager_adopts_a_changed_recall_size(tmp_path):
 
     async def main():
-        await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, recall=10), 'unified_memory')
-        return await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, recall=5), 'unified_memory')
+        await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, recall=10), 'unified_memory')
+        return await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, recall=5), 'unified_memory')
 
     assert asyncio.run(main()).mem_config.recall_top_k == 5
 
@@ -166,10 +152,8 @@ def test_manager_adopts_a_changed_recall_size(tmp_path):
 def test_different_stores_stay_separate(tmp_path):
 
     async def main():
-        a = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path / 'a'), 'unified_memory')
-        b = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path / 'b'), 'unified_memory')
+        a = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path / 'a'), 'unified_memory')
+        b = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path / 'b'), 'unified_memory')
         return a, b
 
     a, b = asyncio.run(main())
@@ -182,15 +166,13 @@ def test_reconfigure_failure_keeps_the_cached_instance(tmp_path):
     the existing instance keeps serving its own configuration."""
 
     async def main():
-        instance = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, recall=10), 'unified_memory')
+        instance = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, recall=10), 'unified_memory')
 
         async def boom(_config):
             raise RuntimeError('bad config')
 
         instance.reconfigure = boom
-        again = await SharedMemoryManager.get_shared_memory(
-            _cfg(tmp_path, recall=5), 'unified_memory')
+        again = await SharedMemoryManager.get_shared_memory(_cfg(tmp_path, recall=5), 'unified_memory')
         return instance, again
 
     instance, again = asyncio.run(main())

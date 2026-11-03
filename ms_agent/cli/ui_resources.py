@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Locate WebUI resources and prepare writable caches for installed wheels."""
+
 from __future__ import annotations
 
 import hashlib
@@ -26,12 +27,11 @@ def find_webui():
     if (bundled / 'RESOURCE-MANIFEST.json').is_file():
         return bundled, True
     checkout = package.parent / 'webui'
-    if (package.parent / 'setup.py').is_file() and (
-            checkout / 'backend/app/launcher.py').is_file():
+    if (package.parent / 'setup.py').is_file() and (checkout / 'backend/app/launcher.py').is_file():
         return checkout, False
     raise UIError(
-        'WebUI resources are missing. Reinstall the matching ms-agent wheel, '
-        'or use a complete SDK source checkout.')
+        'WebUI resources are missing. Reinstall the matching ms-agent wheel, or use a complete SDK source checkout.'
+    )
 
 
 def load_common(webui):
@@ -46,9 +46,7 @@ def cache_root():
     if override:
         return Path(override).expanduser().resolve()
     if os.name == 'nt':
-        base = Path(
-            os.environ.get('LOCALAPPDATA',
-                           Path.home() / 'AppData/Local'))
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local'))
     elif sys.platform == 'darwin':
         base = Path.home() / 'Library/Caches'
     else:
@@ -65,8 +63,12 @@ def verify_resources(root, manifest):
         raise UIError('Invalid WebUI resource manifest; reinstall ms-agent')
     for rel, digest in manifest['files'].items():
         file = root / rel
-        if (file.is_symlink() or root.resolve() not in file.resolve().parents
-                or not file.is_file() or file_digest(file) != digest):
+        if (
+            file.is_symlink()
+            or root.resolve() not in file.resolve().parents
+            or not file.is_file()
+            or file_digest(file) != digest
+        ):
             raise UIError(f'WebUI resource is missing or changed: {file}')
 
 
@@ -93,8 +95,7 @@ def preparation_lock(root, name, timeout=300):
                 break
             except OSError:
                 if time.monotonic() >= deadline:
-                    raise UIError(
-                        'Timed out waiting for another WebUI setup process')
+                    raise UIError('Timed out waiting for another WebUI setup process')
                 time.sleep(0.1)
         try:
             yield
@@ -111,8 +112,7 @@ def materialize(bundled, manifest, destination):
     if destination.exists():
         verify_resources(destination, manifest)
         return
-    temporary = Path(
-        tempfile.mkdtemp(prefix='.webui-copy-', dir=destination.parent))
+    temporary = Path(tempfile.mkdtemp(prefix='.webui-copy-', dir=destination.parent))
     try:
         for rel in list(manifest['files']) + ['RESOURCE-MANIFEST.json']:
             target = temporary / rel
@@ -137,20 +137,13 @@ def node_stamp(frontend, node_version, *, production=True, traced=False):
     closure apart from everything ``pnpm install`` resolved.
     """
     return {
-        'node':
-        list(node_version),
-        'platform':
-        platform.system(),
-        'architecture':
-        platform.machine(),
-        'lock':
-        file_digest(frontend / 'pnpm-lock.yaml'),
-        'package_manager':
-        json.loads((frontend / 'package.json').read_text())['packageManager'],
-        'production':
-        production,
-        'traced':
-        traced,
+        'node': list(node_version),
+        'platform': platform.system(),
+        'architecture': platform.machine(),
+        'lock': file_digest(frontend / 'pnpm-lock.yaml'),
+        'package_manager': json.loads((frontend / 'package.json').read_text())['packageManager'],
+        'production': production,
+        'traced': traced,
     }
 
 
@@ -184,8 +177,7 @@ def _prune_to_traced_closure(frontend):
     traced = frontend / 'build-runtime'
     closure = traced / 'node_modules'
     if not closure.is_dir():
-        raise UIError('Runtime tracing produced no dependency closure at '
-                      + str(closure))
+        raise UIError('Runtime tracing produced no dependency closure at ' + str(closure))
     shutil.rmtree(frontend / 'node_modules')
     # A rename, not a copy: pnpm's layout is relative symlinks into `.pnpm/` and
     # the tracer recreated them as such, so moving the directory keeps every one
@@ -196,38 +188,37 @@ def _prune_to_traced_closure(frontend):
 
 def check_backend_dependencies():
     modules = [
-        'anthropic', 'exa_py', 'fastapi', 'httpx',
-        'mem0', 'pydantic_settings', 'socksio',
-        'sse_starlette', 'uvicorn', 'watchfiles'
+        'anthropic',
+        'exa_py',
+        'fastapi',
+        'httpx',
+        'mem0',
+        'pydantic_settings',
+        'socksio',
+        'sse_starlette',
+        'uvicorn',
+        'watchfiles',
     ]
-    missing = [
-        module for module in modules
-        if importlib.util.find_spec(module) is None
-    ]
+    missing = [module for module in modules if importlib.util.find_spec(module) is None]
     if missing:
         from ms_agent.version import __version__
 
         raise UIError(
-            'Missing WebUI Python dependencies: ' + ', '.join(missing) +
-            f'. Run `{sys.executable} -m pip install "ms-agent[webui]=={__version__}"`.'
+            'Missing WebUI Python dependencies: '
+            + ', '.join(missing)
+            + f'. Run `{sys.executable} -m pip install "ms-agent[webui]=={__version__}"`.'
         )
 
 
-def prepare_installed(bundled,
-                      common,
-                      node_version,
-                      *,
-                      skip_install,
-                      install_node,
-                      build_frontend=None,
-                      trace_runtime=None):
+def prepare_installed(
+    bundled, common, node_version, *, skip_install, install_node, build_frontend=None, trace_runtime=None
+):
     from ms_agent.version import __version__
 
     manifest_file = bundled / 'RESOURCE-MANIFEST.json'
     manifest = json.loads(manifest_file.read_text(encoding='utf-8'))
     if manifest['sdk_version'] != __version__:
-        raise UIError(
-            'The WebUI resources do not match the installed SDK version')
+        raise UIError('The WebUI resources do not match the installed SDK version')
     root = cache_root()
     name = __version__ + '-' + file_digest(manifest_file)[:16]
     destination = root / name
@@ -241,28 +232,20 @@ def prepare_installed(bundled,
         if prebuilt:
             common.validate_build(frontend)
         marker = frontend / '.node-dependencies.json'
-        expected = node_stamp(
-            frontend,
-            node_version,
-            production=prebuilt,
-            traced=bool(trace_runtime))
+        expected = node_stamp(frontend, node_version, production=prebuilt, traced=bool(trace_runtime))
         try:
             stamp = json.loads(marker.read_text())
         except (OSError, ValueError):
             stamp = None
-        ready = _stamp_matches(
-            stamp, expected) and (frontend / 'node_modules').is_dir()
+        ready = _stamp_matches(stamp, expected) and (frontend / 'node_modules').is_dir()
         if not ready:
             if skip_install:
-                raise UIError(
-                    'WebUI Node dependencies need preparation. Run once without --skip-install.'
-                )
+                raise UIError('WebUI Node dependencies need preparation. Run once without --skip-install.')
             marker.unlink(missing_ok=True)
             # The tracer runs out of this tree and imports `tsx` and
             # `@vercel/nft` from it, so tracing cannot start from a production
             # install. What it leaves behind is narrower than either.
-            install_node(
-                frontend, production=prebuilt and trace_runtime is None)
+            install_node(frontend, production=prebuilt and trace_runtime is None)
             if trace_runtime is None:
                 marker.write_text(json.dumps(expected, sort_keys=True) + '\n')
         if not prebuilt:
@@ -270,9 +253,7 @@ def prepare_installed(bundled,
                 common.validate_build(frontend)
             except common.BuildError:
                 if skip_install:
-                    raise UIError(
-                        'WebUI sources need a frontend build. Run once without --skip-install.'
-                    ) from None
+                    raise UIError('WebUI sources need a frontend build. Run once without --skip-install.') from None
                 if build_frontend is None:
                     raise UIError('No WebUI frontend builder is available')
                 build_frontend(frontend)

@@ -4,6 +4,7 @@ import os
 
 from ms_agent.config.env import Env
 from ms_agent.utils import strtobool
+
 from .base import CLICommand
 
 
@@ -96,8 +97,7 @@ class A2ACmd(CLICommand):
         trust_remote_code = strtobool(self.args.trust_remote_code)
 
         from ms_agent.a2a.agent_card import build_agent_card
-        from ms_agent.a2a.executor import (MSAgentA2AExecutor,
-                                           configure_a2a_logging)
+        from ms_agent.a2a.executor import MSAgentA2AExecutor, configure_a2a_logging
 
         configure_a2a_logging(self.args.log_file)
 
@@ -129,6 +129,7 @@ class A2ACmd(CLICommand):
         )
 
         import uvicorn
+
         uvicorn.run(
             app.build(),
             host=self.args.host,
@@ -190,6 +191,7 @@ class A2ARegistryCmd(CLICommand):
 
     def execute(self):
         from ms_agent.a2a.agent_card import generate_agent_card_json
+
         card = generate_agent_card_json(
             config_path=self.args.config,
             output_path=self.args.output,

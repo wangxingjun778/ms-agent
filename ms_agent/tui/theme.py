@@ -3,6 +3,7 @@
 across the renderer / input / permission modules. Values are ``rich`` style
 strings; keep them theme-neutral (readable on both light and dark terminals).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

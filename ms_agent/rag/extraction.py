@@ -1,10 +1,9 @@
-# flake8: noqa
-# yapf: disable
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List
+
 from docling_core.transforms.chunker import BaseChunk
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import DocItem, DocItemLabel
-from typing import Any, Dict, List
 
 from ms_agent.rag.schema import KeyInformation
 from ms_agent.tools.docling.chunker import HybridDocumentChunker
@@ -19,8 +18,7 @@ class KeyInformationExtraction(ABC):
     Abstract base class for key information extraction.
     """
 
-    def __init__(self):
-        ...
+    def __init__(self): ...
 
     @abstractmethod
     def extract(self):
@@ -31,7 +29,6 @@ class KeyInformationExtraction(ABC):
 
 
 class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
-
     def __init__(self, urls_or_files: list[str], verbose: bool = False):
         super().__init__()
 
@@ -40,10 +37,8 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
         if self._verbose:
             logger.info(f'Got {len(urls_or_files)} urls or files, start loading documents ...')
         doc_loader = DocLoader()
-        self.docs: List[DoclingDocument] = doc_loader.load(
-            urls_or_files=urls_or_files)
-        self.all_ref_items: Dict[str, Dict[str, Any]] = doc_loader.map_item_by_ref(
-            self.docs)
+        self.docs: List[DoclingDocument] = doc_loader.load(urls_or_files=urls_or_files)
+        self.all_ref_items: Dict[str, Dict[str, Any]] = doc_loader.map_item_by_ref(self.docs)
         if self._verbose:
             logger.info(f'Loaded {len(self.docs)} documents with {len(self.all_ref_items)} reference items.')
 
@@ -53,7 +48,9 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
             logger.info(f'Chunked {len(self.chunks)} chunks from the documents.')
 
     @staticmethod
-    def _replace_resource_placeholders(text: str, resources: List[Dict[str, str]], placeholder: str = '<!-- image -->') -> str:
+    def _replace_resource_placeholders(
+        text: str, resources: List[Dict[str, str]], placeholder: str = '<!-- image -->'
+    ) -> str:
         """
         Replace placeholders in the text with actual resource ids in sequence.
 
@@ -96,7 +93,9 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
         # Deal with both pictures and tables to keep the original order
         target_chunks.extend(
             HybridDocumentChunker.find_all_chunks_with_labels(
-                chunks=self.chunks, labels=[DocItemLabel.PICTURE, DocItemLabel.TABLE]))
+                chunks=self.chunks, labels=[DocItemLabel.PICTURE, DocItemLabel.TABLE]
+            )
+        )
 
         return target_chunks
 
@@ -108,8 +107,8 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
         target_chunks = []
 
         target_chunks.extend(
-            HybridDocumentChunker.find_all_chunks_with_label(
-                chunks=self.chunks, label=DocItemLabel.SECTION_HEADER))
+            HybridDocumentChunker.find_all_chunks_with_label(chunks=self.chunks, label=DocItemLabel.SECTION_HEADER)
+        )
 
         # TODO: add filter to determine which headings to keep (rule-based and llm-based)
 
@@ -123,21 +122,26 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
         logger.info(f'Found {len(key_chunks)} key chunks with pictures and tables.')
 
         # TODO: TBD ...
-        heading_chunks: List[BaseChunk] = self.process_headings()
+        self.process_headings()
 
         for key_chunk in key_chunks:
-
             # Replace image placeholders with actual resource id (doc_file_name@binary_hash@self_ref)
             resources = []
             for item in key_chunk.meta.doc_items:
                 if item.label == DocItemLabel.PICTURE or item.label == DocItemLabel.TABLE:
-                    item_ref_key = f'{key_chunk.meta.origin.filename}@{key_chunk.meta.origin.binary_hash}@{item.self_ref}'
+                    item_ref_key = (
+                        f'{key_chunk.meta.origin.filename}@{key_chunk.meta.origin.binary_hash}@{item.self_ref}'
+                    )
                     if item_ref_key in self.all_ref_items:
-                        resources.append({
-                            'id': item_ref_key,
-                            'content': self.all_ref_items[item_ref_key]['item'],
-                            'caption': self.all_ref_items[item_ref_key]['captions'][0] if self.all_ref_items[item_ref_key]['captions'] else ''
-                        })
+                        resources.append(
+                            {
+                                'id': item_ref_key,
+                                'content': self.all_ref_items[item_ref_key]['item'],
+                                'caption': self.all_ref_items[item_ref_key]['captions'][0]
+                                if self.all_ref_items[item_ref_key]['captions']
+                                else '',
+                            }
+                        )
 
             if len(resources) == 0:
                 continue
@@ -146,13 +150,11 @@ class HierarchicalKeyInformationExtraction(KeyInformationExtraction):
             replaced_text: str = self._replace_resource_placeholders(
                 text=text,
                 resources=resources,
-                placeholder='<!-- image -->'    # TODO: Add table placeholder
+                placeholder='<!-- image -->',  # TODO: Add table placeholder
             )
 
             # Append the KeyInformation object to the final result
-            final_res.append(
-                KeyInformation(text=replaced_text, resources=resources)
-            )
+            final_res.append(KeyInformation(text=replaced_text, resources=resources))
 
         return final_res
 
@@ -167,8 +169,7 @@ if __name__ == '__main__':
         # '/path/to/file.pdf',
     ]
 
-    extractor = HierarchicalKeyInformationExtraction(
-        urls_or_files=urls_or_files)
+    extractor = HierarchicalKeyInformationExtraction(urls_or_files=urls_or_files)
     key_chunk_res = extractor.extract()
 
     if len(key_chunk_res) > 0:

@@ -30,6 +30,7 @@ Use :func:`register_framework` to add a new framework at runtime::
 
     register_framework("my-framework", MyFramework)
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -130,10 +131,10 @@ def scrub_url_secrets(url: str) -> str:
         userinfo = authority[:at]
         user, colon, password = userinfo.partition(':')
         if colon and password:
-            authority = (f'{user}@' if user else '') + authority[at + 1:]
+            authority = (f'{user}@' if user else '') + authority[at + 1 :]
         elif userinfo:
             # Bare userinfo (no colon): indistinguishable from a token.
-            authority = authority[at + 1:]
+            authority = authority[at + 1 :]
     path = tail
     query = fragment = ''
     if '#' in path:
@@ -144,8 +145,7 @@ def scrub_url_secrets(url: str) -> str:
         pairs = []
         for p in q.split('&'):
             name = p.split('=', 1)[0]
-            if p and (is_secret_key(name)
-                      or name.lower() in _URL_SECRET_PARAMS):
+            if p and (is_secret_key(name) or name.lower() in _URL_SECRET_PARAMS):
                 pairs.append(name + '=')
             else:
                 pairs.append(p)
@@ -187,9 +187,12 @@ def scrub_args_secrets(args: list) -> list:
                     out[i] = name + '='
             elif _SECRET_FLAG_RE.match(item):
                 name = item.lstrip('-')
-                if is_secret_key(name) and i + 1 < n \
-                        and isinstance(out[i + 1], str) \
-                        and not _SECRET_FLAG_RE.match(out[i + 1]):
+                if (
+                    is_secret_key(name)
+                    and i + 1 < n
+                    and isinstance(out[i + 1], str)
+                    and not _SECRET_FLAG_RE.match(out[i + 1])
+                ):
                     out[i + 1] = ''
                     i += 1
         i += 1
@@ -228,8 +231,8 @@ def scrub_scalar_url_token(val: str) -> str:
     Returns *val* byte-identical unless a secret was actually removed.
     """
     region, comment = _split_inline_comment(val)
-    lead = region[:len(region) - len(region.lstrip())]
-    trail = region[len(region.rstrip()):]
+    lead = region[: len(region) - len(region.lstrip())]
+    trail = region[len(region.rstrip()) :]
     core = region.strip()
     quote = ''
     if len(core) >= 2 and core[0] == core[-1] and core[0] in '\'"':
@@ -249,14 +252,14 @@ def _scrub_yaml_flow_args(val: str) -> str:
     for flag detection and dropped in the (rewritten) output. Mirrors
     :func:`scrub_args_secrets` plus URL scrubbing of each item.
     """
-    lead = val[:len(val) - len(val.lstrip())]
+    lead = val[: len(val) - len(val.lstrip())]
     body = val.strip()
     if not body.startswith('['):
         return val
     end = body.find(']')
     if end == -1:
         return val
-    inner, trail = body[1:end], body[end + 1:]
+    inner, trail = body[1:end], body[end + 1 :]
     items = [it.strip() for it in inner.split(',')] if inner.strip() else []
     norm = []
     for it in items:
@@ -285,14 +288,14 @@ def scrub_toml_array_args(val: str) -> str:
     each item keeps (or receives) its quotes in the rewritten output. Returns
     *val* unchanged when nothing secret was found.
     """
-    lead = val[:len(val) - len(val.lstrip())]
+    lead = val[: len(val) - len(val.lstrip())]
     body = val.strip()
     if not body.startswith('['):
         return val
     end = body.find(']')
     if end == -1:
         return val
-    inner, trail = body[1:end], body[end + 1:]
+    inner, trail = body[1:end], body[end + 1 :]
     items = [it.strip() for it in inner.split(',') if it.strip()]
     norm, quotes = [], []
     for it in items:
@@ -354,9 +357,12 @@ def scrub_yaml_secrets(text: str) -> str:
     """
     kv = re.compile(
         r'^(?P<indent>[ \t]*)(?P<key>[^\s:#][^:]*?)(?P<sep>[ \t]*:[ \t]*)'
-        r'(?P<val>\S.*)?$')
-    flow_pair = re.compile(r'(?P<key>["\']?[\w.\-]+["\']?)(?P<sep>\s*:\s*)'
-                           r'(?P<val>[^,{}\[\]]+)')
+        r'(?P<val>\S.*)?$'
+    )
+    flow_pair = re.compile(
+        r'(?P<key>["\']?[\w.\-]+["\']?)(?P<sep>\s*:\s*)'
+        r'(?P<val>[^,{}\[\]]+)'
+    )
     block_opener = re.compile(r'^[|>][+-]?\d*$')
     list_item = re.compile(r'^(?P<indent>[ \t]*)-[ \t]+(?P<val>\S.*)$')
     # Indent of the active secret-bag (``env`` / ``headers``) / ``args``
@@ -391,8 +397,7 @@ def scrub_yaml_secrets(text: str) -> str:
             if am and cur >= args_indent:
                 core = am.group('val').strip()
                 quote = ''
-                if len(core) >= 2 and core[0] == core[-1] \
-                        and core[0] in '\'"':
+                if len(core) >= 2 and core[0] == core[-1] and core[0] in '\'"':
                     quote = core[0]
                     core = core[1:-1]
                 if args_pending and not _SECRET_FLAG_RE.match(core):
@@ -401,21 +406,18 @@ def scrub_yaml_secrets(text: str) -> str:
                     args_pending = False
                     continue
                 args_pending = False
-                if _SECRET_FLAG_RE.match(core) and '=' not in core \
-                        and is_secret_key(core.lstrip('-')):
+                if _SECRET_FLAG_RE.match(core) and '=' not in core and is_secret_key(core.lstrip('-')):
                     args_pending = True
                     out.append(line)
                     continue
                 if '=' in core and '://' not in core:
                     name = core.partition('=')[0]
                     if is_secret_key(name.lstrip('-')):
-                        out.append(f"{am.group('indent')}- {quote}{name}="
-                                   f"{quote}")
+                        out.append(f'{am.group("indent")}- {quote}{name}={quote}')
                         continue
                 cleaned = scrub_url_secrets(core)
                 if cleaned != core:
-                    out.append(f"{am.group('indent')}- {quote}{cleaned}"
-                               f"{quote}")
+                    out.append(f'{am.group("indent")}- {quote}{cleaned}{quote}')
                     continue
                 out.append(line)
                 continue
@@ -442,8 +444,7 @@ def scrub_yaml_secrets(text: str) -> str:
         # drop that content.
         if val is not None and block_opener.match(val.strip()):
             if secret_key or in_bag:
-                out.append(
-                    f"{m.group('indent')}{m.group('key')}{m.group('sep')}''")
+                out.append(f"{m.group('indent')}{m.group('key')}{m.group('sep')}''")
                 skip_indent = indent
             else:
                 out.append(line)
@@ -451,8 +452,7 @@ def scrub_yaml_secrets(text: str) -> str:
         # Flow mapping value: scrub secret pairs inside the braces. An
         # ``env`` / ``headers`` (or secret-named) flow mapping is a free-form
         # secret bag -> clear every value in it.
-        if val is not None and val.lstrip().startswith(
-                '{') and val.strip() != '{}':
+        if val is not None and val.lstrip().startswith('{') and val.strip() != '{}':
             clear_all = secret_key or in_bag or key in SECRET_BAG_KEYS
 
             def _repl(pm, _all=clear_all):
@@ -460,11 +460,10 @@ def scrub_yaml_secrets(text: str) -> str:
                     return f"{pm.group('key')}{pm.group('sep')}''"
                 cleaned = scrub_scalar_url_token(pm.group('val'))
                 if cleaned != pm.group('val'):
-                    return (f"{pm.group('key')}{pm.group('sep')}{cleaned}")
+                    return f'{pm.group("key")}{pm.group("sep")}{cleaned}'
                 return pm.group(0)
 
-            out.append(f"{m.group('indent')}{m.group('key')}{m.group('sep')}"
-                       f'{flow_pair.sub(_repl, val)}')
+            out.append(f'{m.group("indent")}{m.group("key")}{m.group("sep")}{flow_pair.sub(_repl, val)}')
             continue
         # A trailing comment must not hide a block opener:
         # ``mcp_servers:  # remote`` still opens a block.
@@ -483,23 +482,19 @@ def scrub_yaml_secrets(text: str) -> str:
             out.append(line)
             continue
         if secret_key or in_bag:
-            out.append(
-                f"{m.group('indent')}{m.group('key')}{m.group('sep')}''")
+            out.append(f"{m.group('indent')}{m.group('key')}{m.group('sep')}''")
             continue
         # Flow-list ``args: [...]``: positional scrub inside the brackets.
         if key in ARGS_LIST_KEYS and val.lstrip().startswith('['):
             cleaned = _scrub_yaml_flow_args(val)
             if cleaned != val:
-                out.append(f"{m.group('indent')}{m.group('key')}"
-                           f"{m.group('sep')}{cleaned}")
+                out.append(f'{m.group("indent")}{m.group("key")}{m.group("sep")}{cleaned}')
             else:
                 out.append(line)
             continue
         cleaned = scrub_scalar_url_token(val)
         if cleaned != val:
-            out.append(
-                f"{m.group('indent')}{m.group('key')}{m.group('sep')}"
-                f'{cleaned}')
+            out.append(f'{m.group("indent")}{m.group("key")}{m.group("sep")}{cleaned}')
         else:
             out.append(line)
     return '\n'.join(out)
@@ -550,16 +545,14 @@ def scrub_json_secrets(obj) -> None:
                 scrub_json_secrets(item)
 
 
-def _blank_toml_value(out: list[str], lines: list[str], i: int, pre: str,
-                      val: str) -> int:
+def _blank_toml_value(out: list[str], lines: list[str], i: int, pre: str, val: str) -> int:
     """Blank the value of the TOML assignment at ``lines[i]``, appending to *out*.
 
     Handles multi-line strings (``'''`` / ``\"\"\"``), (multi-line) arrays and
     plain scalars; returns the next line index to process.
     """
     vstrip = val.strip()
-    delim = next((d for d in ('"""', "'''")
-                  if vstrip.startswith(d) and vstrip.count(d) < 2), None)
+    delim = next((d for d in ('"""', "'''") if vstrip.startswith(d) and vstrip.count(d) < 2), None)
     if delim:
         out.append(pre + '""')
         i += 1
@@ -609,12 +602,15 @@ def scrub_toml_secrets(text: str) -> str:
     layer (:mod:`ms_agent.agent_hub._secrets`), which cleans ``.toml`` at any
     collected path.
     """
-    pattern = re.compile(
-        r'^(?P<pre>\s*(?P<key>[A-Za-z0-9_.-]+)\s*=\s*)(?P<val>.*)$')
-    inline_pair = re.compile(r'(?P<key>[A-Za-z0-9_.-]+)(?P<sep>\s*=\s*)'
-                             r'(?P<val>"[^"]*"|\'[^\']*\'|[^,{}\s][^,}]*)')
-    section = re.compile(r'^\s*\[{1,2}\s*(?P<path>[^#\]\[]+?)\s*\]{1,2}'
-                         r'\s*(?:#.*)?$')
+    pattern = re.compile(r'^(?P<pre>\s*(?P<key>[A-Za-z0-9_.-]+)\s*=\s*)(?P<val>.*)$')
+    inline_pair = re.compile(
+        r'(?P<key>[A-Za-z0-9_.-]+)(?P<sep>\s*=\s*)'
+        r'(?P<val>"[^"]*"|\'[^\']*\'|[^,{}\s][^,}]*)'
+    )
+    section = re.compile(
+        r'^\s*\[{1,2}\s*(?P<path>[^#\]\[]+?)\s*\]{1,2}'
+        r'\s*(?:#.*)?$'
+    )
     bagged_assign = re.compile(r'^(?P<pre>\s*.+?=\s*)(?P<val>.*)$')
     out: list[str] = []
     lines = text.split('\n')
@@ -637,8 +633,7 @@ def scrub_toml_secrets(text: str) -> str:
             if in_bag_section and not line.strip().startswith('#'):
                 bm = bagged_assign.match(line)
                 if bm:
-                    i = _blank_toml_value(out, lines, i, bm.group('pre'),
-                                          bm.group('val'))
+                    i = _blank_toml_value(out, lines, i, bm.group('pre'), bm.group('val'))
                     continue
             out.append(line)
             i += 1
@@ -656,9 +651,7 @@ def scrub_toml_secrets(text: str) -> str:
         # Secret-bag inline table (``headers = {...}`` / ``env = {...}``):
         # clear every pair -- the names inside are arbitrary.
         if key in SECRET_BAG_KEYS and vstrip.startswith('{'):
-            out.append(
-                m.group('pre') + inline_pair.sub(
-                    lambda pm: f"{pm.group('key')}{pm.group('sep')}\"\"", val))
+            out.append(m.group('pre') + inline_pair.sub(lambda pm: f'{pm.group("key")}{pm.group("sep")}""', val))
             i += 1
             continue
         # ``args = [...]``: positional flag scrub. A multi-line array is
@@ -679,7 +672,7 @@ def scrub_toml_secrets(text: str) -> str:
                 joined = ' '.join(parts)
                 cleaned = scrub_toml_array_args(joined)
                 if cleaned == joined:
-                    out.extend(lines[i:j + 1])
+                    out.extend(lines[i : j + 1])
                 else:
                     out.append(m.group('pre') + cleaned.strip())
                 i = j + 1
@@ -691,10 +684,10 @@ def scrub_toml_secrets(text: str) -> str:
 
             def _repl(pm):
                 if is_secret_key(pm.group('key').split('.')[-1]):
-                    return f"{pm.group('key')}{pm.group('sep')}\"\""
+                    return f'{pm.group("key")}{pm.group("sep")}""'
                 cleaned = scrub_scalar_url_token(pm.group('val'))
                 if cleaned != pm.group('val'):
-                    return f"{pm.group('key')}{pm.group('sep')}{cleaned}"
+                    return f'{pm.group("key")}{pm.group("sep")}{cleaned}'
                 return pm.group(0)
 
             out.append(m.group('pre') + inline_pair.sub(_repl, val))
@@ -720,9 +713,7 @@ class WorkspaceSpec(ABC):
         from it (e.g. qwenpaw ``workspaces/<name>``).
     """
 
-    def __init__(self,
-                 agent_name: str = DEFAULT_AGENT_NAME,
-                 local_dir: Path | None = None):
+    def __init__(self, agent_name: str = DEFAULT_AGENT_NAME, local_dir: Path | None = None):
         self.agent_name = agent_name or DEFAULT_AGENT_NAME
         self._local_dir = Path(local_dir).expanduser() if local_dir else None
 
@@ -732,8 +723,7 @@ class WorkspaceSpec(ABC):
 
     @property
     @abstractmethod
-    def product_name(self) -> str:
-        ...
+    def product_name(self) -> str: ...
 
     @property
     @abstractmethod
@@ -921,9 +911,7 @@ class WorkspaceSpec(ABC):
                 try:
                     size = f.stat().st_size
                     if size > MAX_FILE_SIZE:
-                        logger.warning(
-                            'Skip large file %s (%d bytes exceeds limit %d)',
-                            f, size, MAX_FILE_SIZE)
+                        logger.warning('Skip large file %s (%d bytes exceeds limit %d)', f, size, MAX_FILE_SIZE)
                         continue
                 except OSError:
                     continue
@@ -1041,8 +1029,7 @@ class WorkspaceSpec(ABC):
             if not target.is_relative_to(root):
                 logger.warning('Path traversal blocked: %s', rel_path)
                 continue
-            raw = content if isinstance(content,
-                                        bytes) else content.encode('utf-8')
+            raw = content if isinstance(content, bytes) else content.encode('utf-8')
             sanitized = self.sanitize_inbound_file(rel_path, raw)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(sanitized)

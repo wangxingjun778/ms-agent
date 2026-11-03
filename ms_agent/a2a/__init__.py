@@ -15,27 +15,42 @@ degrade).
 """
 
 from .client import A2AClientManager
-from .errors import (A2AServerError, AgentLoadError, ConfigError, LLMError,
-                     MaxTasksError, RateLimitError, TaskNotFoundError,
-                     wrap_a2a_error)
+from .errors import (
+    A2AServerError,
+    AgentLoadError,
+    ConfigError,
+    LLMError,
+    MaxTasksError,
+    RateLimitError,
+    TaskNotFoundError,
+    wrap_a2a_error,
+)
 from .session_store import A2AAgentStore, A2ATaskEntry
-from .translator import (a2a_message_to_ms_messages, collect_full_response,
-                         extract_text_from_a2a_message, ms_messages_to_text)
+from .translator import (
+    a2a_message_to_ms_messages,
+    collect_full_response,
+    extract_text_from_a2a_message,
+    ms_messages_to_text,
+)
 
 
 def __getattr__(name):
     """Lazy-load SDK-dependent symbols on first access."""
     if name == 'MSAgentA2AExecutor':
         from .executor import MSAgentA2AExecutor
+
         return MSAgentA2AExecutor
     if name == 'configure_a2a_logging':
         from .executor import configure_a2a_logging
+
         return configure_a2a_logging
     if name == 'build_agent_card':
         from .agent_card import build_agent_card
+
         return build_agent_card
     if name == 'generate_agent_card_json':
         from .agent_card import generate_agent_card_json
+
         return generate_agent_card_json
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 

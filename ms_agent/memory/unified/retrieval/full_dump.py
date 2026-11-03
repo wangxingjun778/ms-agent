@@ -1,6 +1,7 @@
 """FullDumpRetriever — loads MEMORY.md in its entirety and injects it
 into the system prompt as a frozen snapshot (Phase 1 default).
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional

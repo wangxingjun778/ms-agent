@@ -1,7 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# flake8: noqa
-# isort: skip_file
-# yapf: disable
 
 WRITING_SPEC_GUIDE = """
 <Writing Style Spec Quick Guide & Usage Notes>

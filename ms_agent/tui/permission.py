@@ -12,13 +12,15 @@ draws from, and a sibling tool call approved a moment earlier can finish while
 this menu is up. So ``ask()`` also holds the renderer's output for its duration
 (``RichEventSink.hold_output``).
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 from contextlib import contextmanager
-from rich.console import Console
 from typing import Any, Optional
+
+from rich.console import Console
 
 from ms_agent.tui.select import select_async
 from ms_agent.tui.theme import DEFAULT_THEME, Theme
@@ -28,12 +30,9 @@ _ALLOW_ONCE, _ALLOW_SESSION, _ALLOW_ALWAYS, _EDIT, _DENY = range(5)
 
 
 class TUIPermissionHandler:
-
-    def __init__(self,
-                 console: Optional[Console] = None,
-                 io: Any = None,
-                 theme: Theme = DEFAULT_THEME,
-                 renderer: Any = None) -> None:
+    def __init__(
+        self, console: Optional[Console] = None, io: Any = None, theme: Theme = DEFAULT_THEME, renderer: Any = None
+    ) -> None:
         self._console = console or Console()
         self._theme = theme
         # The event renderer, so its draws can be held while this menu owns the
@@ -57,8 +56,8 @@ class TUIPermissionHandler:
             return await self._ask(tool_name, tool_args, context, suggestions)
 
     async def _ask(self, tool_name, tool_args, context, suggestions=None):
-        from ms_agent.permission.handler import (PermissionAction,
-                                                 PermissionResponse)
+        from ms_agent.permission.handler import PermissionAction, PermissionResponse
+
         suggestion = suggestions[0] if suggestions else tool_name
 
         # No persistent box: the tool line ("• Write path") already printed by
@@ -87,11 +86,9 @@ class TUIPermissionHandler:
             return PermissionResponse(action=PermissionAction.DENY)
 
         if idx == _ALLOW_SESSION:
-            return PermissionResponse(
-                action=PermissionAction.ALLOW_SESSION, pattern=suggestion)
+            return PermissionResponse(action=PermissionAction.ALLOW_SESSION, pattern=suggestion)
         if idx == _ALLOW_ALWAYS:
-            return PermissionResponse(
-                action=PermissionAction.ALLOW_ALWAYS, pattern=suggestion)
+            return PermissionResponse(action=PermissionAction.ALLOW_ALWAYS, pattern=suggestion)
         if idx == _EDIT:
             raw = (await self._read_line('new args (JSON): ')).strip()
             try:
@@ -99,8 +96,7 @@ class TUIPermissionHandler:
             except (json.JSONDecodeError, ValueError):
                 self._console.print('[red]invalid JSON — denying[/]')
                 return PermissionResponse(action=PermissionAction.DENY)
-            return PermissionResponse(
-                action=PermissionAction.MODIFY, updated_args=new_args)
+            return PermissionResponse(action=PermissionAction.MODIFY, updated_args=new_args)
         return PermissionResponse(action=PermissionAction.ALLOW_ONCE)
 
     def _format_args(self, tool_args) -> str:

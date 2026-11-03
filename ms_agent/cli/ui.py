@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Prepare the WebUI, then hand over to its shared SSR launcher."""
+
 from __future__ import annotations
 
 import argparse
@@ -53,31 +54,13 @@ class UICMD(CLICommand):
     def define_args(parsers):
         parser = parsers.add_parser('ui', help='Start the WebUI (SSR and API)')
         parser.add_argument('--host', default=DEFAULT_HOST)
-        parser.add_argument(
-            '--port',
-            type=_port_number,
-            help='Public port (default: a free port starting at 8000)')
-        parser.add_argument(
-            '--backend-port',
-            type=_port_number,
-            help='Internal API port (default: next free port)')
+        parser.add_argument('--port', type=_port_number, help='Public port (default: a free port starting at 8000)')
+        parser.add_argument('--backend-port', type=_port_number, help='Internal API port (default: next free port)')
         parser.add_argument('--no-browser', action='store_true')
-        parser.add_argument(
-            '--skip-install',
-            action='store_true',
-            help='Do not download or synchronize dependencies')
-        parser.add_argument(
-            '--production',
-            action='store_true',
-            help='Compatibility alias for the default SSR mode')
-        parser.add_argument(
-            '--reload',
-            action='store_true',
-            help='Reserved; use the documented development commands')
-        parser.add_argument(
-            '--prepare-only',
-            action='store_true',
-            help='Prepare resources and dependencies, then exit')
+        parser.add_argument('--skip-install', action='store_true', help='Do not download or synchronize dependencies')
+        parser.add_argument('--production', action='store_true', help='Compatibility alias for the default SSR mode')
+        parser.add_argument('--reload', action='store_true', help='Reserved; use the documented development commands')
+        parser.add_argument('--prepare-only', action='store_true', help='Prepare resources and dependencies, then exit')
         parser.add_argument('--startup-timeout', type=float, default=120.0)
         parser.set_defaults(func=subparser_func)
 
@@ -90,8 +73,7 @@ class UICMD(CLICommand):
                 )
             if sys.version_info < (3, 12):
                 raise UIError('The WebUI requires Python 3.12 or newer')
-            if not math.isfinite(self.args.startup_timeout
-                                 ) or self.args.startup_timeout <= 0:
+            if not math.isfinite(self.args.startup_timeout) or self.args.startup_timeout <= 0:
                 raise UIError('--startup-timeout must be positive and finite')
             webui, installed = find_webui()
             common = load_common(webui)
@@ -99,56 +81,35 @@ class UICMD(CLICommand):
             from app.processes import interruptible
 
             with interruptible():
-                host = self.args.host.strip().removeprefix('[').removesuffix(
-                    ']')
+                host = self.args.host.strip().removeprefix('[').removesuffix(']')
                 if not host:
                     raise UIError('--host cannot be empty')
                 if not self.args.prepare_only:
-                    ports = common.select_ports(host, self.args.port,
-                                                self.args.backend_port)
+                    ports = common.select_ports(host, self.args.port, self.args.backend_port)
                 node = _require_executable('node')
                 _check_tool_versions({'node': node})
-                node_version = _read_semantic_version(node, '--version',
-                                                      'Node.js')
+                node_version = _read_semantic_version(node, '--version', 'Node.js')
 
                 def install_node(frontend, production=False):
                     pnpm = _require_executable('pnpm')
-                    _check_tool_versions({
-                        'node': node,
-                        'pnpm': pnpm
-                    }, frontend)
+                    _check_tool_versions({'node': node, 'pnpm': pnpm}, frontend)
                     command = [pnpm, 'install', '--frozen-lockfile']
                     if production:
                         command.append('--prod')
-                    print(
-                        '[setup] Preparing WebUI Node dependencies...',
-                        flush=True)
-                    _run_setup(command, frontend,
-                               'Node dependency installation')
+                    print('[setup] Preparing WebUI Node dependencies...', flush=True)
+                    _run_setup(command, frontend, 'Node dependency installation')
 
                 def build_frontend(frontend):
                     pnpm = _require_executable('pnpm')
-                    _check_tool_versions({
-                        'node': node,
-                        'pnpm': pnpm
-                    }, frontend)
-                    print(
-                        '[setup] Building WebUI (including generated CSS)...',
-                        flush=True)
+                    _check_tool_versions({'node': node, 'pnpm': pnpm}, frontend)
+                    print('[setup] Building WebUI (including generated CSS)...', flush=True)
                     _run_setup([pnpm, 'build'], frontend, 'frontend build')
 
                 def trace_runtime(frontend):
                     pnpm = _require_executable('pnpm')
-                    _check_tool_versions({
-                        'node': node,
-                        'pnpm': pnpm
-                    }, frontend)
-                    print(
-                        '[setup] Tracing WebUI runtime dependencies...',
-                        flush=True)
-                    _run_setup(
-                        [pnpm, 'exec', 'tsx', 'scripts/traceRuntime.ts'],
-                        frontend, 'runtime dependency tracing')
+                    _check_tool_versions({'node': node, 'pnpm': pnpm}, frontend)
+                    print('[setup] Tracing WebUI runtime dependencies...', flush=True)
+                    _run_setup([pnpm, 'exec', 'tsx', 'scripts/traceRuntime.ts'], frontend, 'runtime dependency tracing')
 
                 if installed:
                     tracing = os.environ.get(TRACE_RUNTIME_ENV) == '1'
@@ -159,34 +120,29 @@ class UICMD(CLICommand):
                         skip_install=self.args.skip_install,
                         install_node=install_node,
                         build_frontend=build_frontend,
-                        trace_runtime=trace_runtime if tracing else None)
+                        trace_runtime=trace_runtime if tracing else None,
+                    )
                     python = Path(sys.executable)
                 else:
                     backend = webui / 'backend'
-                    python = backend / '.venv' / ('Scripts/python.exe' if
-                                                  IS_WINDOWS else 'bin/python')
+                    python = backend / '.venv' / ('Scripts/python.exe' if IS_WINDOWS else 'bin/python')
                     if not self.args.skip_install:
                         uv = _require_executable('uv')
                         _check_tool_versions({'node': node, 'uv': uv})
                         env = os.environ.copy()
                         env['UV_PROJECT_ENVIRONMENT'] = str(backend / '.venv')
-                        print(
-                            '[setup] Checking WebUI Python dependencies...',
-                            flush=True)
+                        print('[setup] Checking WebUI Python dependencies...', flush=True)
                         _run_setup(
                             [uv, 'sync', '--locked', '--no-dev', '--inexact'],
                             backend,
                             'Python dependency synchronization',
-                            env=env)
+                            env=env,
+                        )
                         install_node(webui / 'frontend')
                     if not python.is_file():
-                        raise UIError(
-                            'Missing WebUI backend environment; run without --skip-install'
-                        )
+                        raise UIError('Missing WebUI backend environment; run without --skip-install')
                     if not (webui / 'frontend/node_modules').is_dir():
-                        raise UIError(
-                            'Missing frontend dependencies; run without --skip-install'
-                        )
+                        raise UIError('Missing frontend dependencies; run without --skip-install')
                     try:
                         common.validate_build(webui / 'frontend')
                     except common.BuildError:
@@ -196,18 +152,21 @@ class UICMD(CLICommand):
                     print(f'WebUI prepared: {webui}', flush=True)
                     return
                 arguments = [
-                    '--host', host, '--port',
-                    str(ports[0]), '--backend-port',
-                    str(ports[1]), '--startup-timeout',
-                    str(self.args.startup_timeout)
+                    '--host',
+                    host,
+                    '--port',
+                    str(ports[0]),
+                    '--backend-port',
+                    str(ports[1]),
+                    '--startup-timeout',
+                    str(self.args.startup_timeout),
                 ]
                 if self.args.no_browser:
                     arguments.append('--no-open')
             _exec_launcher(python, webui, arguments, installed=installed)
         except KeyboardInterrupt:
             print('WebUI preparation stopped.', flush=True)
-        except (UIError, OSError, RuntimeError, subprocess.SubprocessError,
-                ValueError) as exc:
+        except (UIError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
             print(f'Cannot start WebUI: {exc}', file=sys.stderr, flush=True)
             raise SystemExit(1) from None
 
@@ -223,8 +182,7 @@ def _exec_launcher(python, webui, arguments, *, installed):
     os.chdir(webui / 'backend')
     # Replace the preparation process: the shared launcher owns all service
     # supervision and signal handling, without a second SDK supervisor.
-    os.execve(
-        str(python), [str(python), '-m', 'app.launcher', *arguments], env)
+    os.execve(str(python), [str(python), '-m', 'app.launcher', *arguments], env)
 
 
 def _requires_windows_shell(executable):
@@ -234,8 +192,7 @@ def _requires_windows_shell(executable):
 def _run_setup(command, cwd, label, env=None):
     from app.processes import _spawn, _terminate_process_tree
 
-    process = _spawn(
-        command, cwd=cwd, env=env, shell=_requires_windows_shell(command[0]))
+    process = _spawn(command, cwd=cwd, env=env, shell=_requires_windows_shell(command[0]))
     try:
         code = process.wait()
         if code:
@@ -256,26 +213,21 @@ def _require_executable(name: str) -> str:
         'node': 'Install Node.js 22.22.0 or newer from https://nodejs.org/.',
         'pnpm': 'Install it with npm install --global pnpm@10.17.1.',
     }
-    raise UIError(f'Required command "{name}" was not found. '
-                  f'{install_hints.get(name, "Install it and retry.")}')
+    raise UIError(f'Required command "{name}" was not found. {install_hints.get(name, "Install it and retry.")}')
 
 
-def _check_tool_versions(tools: Dict[str, str],
-                         frontend_dir: Optional[Path] = None) -> None:
+def _check_tool_versions(tools: Dict[str, str], frontend_dir: Optional[Path] = None) -> None:
     """Gate on tool versions, always naming the executable that was measured.
 
     Printing the resolved path matters more than the version: the common failure
     is "I installed it into this environment but PATH resolved something else",
     which an unadorned version number cannot distinguish.
     """
-    node_version = _read_semantic_version(tools['node'], '--version',
-                                          'Node.js')
+    node_version = _read_semantic_version(tools['node'], '--version', 'Node.js')
     if node_version < MIN_NODE_VERSION:
         required = '.'.join(str(part) for part in MIN_NODE_VERSION)
         actual = '.'.join(str(part) for part in node_version)
-        raise UIError(
-            f'Node.js {required} or newer is required by React Router 8 '
-            f'(found {actual} at {tools["node"]}).')
+        raise UIError(f'Node.js {required} or newer is required by React Router 8 (found {actual} at {tools["node"]}).')
 
     if 'uv' in tools:
         uv_version = _read_semantic_version(tools['uv'], '--version', 'uv')
@@ -286,28 +238,26 @@ def _check_tool_versions(tools: Dict[str, str],
                 f'uv {required} or newer is required (found {actual} at '
                 f'{tools["uv"]}). If you installed a newer uv into this '
                 f'environment, an older one is still earlier on PATH — check '
-                f'with "command -v uv".')
+                f'with "command -v uv".'
+            )
 
     if 'pnpm' in tools:
         # Measure pnpm inside webui/frontend: `packageManager` in its
         # package.json makes pnpm self-manage, so the binary that actually runs
         # `pnpm install` there may differ from the one first on PATH. Probing
         # from an arbitrary cwd validates the wrong executable.
-        pnpm_version = _read_semantic_version(
-            tools['pnpm'], '--version', 'pnpm', cwd=frontend_dir)
+        pnpm_version = _read_semantic_version(tools['pnpm'], '--version', 'pnpm', cwd=frontend_dir)
         if pnpm_version[0] != 10:
             actual = '.'.join(str(part) for part in pnpm_version)
             raise UIError(
                 f'pnpm 10.x is required by this WebUI (found {actual} at '
                 f'{tools["pnpm"]}). Install it with '
                 f'"npm install --global pnpm@10.17.1", then check '
-                f'"pnpm --version" in the frontend directory.')
+                f'"pnpm --version" in the frontend directory.'
+            )
 
 
-def _read_semantic_version(executable: str,
-                           flag: str,
-                           label: str,
-                           cwd: Optional[Path] = None) -> Tuple[int, int, int]:
+def _read_semantic_version(executable: str, flag: str, label: str, cwd: Optional[Path] = None) -> Tuple[int, int, int]:
     run_kwargs: Dict[str, Any] = {}
     if cwd is not None:
         run_kwargs['cwd'] = str(cwd)
@@ -327,10 +277,8 @@ def _read_semantic_version(executable: str,
             timeout=10,
             **run_kwargs,
         )
-    except (OSError, subprocess.CalledProcessError,
-            subprocess.TimeoutExpired) as exc:
-        raise UIError(
-            f'Could not determine the {label} version: {exc}') from exc
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise UIError(f'Could not determine the {label} version: {exc}') from exc
 
     return _parse_semantic_version(result.stdout, label, executable)
 
@@ -341,8 +289,7 @@ _VERSION_BARE = re.compile(r'^v?(\d+)\.(\d+)(?:\.(\d+))?\b')
 _VERSION_AFTER_NAME = re.compile(r'^\S+\s+v?(\d+)\.(\d+)(?:\.(\d+))?\b')
 
 
-def _parse_semantic_version(output: str, label: str,
-                            executable: str) -> Tuple[int, int, int]:
+def _parse_semantic_version(output: str, label: str, executable: str) -> Tuple[int, int, int]:
     """Read the tool's version, ignoring any preamble noise.
 
     Searching the whole buffer for the first dotted number is wrong: tools
@@ -364,5 +311,4 @@ def _parse_semantic_version(output: str, label: str,
             match = pattern.match(line)
             if match:
                 return tuple(int(part or 0) for part in match.groups())
-    raise UIError(f'Could not parse the {label} version from {executable}: '
-                  f'{output!r}')
+    raise UIError(f'Could not parse the {label} version from {executable}: {output!r}')

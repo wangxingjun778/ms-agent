@@ -3,16 +3,22 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from acp import (PROTOCOL_VERSION, Agent, InitializeResponse,
-                 NewSessionResponse, PromptResponse, run_agent, text_block)
-from acp.schema import (AgentCapabilities, ClientCapabilities, Implementation,
-                        PermissionOption, PromptCapabilities,
-                        SessionCapabilities, SessionListCapabilities)
 from typing import Any
 
+from acp import PROTOCOL_VERSION, Agent, InitializeResponse, NewSessionResponse, PromptResponse, run_agent, text_block
+from acp.schema import (
+    AgentCapabilities,
+    ClientCapabilities,
+    Implementation,
+    PermissionOption,
+    PromptCapabilities,
+    SessionCapabilities,
+    SessionListCapabilities,
+)
+
 from ms_agent.utils.logger import get_logger
-from .config import (apply_config_option, build_config_options,
-                     build_session_modes)
+
+from .config import apply_config_option, build_config_options, build_session_modes
 from .errors import wrap_agent_error
 from .session_store import ACPSessionStore
 from .translator import ACPTranslator
@@ -36,8 +42,7 @@ def configure_acp_logging(log_file: str | None = None) -> None:
     else:
         handler = logging.StreamHandler(sys.stderr)
 
-    fmt = logging.Formatter(
-        '%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+    fmt = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
     handler.setFormatter(fmt)
 
     root = logging.getLogger()
@@ -92,7 +97,8 @@ class MSAgentACPServer(Agent):
                     embedded_context=True,
                 ),
                 session_capabilities=SessionCapabilities(
-                    list=SessionListCapabilities(), ),
+                    list=SessionListCapabilities(),
+                ),
             ),
             agent_info=Implementation(
                 name='ms-agent',
@@ -159,11 +165,9 @@ class MSAgentACPServer(Agent):
                     updates = translator.messages_to_updates(chunk)
                     for update in updates:
                         try:
-                            await self.connection.session_update(
-                                session_id, update)
+                            await self.connection.session_update(session_id, update)
                         except Exception as send_err:
-                            logger.warning('Failed to send session_update: %s',
-                                           send_err)
+                            logger.warning('Failed to send session_update: %s', send_err)
                     if session.cancelled:
                         break
             elif isinstance(result, list):
@@ -171,11 +175,9 @@ class MSAgentACPServer(Agent):
                 updates = translator.messages_to_updates(result)
                 for update in updates:
                     try:
-                        await self.connection.session_update(
-                            session_id, update)
+                        await self.connection.session_update(session_id, update)
                     except Exception as send_err:
-                        logger.warning('Failed to send session_update: %s',
-                                       send_err)
+                        logger.warning('Failed to send session_update: %s', send_err)
 
             plan_updates = self._extract_plan_updates(session, translator)
             for pu in plan_updates:
@@ -203,20 +205,17 @@ class MSAgentACPServer(Agent):
             if todo_items and isinstance(todo_items, list):
                 for item in todo_items:
                     if isinstance(item, dict):
-                        steps.append({
-                            'description':
-                            item.get('description', item.get('content', '')),
-                            'status':
-                            item.get('status', 'pending'),
-                            'priority':
-                            item.get('priority', 'medium'),
-                        })
+                        steps.append(
+                            {
+                                'description': item.get('description', item.get('content', '')),
+                                'status': item.get('status', 'pending'),
+                                'priority': item.get('priority', 'medium'),
+                            }
+                        )
 
         if not steps:
             for msg in reversed(session.messages or []):
-                if (msg.role == 'tool' and msg.name
-                        in ('todo_write', 'todo_read', 'todo', 'split_task')
-                        and msg.content):
+                if msg.role == 'tool' and msg.name in ('todo_write', 'todo_read', 'todo', 'split_task') and msg.content:
                     try:
                         data = json.loads(msg.content)
                         todos = None
@@ -227,17 +226,15 @@ class MSAgentACPServer(Agent):
                         if todos and isinstance(todos, list):
                             for item in todos:
                                 if isinstance(item, dict):
-                                    steps.append({
-                                        'description':
-                                        item.get(
-                                            'content',
-                                            item.get('description',
-                                                     item.get('task', ''))),
-                                        'status':
-                                        item.get('status', 'pending'),
-                                        'priority':
-                                        item.get('priority', 'medium'),
-                                    })
+                                    steps.append(
+                                        {
+                                            'description': item.get(
+                                                'content', item.get('description', item.get('task', ''))
+                                            ),
+                                            'status': item.get('status', 'pending'),
+                                            'priority': item.get('priority', 'medium'),
+                                        }
+                                    )
                             break
                     except (json.JSONDecodeError, TypeError):
                         pass
@@ -262,11 +259,11 @@ class MSAgentACPServer(Agent):
         **kwargs: Any,
     ):
         from acp.schema import LoadSessionResponse
+
         try:
             session = self.session_store.get(session_id)
         except Exception:
-            logger.info('load_session: session %s not found, creating new',
-                        session_id)
+            logger.info('load_session: session %s not found, creating new', session_id)
             meta = kwargs.get('_meta') or kwargs.get('field_meta')
             session = await self.session_store.create(
                 config_path=self.config_path,
@@ -279,7 +276,7 @@ class MSAgentACPServer(Agent):
         translator = self._get_translator(session.id)
         translator.reset_turn()
         for i, msg in enumerate(session.messages):
-            partial = session.messages[:i + 1]
+            partial = session.messages[: i + 1]
             updates = translator.messages_to_updates(partial)
             for update in updates:
                 try:
@@ -302,6 +299,7 @@ class MSAgentACPServer(Agent):
         **kwargs: Any,
     ):
         from acp.schema import ListSessionsResponse, SessionInfo
+
         entries = self.session_store.list_sessions()
         items = []
         for e in entries:
@@ -309,7 +307,8 @@ class MSAgentACPServer(Agent):
                 SessionInfo(
                     session_id=e['session_id'],
                     cwd=e.get('cwd'),
-                ))
+                )
+            )
         return ListSessionsResponse(sessions=items)
 
     async def set_config_option(
@@ -320,6 +319,7 @@ class MSAgentACPServer(Agent):
         **kwargs: Any,
     ):
         from acp.schema import SetSessionConfigOptionResponse
+
         session = self.session_store.get(session_id)
         apply_config_option(session.config, config_id, str(value))
         new_options = build_config_options(session.config) or []
@@ -360,8 +360,8 @@ def serve(
     """Entry point: run the ACP server over stdio."""
     configure_acp_logging(log_file)
     logger.info(
-        'serve() called: config_path=%s trust_remote_code=%s '
-        'sys.argv=%s', config_path, trust_remote_code, sys.argv)
+        'serve() called: config_path=%s trust_remote_code=%s sys.argv=%s', config_path, trust_remote_code, sys.argv
+    )
     server = MSAgentACPServer(
         config_path=config_path,
         trust_remote_code=trust_remote_code,
@@ -369,6 +369,7 @@ def serve(
         session_timeout=session_timeout,
     )
     import asyncio
+
     asyncio.run(_run_server(server))
 
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-# flake8: noqa
-# yapf: disable
 import ast
 import os
+from typing import Dict, Iterator, List, Optional, Tuple, Union
+from unittest.mock import patch as mock_patch
+
 from docling.backend.html_backend import HTMLDocumentBackend
 from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
@@ -11,22 +12,21 @@ from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.settings import DEFAULT_PAGE_RANGE, PageRange
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.models.document_picture_classifier import \
-    DocumentPictureClassifier
+from docling.models.document_picture_classifier import DocumentPictureClassifier
 from docling.models.layout_model import LayoutModel
 from docling.models.table_structure_model import TableStructureModel
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import DocItem
-from typing import Dict, Iterator, List, Optional, Tuple, Union
-from unittest.mock import patch as mock_patch
 
 from ms_agent.tools.docling.doc_postprocess import PostProcess
-from ms_agent.tools.docling.patches import (download_models_ms,
-                                            download_models_pic_classifier_ms,
-                                            html_handle_figure,
-                                            html_handle_image,
-                                            patch_easyocr_models,
-                                            requests_get_with_timeout)
+from ms_agent.tools.docling.patches import (
+    download_models_ms,
+    download_models_pic_classifier_ms,
+    html_handle_figure,
+    html_handle_image,
+    patch_easyocr_models,
+    requests_get_with_timeout,
+)
 from ms_agent.utils.logger import get_logger
 from ms_agent.utils.patcher import patch
 from ms_agent.utils.utils import normalize_url_or_file, txt_to_html
@@ -35,7 +35,6 @@ logger = get_logger()
 
 
 class DocLoader:
-
     MAX_NUM_PAGES = 1000
     MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
@@ -63,14 +62,11 @@ class DocLoader:
         pdf_pipeline_options.accelerator_options = accelerator_options  # type: ignore
 
         self._converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF:
-                PdfFormatOption(pipeline_options=pdf_pipeline_options)
-            })
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_pipeline_options)}
+        )
 
     @staticmethod
-    def _group_by_input_format(
-            urls_or_files: list[str]) -> dict[InputFormat, list[str]]:
+    def _group_by_input_format(urls_or_files: list[str]) -> dict[InputFormat, list[str]]:
         """
         Group the provided URLs or files by their input format.
         This is a placeholder implementation and should be replaced with actual logic.
@@ -79,15 +75,12 @@ class DocLoader:
         """
         grouped = {InputFormat.PDF: [], InputFormat.HTML: []}
         for url_or_file in urls_or_files:
-            if url_or_file.endswith('.pdf') or url_or_file.startswith(
-                    'https://arxiv.org/pdf/'):
+            if url_or_file.endswith('.pdf') or url_or_file.startswith('https://arxiv.org/pdf/'):
                 grouped[InputFormat.PDF].append(url_or_file)
-            elif url_or_file.startswith('http') or url_or_file.endswith(
-                    '.html'):
+            elif url_or_file.startswith('http') or url_or_file.endswith('.html'):
                 grouped[InputFormat.HTML].append(url_or_file)
             else:
-                logger.error(
-                    f'**Error: Unsupported file type for {url_or_file}')
+                logger.error(f'**Error: Unsupported file type for {url_or_file}')
         return grouped
 
     @staticmethod
@@ -132,8 +125,7 @@ class DocLoader:
             caption = f'{doc.texts[ref_idx].text}'
             return caption
         except (AttributeError, ValueError, IndexError, TypeError) as e:
-            logger.warning(
-                f'Failed to get caption reference key for {caption_ref}: {e}')
+            logger.warning(f'Failed to get caption reference key for {caption_ref}: {e}')
             return caption_ref
 
     @staticmethod
@@ -146,28 +138,14 @@ class DocLoader:
         # Deal with all pictures and tables
         for doc in docs:
             for pic_item in doc.pictures:
-                captions_ref = pic_item.captions if getattr(
-                    pic_item, 'captions', []) else []
-                captions = [
-                    DocLoader.get_caption_ref_key(doc, caption_ref)
-                    for caption_ref in captions_ref
-                ]
-                ref_item_d[f'{DocLoader.get_item_ref_key(doc, pic_item)}'] = {
-                    'item': pic_item,
-                    'captions': captions
-                }
+                captions_ref = pic_item.captions if getattr(pic_item, 'captions', []) else []
+                captions = [DocLoader.get_caption_ref_key(doc, caption_ref) for caption_ref in captions_ref]
+                ref_item_d[f'{DocLoader.get_item_ref_key(doc, pic_item)}'] = {'item': pic_item, 'captions': captions}
 
             for tab_item in doc.tables:
-                captions_ref = tab_item.captions if getattr(
-                    tab_item, 'captions', []) else []
-                captions = [
-                    DocLoader.get_caption_ref_key(doc, caption_ref)
-                    for caption_ref in captions_ref
-                ]
-                ref_item_d[f'{DocLoader.get_item_ref_key(doc, tab_item)}'] = {
-                    'item': tab_item,
-                    'captions': captions
-                }
+                captions_ref = tab_item.captions if getattr(tab_item, 'captions', []) else []
+                captions = [DocLoader.get_caption_ref_key(doc, caption_ref) for caption_ref in captions_ref]
+                ref_item_d[f'{DocLoader.get_item_ref_key(doc, tab_item)}'] = {'item': tab_item, 'captions': captions}
 
         return ref_item_d
 
@@ -189,8 +167,9 @@ class DocLoader:
             """
             Check if the URL is valid and accessible.
             """
-            import requests
             from urllib.parse import urlparse
+
+            import requests
 
             idx, _url = url
             try:
@@ -203,12 +182,9 @@ class DocLoader:
                 # Try to send a HEAD request to check if the URL is accessible
                 response = requests.head(_url, timeout=(10, 25))
                 if response.status_code >= 400:
-                    response = requests.get(
-                        _url, stream=True, timeout=(10, 25))
+                    response = requests.get(_url, stream=True, timeout=(10, 25))
                     if response.status_code >= 400:
-                        logger.warning(
-                            f'URL returned error status {response.status_code}: {_url}'
-                        )
+                        logger.warning(f'URL returned error status {response.status_code}: {_url}')
                         return None
                 return url
             except requests.RequestException as e2:
@@ -227,48 +203,36 @@ class DocLoader:
 
             try:
                 if os.path.getsize(_file) > max_file_size:
-                    logger.warning(
-                        f'File size exceeds limit ({max_file_size} bytes): {_file}'
-                    )
+                    logger.warning(f'File size exceeds limit ({max_file_size} bytes): {_file}')
                     return None
 
                 if _file.endswith('.txt'):
                     try:
                         _file = txt_to_html(_file)
                     except Exception as e:
-                        logger.warning(
-                            f'Failed to convert text file {_file} to HTML: {e}'
-                        )
+                        logger.warning(f'Failed to convert text file {_file} to HTML: {e}')
                         return None
                 return (idx, _file)
             except PermissionError as e:
-                logger.warning(
-                    f'Permission denied when accessing file {_file}: {e}')
+                logger.warning(f'Permission denied when accessing file {_file}: {e}')
                 return None
             except OSError as e:
                 logger.warning(f'OS error when processing file {_file}: {e}')
                 return None
             except Exception as e:
-                logger.warning(
-                    f'Unexpected error when processing file {_file}: {e}')
+                logger.warning(f'Unexpected error when processing file {_file}: {e}')
                 return None
 
         # Normalize URLs
-        url_or_files = [
-            normalize_url_or_file(url_or_file) for url_or_file in url_or_files
-        ]
-        http_urls = [(i, url) for i, url in enumerate(url_or_files)
-                     if url and url.startswith('http')]
-        file_paths = [(i, file) for i, file in enumerate(url_or_files)
-                      if file and not file.startswith('http')]
+        url_or_files = [normalize_url_or_file(url_or_file) for url_or_file in url_or_files]
+        http_urls = [(i, url) for i, url in enumerate(url_or_files) if url and url.startswith('http')]
+        file_paths = [(i, file) for i, file in enumerate(url_or_files) if file and not file.startswith('http')]
         preprocessed = []
         max_workers = min(8, (os.cpu_count() or 4))
 
         # Step1: Remove urls that cannot be processed
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(check_url_valid, url) for url in http_urls
-            ]
+            futures = [executor.submit(check_url_valid, url) for url in http_urls]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
@@ -276,9 +240,7 @@ class DocLoader:
 
         # Step2: Add file paths that are valid
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(check_file_valid, file) for file in file_paths
-            ]
+            futures = [executor.submit(check_file_valid, file) for file in file_paths]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
@@ -286,8 +248,7 @@ class DocLoader:
 
         # Restore the original order of URLs or files
         preprocessed = sorted(preprocessed, key=lambda x: x[0])
-        logger.info(
-            f'Preprocessed {len(preprocessed)} URLs or files for conversion.')
+        logger.info(f'Preprocessed {len(preprocessed)} URLs or files for conversion.')
 
         return [item[1] for item in preprocessed]
 
@@ -306,47 +267,50 @@ class DocLoader:
 
     @patch(LayoutModel, 'download_models', download_models_ms)
     @patch(TableStructureModel, 'download_models', download_models_ms)
-    @patch(DocumentPictureClassifier, 'download_models',
-           download_models_pic_classifier_ms)
+    @patch(DocumentPictureClassifier, 'download_models', download_models_pic_classifier_ms)
     @patch(HTMLDocumentBackend, 'handle_image', html_handle_image)
     @patch(HTMLDocumentBackend, 'handle_figure', html_handle_figure)
-    @mock_patch('docling_core.utils.file.requests.get',
-                requests_get_with_timeout)
+    @mock_patch('docling_core.utils.file.requests.get', requests_get_with_timeout)
     def load(
-            self,
-            urls_or_files: list[str],
-            max_num_pages: Optional[int] = None,
-            max_file_size: Optional[int] = None,
-            page_range: Optional[Tuple[int,
-                                       int]] = None) -> List[DoclingDocument]:
+        self,
+        urls_or_files: list[str],
+        max_num_pages: Optional[int] = None,
+        max_file_size: Optional[int] = None,
+        page_range: Optional[Tuple[int, int]] = None,
+    ) -> List[DoclingDocument]:
 
         # Patch easyocr model paths
         patch_easyocr_models()
 
         # Resolve parameter values: use provided values, then env vars, then defaults
         resolved_max_num_pages = (
-            max_num_pages if max_num_pages is not None else
-            (int(os.environ.get('MAX_NUM_PAGES', 0)) if os.environ.get(
-                'MAX_NUM_PAGES', 0) else DocLoader.MAX_NUM_PAGES))
+            max_num_pages
+            if max_num_pages is not None
+            else (
+                int(os.environ.get('MAX_NUM_PAGES', 0))
+                if os.environ.get('MAX_NUM_PAGES', 0)
+                else DocLoader.MAX_NUM_PAGES
+            )
+        )
         resolved_max_file_size = (
-            max_file_size if max_file_size is not None else
-            (int(os.environ.get('MAX_FILE_SIZE', 0)) if os.environ.get(
-                'MAX_FILE_SIZE', 0) else DocLoader.MAX_FILE_SIZE))
+            max_file_size
+            if max_file_size is not None
+            else (
+                int(os.environ.get('MAX_FILE_SIZE', 0))
+                if os.environ.get('MAX_FILE_SIZE', 0)
+                else DocLoader.MAX_FILE_SIZE
+            )
+        )
 
-        resolved_page_range = (
-            page_range or os.environ.get('PAGE_RANGE', None)
-            or DEFAULT_PAGE_RANGE)
+        resolved_page_range = page_range or os.environ.get('PAGE_RANGE', None) or DEFAULT_PAGE_RANGE
         if isinstance(resolved_page_range, str):
             try:
                 resolved_page_range = ast.literal_eval(resolved_page_range)
             except (ValueError, SyntaxError) as e:
-                logger.warning(
-                    f'Invalid PAGE_RANGE format: {resolved_page_range}, using default. Error: {e}'
-                )
+                logger.warning(f'Invalid PAGE_RANGE format: {resolved_page_range}, using default. Error: {e}')
                 resolved_page_range = DEFAULT_PAGE_RANGE
 
-        urls_or_files: List[str] = self._preprocess(urls_or_files,
-                                                    resolved_max_file_size)
+        urls_or_files: List[str] = self._preprocess(urls_or_files, resolved_max_file_size)
 
         if self._verbose:
             logger.info(f'Preprocessed `urls_or_files`: {urls_or_files}')
@@ -383,7 +347,6 @@ class DocLoader:
 
 
 if __name__ == '__main__':
-
     urls = [
         'https://arxiv.org/pdf/2408.09869',
         # 'https://arxiv.org/pdf/2502.15214',

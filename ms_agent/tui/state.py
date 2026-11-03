@@ -5,6 +5,7 @@ A tiny value object the renderer writes (token usage, busy flag) and the input
 bar reads (to draw the persistent bottom status line). Keeping it in one place
 avoids threading half a dozen fields through both components.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

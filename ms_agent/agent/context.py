@@ -8,11 +8,12 @@ SkillService provides a lightweight facade over the existing skill catalog and
 prompt injector, falling back gracefully when the full skill infrastructure is
 not available.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from ms_agent.memory.service import MemoryService
@@ -80,8 +81,7 @@ class SkillService:
             )
         except Exception:  # noqa: BLE001
             logger.debug(
-                'SkillService: skill infrastructure not available, '
-                'degrading gracefully',
+                'SkillService: skill infrastructure not available, degrading gracefully',
                 exc_info=True,
             )
 

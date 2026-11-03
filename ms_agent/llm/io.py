@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Keep blocking model I/O out of the application's default executor."""
+
 import asyncio
 import contextvars
 import socket
@@ -13,8 +14,7 @@ _executor = ThreadPoolExecutor(thread_name_prefix='ms-agent-llm')
 
 async def run_in_llm_executor(func, *args):
     context = contextvars.copy_context()
-    return await asyncio.get_running_loop().run_in_executor(
-        _executor, context.run, func, *args)
+    return await asyncio.get_running_loop().run_in_executor(_executor, context.run, func, *args)
 
 
 def interrupt_stream(stream):
@@ -26,8 +26,7 @@ def interrupt_stream(stream):
     """
     try:
         response = getattr(stream, 'response', None)
-        if (response is not None and not response.is_closed
-                and response.http_version in ('HTTP/1.0', 'HTTP/1.1')):
+        if response is not None and not response.is_closed and response.http_version in ('HTTP/1.0', 'HTTP/1.1'):
             network = response.extensions.get('network_stream')
             sock = network.get_extra_info('socket') if network else None
             if sock is not None:

@@ -6,9 +6,9 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ms_agent.utils.file_lock import locked
 from ms_agent.project.store import JSONFileStore
 from ms_agent.project.types import Project, Session, SessionStatus, _now_iso
+from ms_agent.utils.file_lock import locked
 
 if TYPE_CHECKING:
     from ms_agent.session.session_log import SessionLog
@@ -25,9 +25,16 @@ class SessionManager:
 
     META_FILE = 'session.json'
 
-    def __init__(self, project: Project, *, base_dir: str | Path | None = None,
-                 auto_initialize: bool = True, require_project: bool = False) -> None:
+    def __init__(
+        self,
+        project: Project,
+        *,
+        base_dir: str | Path | None = None,
+        auto_initialize: bool = True,
+        require_project: bool = False,
+    ) -> None:
         from ms_agent.project.paths import global_home
+
         self._project = project
         self._base = Path(base_dir).expanduser().resolve() if base_dir is not None else global_home().resolve()
         self._projects_root = self._base / 'projects'
@@ -41,6 +48,7 @@ class SessionManager:
     def _check_project(self) -> None:
         if self._require_project:
             from ms_agent.project.manager import ProjectManager
+
             if ProjectManager(str(self._base), auto_initialize=False).get(self._project.id) is None:
                 raise ValueError(f'Project {self._project.id} not found')
 
@@ -51,6 +59,7 @@ class SessionManager:
         if not self._migration_marker.exists() and self._legacy_dir.is_dir():
             import os
             import tempfile
+
             for source in self._legacy_dir.rglob('*'):
                 if not source.is_file():
                     continue
@@ -80,8 +89,7 @@ class SessionManager:
         return self._sessions_dir
 
     @locked(lambda self, *args, **kwargs: self._projects_root)
-    def create(self, name: str = '', model: str | None = None,
-               model_provider: str | None = None) -> Session:
+    def create(self, name: str = '', model: str | None = None, model_provider: str | None = None) -> Session:
         self.initialize()
         session_id = uuid.uuid4().hex[:12]
         session_key = f'session_{session_id}'
@@ -96,12 +104,13 @@ class SessionManager:
         self._save_meta(session)
         return session
 
-    def fork(self, session_id: str, *, after_seq: int, name: str | None = None,
-             request_id: str | None = None) -> Session:
+    def fork(
+        self, session_id: str, *, after_seq: int, name: str | None = None, request_id: str | None = None
+    ) -> Session:
         """Branch after a completed reply without changing its source session."""
         from ms_agent.project.fork import fork_session
-        return fork_session(self, session_id, after_seq=after_seq,
-                            name=name, request_id=request_id)
+
+        return fork_session(self, session_id, after_seq=after_seq, name=name, request_id=request_id)
 
     def get(self, session_id: str) -> Session | None:
         store = self._meta_store(session_id)
@@ -130,8 +139,7 @@ class SessionManager:
                 try:
                     if 'status' in data and isinstance(data['status'], str):
                         data['status'] = SessionStatus(data['status'])
-                    sessions.append(Session(**{k: v for k, v in data.items()
-                                              if k in Session.__dataclass_fields__}))
+                    sessions.append(Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__}))
                 except (TypeError, KeyError, ValueError):
                     pass
         sessions.sort(key=lambda s: s.created_at, reverse=True)
@@ -141,8 +149,7 @@ class SessionManager:
         return self.update(session_id, status=status)
 
     @locked(lambda self, *args, **kwargs: self._projects_root)
-    def update(self, session_id: str, *, preserve_updated_at: bool = False,
-               **kwargs: object) -> Session:
+    def update(self, session_id: str, *, preserve_updated_at: bool = False, **kwargs: object) -> Session:
         self._check_project()
         old = self.get(session_id)
         if old is None:
@@ -166,6 +173,7 @@ class SessionManager:
 
     def transaction_lock(self):
         from ms_agent.utils.file_lock import file_lock
+
         return file_lock(self._projects_root)
 
     @locked(lambda self, *args, **kwargs: self._projects_root)
@@ -182,14 +190,15 @@ class SessionManager:
         """
         try:
             from ms_agent.session.session_log import SessionLog
+
             return SessionLog(
                 session_dir=str(self._sessions_dir / session.id),
                 session_key=session.session_key,
             )
         except ImportError:
             raise ImportError(
-                'ms_agent.session.SessionLog is not available. '
-                'Ensure the feat/memory_update branch (PR#912) is merged.')
+                'ms_agent.session.SessionLog is not available. Ensure the feat/memory_update branch (PR#912) is merged.'
+            )
 
     # -- internal --
 

@@ -115,11 +115,13 @@ def _coerce_str(value: Optional[bytes]) -> str:
 class LocalKernelSession:
     """Manage a local ipykernel instance for stateful notebook execution."""
 
-    def __init__(self,
-                 working_dir: Path,
-                 env: Optional[Dict[str, str]] = None,
-                 kernel_name: str = 'python3',
-                 extra_arguments: Optional[List[str]] = None):
+    def __init__(
+        self,
+        working_dir: Path,
+        env: Optional[Dict[str, str]] = None,
+        kernel_name: str = 'python3',
+        extra_arguments: Optional[List[str]] = None,
+    ):
         self.working_dir = working_dir
         self.env = env or {}
         self.kernel_name = kernel_name
@@ -141,9 +143,8 @@ class LocalKernelSession:
 
         logger.info('Starting local ipykernel session...')
         self._km = AsyncKernelManager(
-            kernel_name=self.kernel_name,
-            env=self.env,
-            cwd=str(self.working_dir))  # cwd may be ignored here
+            kernel_name=self.kernel_name, env=self.env, cwd=str(self.working_dir)
+        )  # cwd may be ignored here
 
         start_kernel_result = self._km.start_kernel(
             extra_arguments=self.extra_arguments,
@@ -221,10 +222,8 @@ class LocalKernelSession:
         if not self._client:
             raise RuntimeError('Kernel client not initialized')
 
-        execute_call = self._client.execute(
-            code=code, allow_stdin=False, stop_on_error=False)
-        msg_id = await execute_call if inspect.isawaitable(
-            execute_call) else execute_call
+        execute_call = self._client.execute(code=code, allow_stdin=False, stop_on_error=False)
+        msg_id = await execute_call if inspect.isawaitable(execute_call) else execute_call
 
         stdout_parts: List[str] = []
         stderr_parts: List[str] = []
@@ -248,8 +247,7 @@ class LocalKernelSession:
                 msg_type = msg['msg_type']
                 content = msg.get('content', {})
 
-                if msg_type == 'status' and content.get(
-                        'execution_state') == 'idle':
+                if msg_type == 'status' and content.get('execution_state') == 'idle':
                     break
                 if msg_type == 'stream':
                     name = content.get('name', 'stdout')
@@ -265,8 +263,7 @@ class LocalKernelSession:
                     elif 'text/html' in data:
                         display_parts.append(data['text/html'])
                     elif data:
-                        display_parts.append(
-                            json.dumps(data, ensure_ascii=False))
+                        display_parts.append(json.dumps(data, ensure_ascii=False))
                 elif msg_type == 'error':
                     error_payload = {
                         'ename': content.get('ename'),
@@ -283,23 +280,15 @@ class LocalKernelSession:
         except asyncio.TimeoutError as exc:
             logger.warning('Notebook execution timed out, interrupting kernel')
             await self.interrupt()
-            raise TimeoutError(
-                f'Notebook execution timed out after {timeout} seconds'
-            ) from exc
+            raise TimeoutError(f'Notebook execution timed out after {timeout} seconds') from exc
 
         self.execution_count += 1
         stdout = ''.join(stdout_parts).strip('\n')
         stderr = ''.join(stderr_parts).strip('\n')
         displays = '\n'.join(display_parts).strip('\n')
-        output_segments = [
-            segment for segment in [stdout, displays] if segment
-        ]
+        output_segments = [segment for segment in [stdout, displays] if segment]
 
-        return {
-            'output': '\n'.join(output_segments),
-            'stderr': stderr,
-            'error': error_payload
-        }
+        return {'output': '\n'.join(output_segments), 'stderr': stderr, 'error': error_payload}
 
 
 class LocalCodeExecutionTool(ToolBase):
@@ -311,47 +300,34 @@ class LocalCodeExecutionTool(ToolBase):
         self.output_dir = self._ws.root
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.tool_config = getattr(
-            getattr(config, 'tools', None), 'code_executor', None)
-        self._notebook_timeout = getattr(self.tool_config, 'notebook_timeout',
-                                         60) if self.tool_config else 60
-        self._python_timeout = getattr(self.tool_config, 'python_timeout',
-                                       30) if self.tool_config else 30
-        self._shell_timeout = getattr(self.tool_config, 'shell_timeout',
-                                      60) if self.tool_config else 60
+        self.tool_config = getattr(getattr(config, 'tools', None), 'code_executor', None)
+        self._notebook_timeout = getattr(self.tool_config, 'notebook_timeout', 60) if self.tool_config else 60
+        self._python_timeout = getattr(self.tool_config, 'python_timeout', 30) if self.tool_config else 30
+        self._shell_timeout = getattr(self.tool_config, 'shell_timeout', 60) if self.tool_config else 60
 
         kernel_env = self._build_env('kernel_env', inherit=False)
         shell_env = self._build_env('shell_env', inherit=False)
-        self.kernel_session = LocalKernelSession(
-            working_dir=self.output_dir, env=kernel_env)
+        self.kernel_session = LocalKernelSession(working_dir=self.output_dir, env=kernel_env)
         self.shell_env = shell_env
         self._kernel_lock = asyncio.Lock()
         self._initialized = False
         self._task_manager = None
         self._watcher_tasks: Set[asyncio.Task] = set()
 
-        shell_cfg = getattr(self.tool_config, 'shell',
-                            None) if self.tool_config else None
+        shell_cfg = getattr(self.tool_config, 'shell', None) if self.tool_config else None
         max_kb = 256
         if shell_cfg and getattr(shell_cfg, 'max_output_kb', None):
             max_kb = int(shell_cfg.max_output_kb)
-        self._artifacts = ArtifactManager(
-            self._ws.root, max_combined_bytes=max_kb * 1024)
+        self._artifacts = ArtifactManager(self._ws.root, max_combined_bytes=max_kb * 1024)
 
-        self.exclude_func(
-            getattr(getattr(config, 'tools', None), 'code_executor', None))
-        self._uses_kernel = any(self._function_enabled(name) for name in
-                                ('notebook_executor', 'reset_executor'))
+        self.exclude_func(getattr(getattr(config, 'tools', None), 'code_executor', None))
+        self._uses_kernel = any(self._function_enabled(name) for name in ('notebook_executor', 'reset_executor'))
         if self._function_enabled('file_operation'):
-            logger.warning(
-                'file_operation is not suggested to be included in local code execution tool.'
-            )
+            logger.warning('file_operation is not suggested to be included in local code execution tool.')
 
-        if (self._function_enabled('notebook_executor')
-                or self._function_enabled('python_executor')):
+        if self._function_enabled('notebook_executor') or self._function_enabled('python_executor'):
             results = self._check_dependencies()
-            logger.info(f'Dependency check results: {results}\n'
-                        f'Make sure to install the missing dependencies.')
+            logger.info(f'Dependency check results: {results}\nMake sure to install the missing dependencies.')
 
         logger.info('LocalCodeExecutionTool initialized')
 
@@ -390,13 +366,11 @@ class LocalCodeExecutionTool(ToolBase):
                     install_package(pip_name, import_name)
                     module = importlib.import_module(import_name)
                 except Exception as e:
-                    logger.error(
-                        f'Failed to install or import {pip_name}: {e}')
+                    logger.error(f'Failed to install or import {pip_name}: {e}')
                     results[pip_name] = None
                     continue
             except Exception as e:
-                logger.error(
-                    f'Unexpected error when importing {pip_name}: {e}')
+                logger.error(f'Unexpected error when importing {pip_name}: {e}')
                 results[pip_name] = None
                 continue
 
@@ -407,8 +381,7 @@ class LocalCodeExecutionTool(ToolBase):
     def _build_env(self, field: str, inherit: bool = False) -> Dict[str, str]:
         if inherit:
             env: Dict[str, str] = dict(os.environ)
-            logger.warning(
-                "It's not safe to inherit from the parent environment.")
+            logger.warning("It's not safe to inherit from the parent environment.")
         else:
             env: Dict[str, str] = {
                 'INHERITED_FROM_LOCAL': 'False',
@@ -430,10 +403,23 @@ class LocalCodeExecutionTool(ToolBase):
                 # processor. Keep the non-secret OS/user variables that cmd
                 # and programs using temporary/profile directories require.
                 for key in (
-                        'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP',
-                        'TMP', 'TMPDIR', 'USERPROFILE', 'HOMEDRIVE',
-                        'HOMEPATH', 'USERNAME', 'APPDATA', 'LOCALAPPDATA',
-                        'PROGRAMDATA', 'OS', 'PROCESSOR_ARCHITECTURE'):
+                    'SYSTEMROOT',
+                    'WINDIR',
+                    'COMSPEC',
+                    'PATHEXT',
+                    'TEMP',
+                    'TMP',
+                    'TMPDIR',
+                    'USERPROFILE',
+                    'HOMEDRIVE',
+                    'HOMEPATH',
+                    'USERNAME',
+                    'APPDATA',
+                    'LOCALAPPDATA',
+                    'PROGRAMDATA',
+                    'OS',
+                    'PROCESSOR_ARCHITECTURE',
+                ):
                     value = os.environ.get(key)
                     if value is not None:
                         env[key] = value
@@ -444,8 +430,7 @@ class LocalCodeExecutionTool(ToolBase):
         shell_path = os.environ.get('MS_AGENT_SHELL_PATH')
         if field == 'shell_env' and shell_path:
             env['PATH'] = shell_path
-            for key in ('VIRTUAL_ENV', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV',
-                        'PYTHONHOME', 'PYTHONPATH'):
+            for key in ('VIRTUAL_ENV', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV', 'PYTHONHOME', 'PYTHONPATH'):
                 env.pop(key, None)
 
         env_cfg = getattr(self.tool_config, field, None)
@@ -454,8 +439,7 @@ class LocalCodeExecutionTool(ToolBase):
             if value is None:
                 continue
             env[key] = str(value)
-        plugin_bins = getattr(self.tool_config, 'plugin_bin_paths',
-                              None) if self.tool_config else None
+        plugin_bins = getattr(self.tool_config, 'plugin_bin_paths', None) if self.tool_config else None
         if plugin_bins:
             paths = [str(path) for path in plugin_bins if path]
             if paths:
@@ -464,10 +448,8 @@ class LocalCodeExecutionTool(ToolBase):
 
     def _shell_environment_hint(self) -> str:
         path = self.shell_env.get('PATH', '')
-        python = (shutil.which('python', path=path)
-                  or shutil.which('python3', path=path))
-        pip = (shutil.which('pip', path=path)
-               or shutil.which('pip3', path=path))
+        python = shutil.which('python', path=path) or shutil.which('python3', path=path)
+        pip = shutil.which('pip', path=path) or shutil.which('pip3', path=path)
         return (
             f'Default Python: {python or "not found on PATH"}; '
             f'pip: {pip or "not found on PATH"}. '
@@ -477,7 +459,8 @@ class LocalCodeExecutionTool(ToolBase):
             'create a project virtualenv when different package versions '
             'are needed. When installing into a container system Python with '
             'uv, use `uv pip install --system`; project virtualenvs do not '
-            'need that flag.\n\n')
+            'need that flag.\n\n'
+        )
 
     async def connect(self) -> None:
         if self._initialized:
@@ -503,79 +486,69 @@ class LocalCodeExecutionTool(ToolBase):
                 Tool(
                     tool_name='notebook_executor',
                     server_name='code_executor',
-                    description=
-                    ('Execute Python code locally with state '
-                     'persistence in a Jupyter kernel environment. Variables, imports, and '
-                     'data are preserved across multiple calls within the same session. '
-                     'Supports pandas, numpy, matplotlib, seaborn for data analysis. '
-                     'Use print() to output results.'),
-                    parameters={
-                        'type': 'object',
-                        'properties': {
-                            'code': {
-                                'type':
-                                'string',
-                                'description':
-                                ('Python code to execute in the notebook session. '
-                                 'Can access previously defined variables. '
-                                 'Use print() for output.')
-                            },
-                            'description': {
-                                'type':
-                                'string',
-                                'description':
-                                'Brief description of what the code does'
-                            },
-                            'timeout': {
-                                'type': 'integer',
-                                'minimum': 1,
-                                'maximum': 600,
-                                'description': 'Execution timeout in seconds',
-                                'default': self._notebook_timeout
-                            }
-                        },
-                        'required': ['code'],
-                        'additionalProperties': False
-                    }),
-                Tool(
-                    tool_name='python_executor',
-                    server_name='code_executor',
-                    description=
-                    ('Execute stateless Python code locally. '
-                     'Each call runs in an isolated environment without '
-                     'persisting context between invocations. '
-                     'Supports pandas, numpy, matplotlib, seaborn, and other '
-                     'libraries you need for data analysis. '
-                     'Use print() to output results.'),
+                    description=(
+                        'Execute Python code locally with state '
+                        'persistence in a Jupyter kernel environment. Variables, imports, and '
+                        'data are preserved across multiple calls within the same session. '
+                        'Supports pandas, numpy, matplotlib, seaborn for data analysis. '
+                        'Use print() to output results.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'code': {
                                 'type': 'string',
-                                'description': 'Python code to execute'
+                                'description': (
+                                    'Python code to execute in the notebook session. '
+                                    'Can access previously defined variables. '
+                                    'Use print() for output.'
+                                ),
                             },
-                            'description': {
-                                'type':
-                                'string',
-                                'description':
-                                'Brief description of what the code does'
+                            'description': {'type': 'string', 'description': 'Brief description of what the code does'},
+                            'timeout': {
+                                'type': 'integer',
+                                'minimum': 1,
+                                'maximum': 600,
+                                'description': 'Execution timeout in seconds',
+                                'default': self._notebook_timeout,
                             },
+                        },
+                        'required': ['code'],
+                        'additionalProperties': False,
+                    },
+                ),
+                Tool(
+                    tool_name='python_executor',
+                    server_name='code_executor',
+                    description=(
+                        'Execute stateless Python code locally. '
+                        'Each call runs in an isolated environment without '
+                        'persisting context between invocations. '
+                        'Supports pandas, numpy, matplotlib, seaborn, and other '
+                        'libraries you need for data analysis. '
+                        'Use print() to output results.'
+                    ),
+                    parameters={
+                        'type': 'object',
+                        'properties': {
+                            'code': {'type': 'string', 'description': 'Python code to execute'},
+                            'description': {'type': 'string', 'description': 'Brief description of what the code does'},
                             'timeout': {
                                 'type': 'integer',
                                 'description': 'Execution timeout in seconds',
-                                'default': self._python_timeout
-                            }
+                                'default': self._python_timeout,
+                            },
                         },
                         'required': ['code'],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='shell_executor',
                     server_name='code_executor',
                     description=(
                         'Run a shell command.\n'
-                        '\n' + self._shell_environment_hint() +
-                        'Each call starts a NEW shell in the workspace root, '
+                        '\n' + self._shell_environment_hint() + 'Each call starts a NEW shell in the workspace root, '
                         f'which is {self._ws.root}. Nothing carries over '
                         'between calls: not the working directory, not '
                         'environment variables, and not an activated '
@@ -595,110 +568,74 @@ class LocalCodeExecutionTool(ToolBase):
                         'approval. Large output is spilled to '
                         '.ms_agent/artifacts and the result says where. Use '
                         'run_in_background=true for a long command: it returns '
-                        'a task_id immediately.'),
+                        'a task_id immediately.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
-                            'command': {
-                                'type': 'string',
-                                'description': 'Shell command to execute'
-                            },
+                            'command': {'type': 'string', 'description': 'Shell command to execute'},
                             'timeout': {
-                                'type':
-                                'integer',
-                                'minimum':
-                                1,
-                                'maximum':
-                                int(os.getenv('TOOL_CALL_TIMEOUT_MAX', '600')),
-                                'description':
-                                'Execution timeout in seconds (host-wide ceiling, default 600s; TOOL_CALL_TIMEOUT_MAX).',
-                                'default':
-                                self._shell_timeout
+                                'type': 'integer',
+                                'minimum': 1,
+                                'maximum': int(os.getenv('TOOL_CALL_TIMEOUT_MAX', '600')),
+                                'description': 'Execution timeout in seconds (host-wide ceiling, default 600s; TOOL_CALL_TIMEOUT_MAX).',
+                                'default': self._shell_timeout,
                             },
                             'run_in_background': {
                                 'type': 'boolean',
-                                'description':
-                                'If true, start the command asynchronously and return task_id (requires TaskManager).',
+                                'description': 'If true, start the command asynchronously and return task_id (requires TaskManager).',
                                 'default': False,
                             },
                             '__call_id': {
-                                'type':
-                                'string',
-                                'description':
-                                'Optional correlation id (injected by host when supported).',
+                                'type': 'string',
+                                'description': 'Optional correlation id (injected by host when supported).',
                             },
                         },
                         'required': ['command'],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='file_operation',
                     server_name='code_executor',
-                    description=
-                    'Perform file operations inside the local output directory',
+                    description='Perform file operations inside the local output directory',
                     parameters={
                         'type': 'object',
                         'properties': {
                             'operation': {
-                                'type':
-                                'string',
-                                'description':
-                                'Type of file operation to perform',
-                                'enum': [
-                                    'create', 'read', 'write', 'delete',
-                                    'list', 'exists'
-                                ]
-                            },
-                            'file_path': {
                                 'type': 'string',
-                                'description': 'Path to the file or directory'
+                                'description': 'Type of file operation to perform',
+                                'enum': ['create', 'read', 'write', 'delete', 'list', 'exists'],
                             },
-                            'content': {
-                                'type':
-                                'string',
-                                'description':
-                                'Content for write/create operations'
-                            },
-                            'encoding': {
-                                'type': 'string',
-                                'description': 'File encoding to use',
-                                'default': 'utf-8'
-                            }
+                            'file_path': {'type': 'string', 'description': 'Path to the file or directory'},
+                            'content': {'type': 'string', 'description': 'Content for write/create operations'},
+                            'encoding': {'type': 'string', 'description': 'File encoding to use', 'default': 'utf-8'},
                         },
                         'required': ['operation', 'file_path'],
-                        'additionalProperties': False
-                    }),
+                        'additionalProperties': False,
+                    },
+                ),
                 Tool(
                     tool_name='reset_executor',
                     server_name='code_executor',
-                    description=
-                    ('Restart the local ipykernel session to clear state. '
-                     'All variables, imports, and session state will be cleared.'
-                     ),
-                    parameters={
-                        'type': 'object',
-                        'properties': {},
-                        'required': [],
-                        'additionalProperties': False
-                    }),
+                    description=(
+                        'Restart the local ipykernel session to clear state. '
+                        'All variables, imports, and session state will be cleared.'
+                    ),
+                    parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},
+                ),
                 Tool(
                     tool_name='get_executor_info',
                     server_name='code_executor',
-                    description=
-                    'Get information about the local execution environment.',
-                    parameters={
-                        'type': 'object',
-                        'properties': {},
-                        'required': [],
-                        'additionalProperties': False
-                    }),
+                    description='Get information about the local execution environment.',
+                    parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},
+                ),
             ]
         }
 
         return tools
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         if not self._initialized:
             await self.connect()
 
@@ -713,28 +650,12 @@ class LocalCodeExecutionTool(ToolBase):
                 call_args['call_id'] = call_args.pop('__call_id')
             return await method(**call_args)
         except AttributeError:
-            return json.dumps(
-                {
-                    'success': False,
-                    'error': f'Unknown tool: {tool_name}'
-                },
-                ensure_ascii=False,
-                indent=2)
+            return json.dumps({'success': False, 'error': f'Unknown tool: {tool_name}'}, ensure_ascii=False, indent=2)
         except Exception as exc:
-            logger.error(
-                f'Tool execution error ({tool_name}): {exc}', exc_info=True)
-            return json.dumps(
-                {
-                    'success': False,
-                    'error': f'Tool execution error: {exc}'
-                },
-                ensure_ascii=False,
-                indent=2)
+            logger.error(f'Tool execution error ({tool_name}): {exc}', exc_info=True)
+            return json.dumps({'success': False, 'error': f'Tool execution error: {exc}'}, ensure_ascii=False, indent=2)
 
-    async def notebook_executor(self,
-                                code: str,
-                                description: str = '',
-                                timeout: Optional[int] = None) -> str:
+    async def notebook_executor(self, code: str, description: str = '', timeout: Optional[int] = None) -> str:
         exec_timeout = timeout or self._notebook_timeout
 
         try:
@@ -742,13 +663,8 @@ class LocalCodeExecutionTool(ToolBase):
                 result = await self.kernel_session.execute(code, exec_timeout)
         except Exception as exc:
             return json.dumps(
-                {
-                    'success': False,
-                    'description': description,
-                    'error': str(exc)
-                },
-                ensure_ascii=False,
-                indent=2)
+                {'success': False, 'description': description, 'error': str(exc)}, ensure_ascii=False, indent=2
+            )
 
         error_payload = result.get('error')
         stderr = result.get('stderr') or ''
@@ -765,15 +681,13 @@ class LocalCodeExecutionTool(ToolBase):
                 'success': error_payload is None,
                 'description': description,
                 'output': result.get('output', ''),
-                'error': stderr or None
+                'error': stderr or None,
             },
             ensure_ascii=False,
-            indent=2)
+            indent=2,
+        )
 
-    async def python_executor(self,
-                              code: str,
-                              description: str = '',
-                              timeout: Optional[int] = None) -> str:
+    async def python_executor(self, code: str, description: str = '', timeout: Optional[int] = None) -> str:
         exec_timeout = timeout or self._python_timeout
 
         def _exec_code():
@@ -781,35 +695,26 @@ class LocalCodeExecutionTool(ToolBase):
             stderr_buffer = io.StringIO()
             globals_dict: Dict[str, Any] = {'__builtins__': __builtins__}
             locals_dict: Dict[str, Any] = {}
-            with redirect_stdout(stdout_buffer), redirect_stderr(
-                    stderr_buffer):
+            with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
                 exec(code, globals_dict, locals_dict)
             return stdout_buffer.getvalue(), stderr_buffer.getvalue()
 
         try:
-            stdout, stderr = await asyncio.wait_for(
-                asyncio.to_thread(_exec_code), timeout=exec_timeout)
+            stdout, stderr = await asyncio.wait_for(asyncio.to_thread(_exec_code), timeout=exec_timeout)
         except asyncio.TimeoutError:
-            return json.dumps(
-                {
-                    'success':
-                    False,
-                    'description':
-                    description,
-                    'error':
-                    f'Python execution timed out after {exec_timeout} seconds'
-                },
-                ensure_ascii=False,
-                indent=2)
-        except Exception as exc:
             return json.dumps(
                 {
                     'success': False,
                     'description': description,
-                    'error': str(exc)
+                    'error': f'Python execution timed out after {exec_timeout} seconds',
                 },
                 ensure_ascii=False,
-                indent=2)
+                indent=2,
+            )
+        except Exception as exc:
+            return json.dumps(
+                {'success': False, 'description': description, 'error': str(exc)}, ensure_ascii=False, indent=2
+            )
 
         if not stderr:
             logger.info('Python code executed successfully')
@@ -821,16 +726,19 @@ class LocalCodeExecutionTool(ToolBase):
                 'success': not stderr,
                 'description': description,
                 'output': stdout.strip('\n'),
-                'error': stderr.strip('\n') or None
+                'error': stderr.strip('\n') or None,
             },
             ensure_ascii=False,
-            indent=2)
+            indent=2,
+        )
 
-    async def shell_executor(self,
-                             command: str,
-                             timeout: Optional[int] = None,
-                             run_in_background: bool = False,
-                             call_id: Optional[str] = None) -> str:
+    async def shell_executor(
+        self,
+        command: str,
+        timeout: Optional[int] = None,
+        run_in_background: bool = False,
+        call_id: Optional[str] = None,
+    ) -> str:
         exec_timeout = timeout or self._shell_timeout
         call_id = call_id or f'shell-{os.urandom(4).hex()}'
 
@@ -849,10 +757,8 @@ class LocalCodeExecutionTool(ToolBase):
             if self._task_manager is None:
                 return json.dumps(
                     {
-                        'success':
-                        False,
-                        'error':
-                        'run_in_background requires TaskManager (host must wire LLMAgent.task_manager).',
+                        'success': False,
+                        'error': 'run_in_background requires TaskManager (host must wire LLMAgent.task_manager).',
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -867,10 +773,7 @@ class LocalCodeExecutionTool(ToolBase):
                 )
             except FileNotFoundError as exc:
                 return json.dumps(
-                    {
-                        'success': False,
-                        'error': f'Shell not available: {exc}'
-                    },
+                    {'success': False, 'error': f'Shell not available: {exc}'},
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -884,8 +787,7 @@ class LocalCodeExecutionTool(ToolBase):
 
             async def _watcher() -> None:
                 try:
-                    stdout, stderr = await asyncio.wait_for(
-                        process.communicate(), timeout=exec_timeout)
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=exec_timeout)
                     stdout_text = _coerce_str(stdout).strip('\n')
                     stderr_text = _coerce_str(stderr).strip('\n')
                     success = process.returncode == 0
@@ -902,15 +804,12 @@ class LocalCodeExecutionTool(ToolBase):
                     )
                     await self._task_manager.complete(task_id, text)
                 except asyncio.TimeoutError:
-                    logger.warning(
-                        f'Shell command timed out after {exec_timeout} seconds (task {task_id})'
-                    )
+                    logger.warning(f'Shell command timed out after {exec_timeout} seconds (task {task_id})')
                     try:
                         process.kill()
                         await process.communicate()
                     except Exception as exc:  # noqa: B902
-                        logger.error(
-                            f'Process cleanup failed: {exc}', exc_info=True)
+                        logger.error(f'Process cleanup failed: {exc}', exc_info=True)
                     if self._task_manager:
                         await self._task_manager.fail(
                             task_id,
@@ -946,33 +845,22 @@ class LocalCodeExecutionTool(ToolBase):
             )
         except FileNotFoundError as exc:
             return json.dumps(
-                {
-                    'success': False,
-                    'error': f'Shell not available: {exc}'
-                },
+                {'success': False, 'error': f'Shell not available: {exc}'},
                 ensure_ascii=False,
                 indent=2,
             )
 
         try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=exec_timeout)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=exec_timeout)
         except asyncio.TimeoutError:
-            logger.warning(
-                f'Shell command timed out after {exec_timeout} seconds (call {call_id})'
-            )
+            logger.warning(f'Shell command timed out after {exec_timeout} seconds (call {call_id})')
             process.kill()
             try:
                 await process.communicate()
             except Exception as exc:  # noqa: B902
                 logger.error(f'Process cleanup failed: {exc}', exc_info=True)
             return json.dumps(
-                {
-                    'success':
-                    False,
-                    'error':
-                    f'Shell command timed out after {exec_timeout} seconds'
-                },
+                {'success': False, 'error': f'Shell command timed out after {exec_timeout} seconds'},
                 ensure_ascii=False,
                 indent=2,
             )
@@ -992,22 +880,15 @@ class LocalCodeExecutionTool(ToolBase):
             payload=payload,
         )
 
-    async def file_operation(self,
-                             operation: str,
-                             file_path: str,
-                             content: Optional[str] = None,
-                             encoding: Optional[str] = 'utf-8') -> str:
+    async def file_operation(
+        self, operation: str, file_path: str, content: Optional[str] = None, encoding: Optional[str] = 'utf-8'
+    ) -> str:
         try:
             target = self._resolve_path(file_path)
         except ValueError as exc:
             return json.dumps(
-                {
-                    'success': False,
-                    'error': str(exc),
-                    'file_path': file_path
-                },
-                ensure_ascii=False,
-                indent=2)
+                {'success': False, 'error': str(exc), 'file_path': file_path}, ensure_ascii=False, indent=2
+            )
 
         op = operation.lower()
 
@@ -1015,69 +896,40 @@ class LocalCodeExecutionTool(ToolBase):
             if op == 'create':
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.touch(exist_ok=True)
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'message': 'File created'
-                }
+                result = {'success': True, 'file_path': str(target), 'message': 'File created'}
             elif op == 'read':
                 data = target.read_text(encoding=encoding or 'utf-8')
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'output': data
-                }
+                result = {'success': True, 'file_path': str(target), 'output': data}
             elif op == 'write':
                 if content is None:
                     raise ValueError('Content is required for write operation')
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding=encoding or 'utf-8')
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'message': 'File written'
-                }
+                result = {'success': True, 'file_path': str(target), 'message': 'File written'}
             elif op == 'delete':
                 if target.is_dir():
                     shutil.rmtree(target)
                 else:
                     target.unlink(missing_ok=True)
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'message': 'Deleted successfully'
-                }
+                result = {'success': True, 'file_path': str(target), 'message': 'Deleted successfully'}
             elif op == 'list':
                 if not target.is_dir():
-                    raise ValueError(
-                        'List operation requires a directory path')
-                entries = [{
-                    'name':
-                    child.name,
-                    'is_dir':
-                    child.is_dir(),
-                    'size':
-                    child.stat().st_size if child.is_file() else None
-                } for child in sorted(target.iterdir())]
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'entries': entries
-                }
+                    raise ValueError('List operation requires a directory path')
+                entries = [
+                    {
+                        'name': child.name,
+                        'is_dir': child.is_dir(),
+                        'size': child.stat().st_size if child.is_file() else None,
+                    }
+                    for child in sorted(target.iterdir())
+                ]
+                result = {'success': True, 'file_path': str(target), 'entries': entries}
             elif op == 'exists':
-                result = {
-                    'success': True,
-                    'file_path': str(target),
-                    'exists': target.exists()
-                }
+                result = {'success': True, 'file_path': str(target), 'exists': target.exists()}
             else:
                 raise ValueError(f'Unsupported file operation: {operation}')
         except Exception as exc:
-            result = {
-                'success': False,
-                'file_path': str(target),
-                'error': str(exc)
-            }
+            result = {'success': False, 'file_path': str(target), 'error': str(exc)}
 
         return json.dumps(result, ensure_ascii=False, indent=2, default=str)
 
@@ -1086,16 +938,12 @@ class LocalCodeExecutionTool(ToolBase):
             async with self._kernel_lock:
                 await self.kernel_session.restart()
             return json.dumps(
-                {
-                    'success':
-                    True,
-                    'message':
-                    'Local kernel session restarted. State has been cleared.'
-                },
+                {'success': True, 'message': 'Local kernel session restarted. State has been cleared.'},
                 ensure_ascii=False,
-                indent=2)
+                indent=2,
+            )
         except Exception as exc:
-            return json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False, indent=2)  # yapf: disable
+            return json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False, indent=2)  # fmt: skip
 
     async def get_executor_info(self) -> str:
         info = {
@@ -1115,6 +963,5 @@ class LocalCodeExecutionTool(ToolBase):
         else:
             raw_path = raw_path.resolve()
         if not _is_relative_to(raw_path, self.output_dir):
-            raise ValueError(
-                'Access outside the output directory is not permitted')
+            raise ValueError('Access outside the output directory is not permitted')
         return raw_path

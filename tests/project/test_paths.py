@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Every framework-internal path resolves under <work>/.ms_agent/ (or the
 global ~/.ms_agent), so a work dir never accumulates scattered files."""
+
 from pathlib import Path
 
 from ms_agent.project import paths
@@ -9,9 +10,16 @@ from ms_agent.project import paths
 def test_work_local_helpers_under_ms_agent(tmp_path):
     w = str(tmp_path)
     internal = str(paths.local_internal_dir(w))
-    for fn in (paths.memory_dir, paths.snapshots_dir, paths.artifacts_dir,
-               paths.index_dir, paths.locks_dir, paths.tmp_dir,
-               paths.subagents_dir, paths.web_search_dir):
+    for fn in (
+        paths.memory_dir,
+        paths.snapshots_dir,
+        paths.artifacts_dir,
+        paths.index_dir,
+        paths.locks_dir,
+        paths.tmp_dir,
+        paths.subagents_dir,
+        paths.web_search_dir,
+    ):
         assert str(fn(w)).startswith(internal), fn.__name__
     assert str(paths.search_index_dir(w, 'rag')).startswith(internal)
     assert str(paths.stats_file(w)).startswith(internal)

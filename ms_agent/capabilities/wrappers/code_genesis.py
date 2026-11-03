@@ -16,34 +16,27 @@ _manager = get_default_manager()
 
 _CODE_GENESIS_INPUT_PROPERTIES: dict[str, Any] = {
     'query': {
-        'type':
-        'string',
-        'description':
-        ('Natural language description of the software project to generate. '
-         'e.g. "make a demo website with login page and dashboard"'),
+        'type': 'string',
+        'description': (
+            'Natural language description of the software project to generate. '
+            'e.g. "make a demo website with login page and dashboard"'
+        ),
     },
     'config_path': {
-        'type':
-        'string',
-        'description':
-        ('Path to the code_genesis config directory or workflow YAML. '
-         'Defaults to the bundled projects/code_genesis.'),
+        'type': 'string',
+        'description': (
+            'Path to the code_genesis config directory or workflow YAML. Defaults to the bundled projects/code_genesis.'
+        ),
     },
     'output_dir': {
-        'type':
-        'string',
-        'description':
-        'Directory for generated code output (auto-generated if omitted)',
+        'type': 'string',
+        'description': 'Directory for generated code output (auto-generated if omitted)',
     },
     'workflow': {
-        'type':
-        'string',
+        'type': 'string',
         'enum': ['standard', 'simple'],
-        'description':
-        ('Workflow mode: "standard" (7-stage) or "simple" (4-stage). '
-         'Default: standard'),
-        'default':
-        'standard',
+        'description': ('Workflow mode: "standard" (7-stage) or "simple" (4-stage). Default: standard'),
+        'default': 'standard',
     },
 }
 
@@ -54,14 +47,16 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     summary=(
         'Submit a code generation task that runs in the background. '
         'Returns a task_id immediately -- use check_code_genesis_progress '
-        'and get_code_genesis_result to poll results.'),
+        'and get_code_genesis_result to poll results.'
+    ),
     description=(
         'Launches the code_genesis multi-agent pipeline as a background '
         'subprocess. The pipeline generates production-ready software '
         'projects from natural language requirements through a 7-stage '
         '(or 4-stage simple) workflow including user story analysis, '
         'architecture design, code generation with LSP validation, and '
-        'runtime refinement.'),
+        'runtime refinement.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _CODE_GENESIS_INPUT_PROPERTIES,
@@ -70,15 +65,9 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     output_schema={
         'type': 'object',
         'properties': {
-            'task_id': {
-                'type': 'string'
-            },
-            'status': {
-                'type': 'string'
-            },
-            'output_dir': {
-                'type': 'string'
-            },
+            'task_id': {'type': 'string'},
+            'status': {'type': 'string'},
+            'output_dir': {'type': 'string'},
         },
     },
     tags=['code', 'generation', 'codegen', 'async', 'submit'],
@@ -90,19 +79,18 @@ CHECK_PROGRESS_DESCRIPTOR = CapabilityDescriptor(
     name='check_code_genesis_progress',
     version='0.1.0',
     granularity='tool',
-    summary=('Check the progress of a running code generation task. '
-             'Returns status and generated file counts.'),
+    summary=('Check the progress of a running code generation task. Returns status and generated file counts.'),
     description=(
         'Polls the status of a code_genesis task previously submitted via '
         'submit_code_genesis_task. Inspects the output directory to report '
-        'how many files have been generated so far.'),
+        'how many files have been generated so far.'
+    ),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
                 'type': 'string',
-                'description':
-                'The task_id returned by submit_code_genesis_task',
+                'description': 'The task_id returned by submit_code_genesis_task',
             },
         },
         'required': ['task_id'],
@@ -115,19 +103,21 @@ GET_RESULT_DESCRIPTOR = CapabilityDescriptor(
     name='get_code_genesis_result',
     version='0.1.0',
     granularity='tool',
-    summary=('Retrieve the result from a completed code generation task. '
-             'Returns the generated file tree and key file contents.'),
+    summary=(
+        'Retrieve the result from a completed code generation task. '
+        'Returns the generated file tree and key file contents.'
+    ),
     description=(
         'Reads the output directory from a completed code_genesis task '
         'and returns a file tree listing plus content of key files '
-        '(README, package.json, main entry points).'),
+        '(README, package.json, main entry points).'
+    ),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
                 'type': 'string',
-                'description':
-                'The task_id returned by submit_code_genesis_task',
+                'description': 'The task_id returned by submit_code_genesis_task',
             },
             'max_chars': {
                 'type': 'integer',
@@ -147,12 +137,14 @@ SYNC_DESCRIPTOR = CapabilityDescriptor(
     granularity='project',
     summary=(
         'Run code generation synchronously (BLOCKS until complete, 10-30 min). '
-        'Prefer submit_code_genesis_task for non-blocking usage.'),
+        'Prefer submit_code_genesis_task for non-blocking usage.'
+    ),
     description=(
         'Synchronous version that blocks until code generation is complete. '
         'WARNING: This can take 10-30 minutes. Use '
         'submit_code_genesis_task + check_code_genesis_progress + '
-        'get_code_genesis_result for non-blocking async operation.'),
+        'get_code_genesis_result for non-blocking async operation.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _CODE_GENESIS_INPUT_PROPERTIES,
@@ -167,14 +159,12 @@ SYNC_DESCRIPTOR = CapabilityDescriptor(
 def _find_default_config() -> str | None:
     """Locate the bundled code_genesis project directory."""
     candidates = [
-        os.path.join(
-            os.path.dirname(__file__), '..', '..', '..', 'projects',
-            'code_genesis'),
+        os.path.join(os.path.dirname(__file__), '..', '..', '..', 'projects', 'code_genesis'),
     ]
     try:
         from importlib import resources as importlib_resources
-        trav = importlib_resources.files('ms_agent').joinpath(
-            'projects', 'code_genesis')
+
+        trav = importlib_resources.files('ms_agent').joinpath('projects', 'code_genesis')
         candidates.insert(0, str(trav))
     except Exception:
         pass
@@ -185,10 +175,7 @@ def _find_default_config() -> str | None:
     return None
 
 
-def _build_cmd(config_path: str,
-               query: str,
-               output_dir: str,
-               workflow: str = 'standard') -> list[str]:
+def _build_cmd(config_path: str, query: str, output_dir: str, workflow: str = 'standard') -> list[str]:
     config_target = config_path
     if workflow == 'simple':
         simple_wf = os.path.join(config_path, 'simple_workflow.yaml')
@@ -246,7 +233,7 @@ def _build_file_tree(output_dir: str, max_depth: int = 4) -> str:
             return
         entries = [e for e in entries if e not in skip]
         for i, entry in enumerate(entries):
-            is_last = (i == len(entries) - 1)
+            is_last = i == len(entries) - 1
             connector = '└── ' if is_last else '├── '
             full = os.path.join(path, entry)
             lines.append(f'{prefix}{connector}{entry}')
@@ -324,8 +311,7 @@ async def _background_code_genesis(task: AsyncTask) -> dict[str, Any]:
         raise RuntimeError(stderr_tail)
 
 
-async def _handle_submit(args: dict[str, Any],
-                         **kwargs: Any) -> dict[str, Any]:
+async def _handle_submit(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     """Submit a code generation task to run in the background."""
     query: str = args['query']
     config_path = args.get('config_path', '') or _find_default_config() or ''
@@ -352,27 +338,23 @@ async def _handle_submit(args: dict[str, Any],
     )
 
     return {
-        'task_id':
-        task.task_id,
-        'status':
-        'running',
-        'output_dir':
-        output_dir,
-        'message':
-        (f'Code genesis task {task.task_id} started. '
-         f'Use check_code_genesis_progress(task_id="{task.task_id}") '
-         f'to poll status.'),
+        'task_id': task.task_id,
+        'status': 'running',
+        'output_dir': output_dir,
+        'message': (
+            f'Code genesis task {task.task_id} started. '
+            f'Use check_code_genesis_progress(task_id="{task.task_id}") '
+            f'to poll status.'
+        ),
     }
 
 
-async def _handle_check_progress(args: dict[str, Any],
-                                 **kwargs: Any) -> dict[str, Any]:
+async def _handle_check_progress(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     """Check the progress of a running code generation task."""
     return _manager.check(args['task_id'], progress_fn=_progress_fn)
 
 
-async def _handle_get_result(args: dict[str, Any],
-                             **kwargs: Any) -> dict[str, Any]:
+async def _handle_get_result(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     """Retrieve the result from a completed code generation task."""
     task_id: str = args['task_id']
     max_chars: int = args.get('max_chars', 50000)
@@ -384,13 +366,9 @@ async def _handle_get_result(args: dict[str, Any],
     if task.status == 'running':
         file_info = _count_generated_files(task.metadata.get('output_dir', ''))
         return {
-            'task_id':
-            task_id,
-            'status':
-            'running',
-            'message':
-            ('Code generation is still in progress. '
-             f'Files generated so far: {file_info["total_files"]}.'),
+            'task_id': task_id,
+            'status': 'running',
+            'message': (f'Code generation is still in progress. Files generated so far: {file_info["total_files"]}.'),
         }
 
     if task.status == 'failed':
@@ -417,19 +395,17 @@ async def _handle_get_result(args: dict[str, Any],
             if fname in key_names and chars_used < max_chars:
                 fpath = os.path.join(root, fname)
                 try:
-                    with open(
-                            fpath, 'r', encoding='utf-8',
-                            errors='replace') as f:
+                    with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
                         content = f.read()
                     remaining = max_chars - chars_used
                     if len(content) > remaining:
                         content = content[:remaining] + '\n... [truncated]'
-                    key_files_content.append({
-                        'path':
-                        os.path.relpath(fpath, output_dir),
-                        'content':
-                        content,
-                    })
+                    key_files_content.append(
+                        {
+                            'path': os.path.relpath(fpath, output_dir),
+                            'content': content,
+                        }
+                    )
                     chars_used += len(content)
                 except Exception:
                     pass
@@ -452,10 +428,7 @@ async def _handle_sync(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     workflow = args.get('workflow', 'standard')
 
     if not config_path or not os.path.isdir(config_path):
-        return {
-            'status': 'failed',
-            'error': f'Config not found: {config_path}'
-        }
+        return {'status': 'failed', 'error': f'Config not found: {config_path}'}
 
     if not output_dir:
         ts = time.strftime('%Y%m%d_%H%M%S')

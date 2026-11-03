@@ -8,18 +8,17 @@ import traceback
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from omegaconf import DictConfig, ListConfig, OmegaConf
 from queue import Empty as QueueEmpty
 from queue import Full as QueueFull
 from typing import Any, Callable, Dict, List, Optional, Union
+
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from ms_agent.agent.loader import AgentLoader
 from ms_agent.llm.utils import Message, Tool
 from ms_agent.tools.base import ToolBase
 from ms_agent.utils import get_logger
-from ms_agent.utils.stats import (append_stats, build_timing_record,
-                                  get_stats_path, monotonic, now_iso,
-                                  summarize_usage)
+from ms_agent.utils.stats import append_stats, build_timing_record, get_stats_path, monotonic, now_iso, summarize_usage
 from ms_agent.utils.stream_writer import SubAgentStreamWriter, _msg_to_dict
 
 logger = get_logger()
@@ -76,8 +75,7 @@ def _message_from_data(data: Any) -> Message:
 def _build_sub_agent(spec: _AgentToolSpec, default_trust_remote_code: bool):
     if spec.inline_config is not None:
         container = _to_container(spec.inline_config)
-        base_override = OmegaConf.create(container) if isinstance(
-            container, dict) else OmegaConf.create({})
+        base_override = OmegaConf.create(container) if isinstance(container, dict) else OmegaConf.create({})
     else:
         base_override = OmegaConf.create({})
     # Sub-agents default snapshots off in LLMAgent unless enable_snapshots is set
@@ -142,18 +140,11 @@ def _run_agent_in_subprocess(
                     history = chunk
                     if stream_events and event_queue is not None:
                         serialized_chunk = {
-                            'kind':
-                            'messages',
-                            'messages': [
-                                _message_from_data(msg).to_dict()
-                                for msg in (history or [])
-                            ],
+                            'kind': 'messages',
+                            'messages': [_message_from_data(msg).to_dict() for msg in (history or [])],
                         }
                         try:
-                            event_queue.put_nowait({
-                                'type': 'chunk',
-                                'history': serialized_chunk
-                            })
+                            event_queue.put_nowait({'type': 'chunk', 'history': serialized_chunk})
                         except QueueFull:
                             # Avoid blocking sub-agent progress if UI/event consumer
                             # is temporarily slower than chunk production.
@@ -162,16 +153,11 @@ def _run_agent_in_subprocess(
                 result = history
             if isinstance(result, list):
                 return {
-                    'kind':
-                    'messages',
-                    'messages':
-                    [_message_from_data(msg).to_dict() for msg in result],
-                    'streamed_chunks':
-                    chunk_count,
-                    'agent_tag':
-                    getattr(sub_agent, 'tag', None),
-                    'agent_type':
-                    getattr(sub_agent, 'AGENT_NAME', None),
+                    'kind': 'messages',
+                    'messages': [_message_from_data(msg).to_dict() for msg in result],
+                    'streamed_chunks': chunk_count,
+                    'agent_tag': getattr(sub_agent, 'tag', None),
+                    'agent_type': getattr(sub_agent, 'AGENT_NAME', None),
                 }
             return {
                 'kind': 'raw',
@@ -183,13 +169,15 @@ def _run_agent_in_subprocess(
 
         result_queue.put({'ok': True, 'result': asyncio.run(_runner())})
     except BaseException as exc:  # pragma: no cover
-        result_queue.put({
-            'ok': False,
-            'error': str(exc),
-            'traceback': traceback.format_exc(),
-            'agent_tag': getattr(sub_agent, 'tag', None),
-            'agent_type': getattr(sub_agent, 'AGENT_NAME', None),
-        })
+        result_queue.put(
+            {
+                'ok': False,
+                'error': str(exc),
+                'traceback': traceback.format_exc(),
+                'agent_tag': getattr(sub_agent, 'tag', None),
+                'agent_type': getattr(sub_agent, 'AGENT_NAME', None),
+            }
+        )
 
 
 class AgentTool(ToolBase):
@@ -228,24 +216,23 @@ class AgentTool(ToolBase):
         'split a website generation task into sub tasks, '
         'you plan the framework, include code files and classes and functions, and give the detail '
         'information to the system and query field of the subtask, then '
-        'let each subtask to write a single file')
+        'let each subtask to write a single file'
+    )
 
     _SPLIT_TASK_PARAMETERS = {
         'type': 'object',
         'properties': {
             'tasks': {
-                'type':
-                'array',
-                'description':
-                ('MANDATORY: Each element is a dict, which must contains two fields: '
-                 '`system`(str) and `query`(str) to start one sub task.'),
+                'type': 'array',
+                'description': (
+                    'MANDATORY: Each element is a dict, which must contains two fields: '
+                    '`system`(str) and `query`(str) to start one sub task.'
+                ),
             },
             'execution_mode': {
-                'type':
-                'string',
+                'type': 'string',
                 'enum': ['sequential', 'parallel'],
-                'description':
-                'Whether to run sub-tasks sequentially or in parallel.',
+                'description': 'Whether to run sub-tasks sequentially or in parallel.',
             },
         },
         'required': ['tasks'],
@@ -260,8 +247,7 @@ class AgentTool(ToolBase):
             split_cfg = tools_cfg.split_task
             tag_prefix = getattr(split_cfg, 'tag_prefix', 'worker-')
             run_in_thread = bool(getattr(split_cfg, 'run_in_thread', True))
-            run_in_process = bool(
-                getattr(split_cfg, 'run_in_process', run_in_thread))
+            run_in_process = bool(getattr(split_cfg, 'run_in_process', run_in_thread))
             builtin_spec = _AgentToolSpec(
                 tool_name='split_to_sub_task',
                 description=self._SPLIT_TASK_DESCRIPTION,
@@ -290,13 +276,10 @@ class AgentTool(ToolBase):
                 self._build_server_index()
             return
 
-        if isinstance(agent_tools_cfg, DictConfig) and hasattr(
-                agent_tools_cfg, 'definitions'):
+        if isinstance(agent_tools_cfg, DictConfig) and hasattr(agent_tools_cfg, 'definitions'):
             definitions = agent_tools_cfg.definitions
-            server_name = getattr(agent_tools_cfg, 'server_name',
-                                  self.DEFAULT_SERVER)
-            self._enable_stats = bool(
-                getattr(agent_tools_cfg, 'enable_stats', False))
+            server_name = getattr(agent_tools_cfg, 'server_name', self.DEFAULT_SERVER)
+            self._enable_stats = bool(getattr(agent_tools_cfg, 'enable_stats', False))
         else:
             definitions = agent_tools_cfg
             server_name = self.DEFAULT_SERVER
@@ -320,25 +303,22 @@ class AgentTool(ToolBase):
                 continue
             if spec.tool_name in self._specs:
                 logger.warning(
-                    'Duplicate agent tool name detected: %s, overriding previous definition.',
-                    spec.tool_name)
+                    'Duplicate agent tool name detected: %s, overriding previous definition.', spec.tool_name
+                )
             self._specs[spec.tool_name] = spec
 
         self._build_server_index()
 
-    def _build_spec(self, cfg: Union[DictConfig, Dict[str, Any]],
-                    default_server, idx: int) -> Optional[_AgentToolSpec]:
+    def _build_spec(self, cfg: Union[DictConfig, Dict[str, Any]], default_server, idx: int) -> Optional[_AgentToolSpec]:
         cfg = cfg or {}
         cfg = cfg if isinstance(cfg, DictConfig) else DictConfig(cfg)
-        tool_name = getattr(cfg, 'tool_name', None) or getattr(
-            cfg, 'name', None)
+        tool_name = getattr(cfg, 'tool_name', None) or getattr(cfg, 'name', None)
         if not tool_name:
-            logger.warning(
-                'agent_tools[%s] missing tool_name/name field, skip.', idx)
+            logger.warning('agent_tools[%s] missing tool_name/name field, skip.', idx)
             return None
 
         mode = getattr(cfg, 'mode', None)
-        is_dynamic = (mode == 'dynamic')
+        is_dynamic = mode == 'dynamic'
 
         agent_cfg = getattr(cfg, 'agent', None)
         config_path = getattr(cfg, 'config_path', None)
@@ -346,17 +326,13 @@ class AgentTool(ToolBase):
         if agent_cfg is not None:
             config_path = getattr(agent_cfg, 'config_path', config_path)
             inline_cfg = getattr(agent_cfg, 'config', inline_cfg)
-        inline_cfg = _to_container(
-            inline_cfg) if inline_cfg is not None else None
+        inline_cfg = _to_container(inline_cfg) if inline_cfg is not None else None
 
         if not is_dynamic and not config_path and inline_cfg is None:
-            logger.warning(
-                'agent_tools[%s] (%s) missing config_path/config definition.',
-                idx, tool_name)
+            logger.warning('agent_tools[%s] (%s) missing config_path/config definition.', idx, tool_name)
             return None
 
-        description = getattr(cfg, 'description',
-                              f'Invoke agent "{tool_name}" as a tool.')
+        description = getattr(cfg, 'description', f'Invoke agent "{tool_name}" as a tool.')
         parameters = getattr(cfg, 'parameters', None)
         if parameters is None:
             if is_dynamic:
@@ -366,10 +342,8 @@ class AgentTool(ToolBase):
                     'type': 'object',
                     'properties': {
                         'request': {
-                            'type':
-                            'string',
-                            'description':
-                            f'Task description forwarded to the sub-agent {tool_name}.'
+                            'type': 'string',
+                            'description': f'Task description forwarded to the sub-agent {tool_name}.',
                         },
                     },
                     'required': ['request'],
@@ -378,9 +352,7 @@ class AgentTool(ToolBase):
         else:
             parameters = _to_container(parameters)
 
-        tag_prefix = getattr(
-            cfg, 'tag_prefix',
-            f'{getattr(self.config, "tag", "agent")}-{tool_name}-')
+        tag_prefix = getattr(cfg, 'tag_prefix', f'{getattr(self.config, "tag", "agent")}-{tool_name}-')
 
         request_field = getattr(cfg, 'request_field', 'request')
         input_template = getattr(cfg, 'input_template', None)
@@ -397,8 +369,7 @@ class AgentTool(ToolBase):
         env_cfg = _to_container(env_cfg) if env_cfg is not None else None
 
         disallowed_raw = getattr(cfg, 'disallowed_tools', None)
-        disallowed_tools = _to_container(
-            disallowed_raw) if disallowed_raw is not None else None
+        disallowed_tools = _to_container(disallowed_raw) if disallowed_raw is not None else None
         if isinstance(disallowed_tools, list):
             disallowed_tools = [str(t) for t in disallowed_tools]
         elif disallowed_tools is not None:
@@ -407,8 +378,7 @@ class AgentTool(ToolBase):
         if config_path and not os.path.isabs(config_path):
             base_dir = getattr(self.config, 'local_dir', None)
             if base_dir:
-                config_path = os.path.normpath(
-                    os.path.join(base_dir, config_path))
+                config_path = os.path.normpath(os.path.join(base_dir, config_path))
 
         return _AgentToolSpec(
             tool_name=tool_name,
@@ -443,7 +413,8 @@ class AgentTool(ToolBase):
                     server_name=spec.server_name,
                     description=spec.description,
                     parameters=spec.parameters,
-                ))
+                )
+            )
         self._server_tools = server_map
 
     async def connect(self):
@@ -492,9 +463,7 @@ class AgentTool(ToolBase):
             return
 
         for entry in {
-                item['namespaced_name']:
-                registry.resolve(item['namespaced_name'])
-                for item in registry.list_all()
+            item['namespaced_name']: registry.resolve(item['namespaced_name']) for item in registry.list_all()
         }.values():
             if entry is None:
                 continue
@@ -508,6 +477,7 @@ class AgentTool(ToolBase):
             namespaced_tool = entry.namespaced_name.replace(':', '---')
             if namespaced_tool != spec.tool_name:
                 from dataclasses import replace
+
                 namespaced_spec = replace(spec, tool_name=namespaced_tool)
                 self._specs[namespaced_spec.tool_name] = namespaced_spec
                 self._plugin_spec_keys.add(namespaced_spec.tool_name)
@@ -530,8 +500,7 @@ class AgentTool(ToolBase):
         2. ``config.agent_stream_file``
         Defaults to ``False``.
         """
-        agent_tools_cfg = getattr(
-            getattr(self.config, 'tools', None), 'agent_tools', None)
+        agent_tools_cfg = getattr(getattr(self.config, 'tools', None), 'agent_tools', None)
         if agent_tools_cfg is not None:
             val = getattr(agent_tools_cfg, 'enable_stream_file', None)
             if val is not None:
@@ -544,8 +513,7 @@ class AgentTool(ToolBase):
         Checks ``config.tools.agent_tools.stream_file_dir`` first, then falls
         back to ``config.output_dir``.
         """
-        agent_tools_cfg = getattr(
-            getattr(self.config, 'tools', None), 'agent_tools', None)
+        agent_tools_cfg = getattr(getattr(self.config, 'tools', None), 'agent_tools', None)
         if agent_tools_cfg is not None:
             override = getattr(agent_tools_cfg, 'stream_file_dir', None)
             if override:
@@ -558,23 +526,19 @@ class AgentTool(ToolBase):
         Controlled by ``config.tools.agent_tools.stream_include_in_result``
         (defaults to ``True`` when stream files are enabled).
         """
-        agent_tools_cfg = getattr(
-            getattr(self.config, 'tools', None), 'agent_tools', None)
+        agent_tools_cfg = getattr(getattr(self.config, 'tools', None), 'agent_tools', None)
         if agent_tools_cfg is not None:
             val = getattr(agent_tools_cfg, 'stream_include_in_result', None)
             if val is not None:
                 return bool(val)
         return True
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         if tool_name not in self._specs:
             raise ValueError(f'Agent tool "{tool_name}" not registered.')
         spec = self._specs[tool_name]
         if spec.server_name != server_name:
-            raise ValueError(
-                f'Agent tool "{tool_name}" is not part of server "{server_name}".'
-            )
+            raise ValueError(f'Agent tool "{tool_name}" is not part of server "{server_name}".')
 
         call_id = None
         if isinstance(tool_args, dict) and '__call_id' in tool_args:
@@ -590,28 +554,23 @@ class AgentTool(ToolBase):
         payload = self._build_payload(tool_args, spec)
 
         if spec.run_in_background:
-            return await self._launch_background(payload, spec,
-                                                 effective_call_id)
+            return await self._launch_background(payload, spec, effective_call_id)
 
         use_subprocess = spec.run_in_thread and spec.run_in_process
         if use_subprocess:
-            messages = await self._run_agent(
-                None, payload, spec, call_id=effective_call_id)
+            messages = await self._run_agent(None, payload, spec, call_id=effective_call_id)
             result_str = self._format_output(messages, spec)
-            return self._maybe_append_stream_path(result_str,
-                                                  effective_call_id)
+            return self._maybe_append_stream_path(result_str, effective_call_id)
 
         # Pure async/await with optional escape-to-background support.
-        result = await self._run_sync_escapable(payload, spec,
-                                                effective_call_id)
+        result = await self._run_sync_escapable(payload, spec, effective_call_id)
         if isinstance(result, str):
             # Already formatted: escaped to background, returns async_launched JSON.
             return result
         result_str = self._format_output(result, spec)
         return self._maybe_append_stream_path(result_str, effective_call_id)
 
-    def _maybe_append_stream_path(self, result_str: str,
-                                  effective_call_id: str) -> str:
+    def _maybe_append_stream_path(self, result_str: str, effective_call_id: str) -> str:
         """Append a human- and LLM-readable note about the step-by-step execution
         log to *result_str* if streaming is enabled.
 
@@ -626,16 +585,16 @@ class AgentTool(ToolBase):
         path = self._stream_paths.pop(effective_call_id, None)
         if path:
             result_str += (
-                f'\n\n[Note: The sub-agent\'s step-by-step execution trace '
+                f"\n\n[Note: The sub-agent's step-by-step execution trace "
                 f'(messages, tool calls, intermediate reasoning) was streamed '
-                f'incrementally to: {path}]')
+                f'incrementally to: {path}]'
+            )
         return result_str
 
     def _build_agent(self, spec: _AgentToolSpec):
         return _build_sub_agent(spec, self._trust_remote_code)
 
-    async def _run_sync_escapable(self, payload: Any, spec: _AgentToolSpec,
-                                  call_id: Optional[str]) -> Any:
+    async def _run_sync_escapable(self, payload: Any, spec: _AgentToolSpec, call_id: Optional[str]) -> Any:
         """Run sub-agent inline (pure async/await).
 
         If spec.sync_timeout_s is set, the call auto-escapes to background after
@@ -648,17 +607,14 @@ class AgentTool(ToolBase):
         escape_event = asyncio.Event()
         effective_call_id = call_id or uuid.uuid4().hex[:12]
 
-        run_task = asyncio.create_task(
-            self._run_agent(None, payload, spec, call_id=effective_call_id))
+        run_task = asyncio.create_task(self._run_agent(None, payload, spec, call_id=effective_call_id))
 
-        self._active_sync_tasks[effective_call_id] = (run_task, spec, payload,
-                                                      escape_event)
+        self._active_sync_tasks[effective_call_id] = (run_task, spec, payload, escape_event)
 
         try:
             if spec.sync_timeout_s and spec.sync_timeout_s > 0:
                 escape_wait_task = asyncio.create_task(escape_event.wait())
-                sleep_task = asyncio.create_task(
-                    asyncio.sleep(spec.sync_timeout_s))
+                sleep_task = asyncio.create_task(asyncio.sleep(spec.sync_timeout_s))
                 _, pending = await asyncio.wait(
                     [run_task, escape_wait_task, sleep_task],
                     return_when=asyncio.FIRST_COMPLETED,
@@ -666,8 +622,7 @@ class AgentTool(ToolBase):
                 for t in pending:
                     t.cancel()
                 if not run_task.done():
-                    return await self._escape_running_task(
-                        effective_call_id, run_task, spec, payload)
+                    return await self._escape_running_task(effective_call_id, run_task, spec, payload)
             else:
                 # No timeout: wait for completion or explicit escape signal.
                 escape_task = asyncio.create_task(escape_event.wait())
@@ -678,21 +633,20 @@ class AgentTool(ToolBase):
                 for t in pending:
                     t.cancel()
                 if not run_task.done():
-                    return await self._escape_running_task(
-                        effective_call_id, run_task, spec, payload)
+                    return await self._escape_running_task(effective_call_id, run_task, spec, payload)
 
             return run_task.result()
         finally:
             self._active_sync_tasks.pop(effective_call_id, None)
 
-    async def _escape_running_task(self, call_id: str,
-                                   run_task: 'asyncio.Task[Any]',
-                                   spec: _AgentToolSpec, payload: Any) -> str:
+    async def _escape_running_task(
+        self, call_id: str, run_task: 'asyncio.Task[Any]', spec: _AgentToolSpec, payload: Any
+    ) -> str:
         """Cancel the in-progress sync task and re-launch it as a background subprocess."""
         if self._task_manager is None:
             raise RuntimeError(
-                f'AgentTool "{spec.tool_name}" tried to escape to background but '
-                'no TaskManager is attached.')
+                f'AgentTool "{spec.tool_name}" tried to escape to background but no TaskManager is attached.'
+            )
 
         run_task.cancel()
         try:
@@ -723,22 +677,21 @@ class AgentTool(ToolBase):
         escape_event.set()
         return True
 
-    async def _launch_background(self, payload: Any, spec: _AgentToolSpec,
-                                 call_id: Optional[str]) -> str:
+    async def _launch_background(self, payload: Any, spec: _AgentToolSpec, call_id: Optional[str]) -> str:
         """Fire-and-forget: start subprocess, register with TaskManager, return immediately."""
         if self._task_manager is None:
             raise RuntimeError(
                 f'AgentTool "{spec.tool_name}" has run_in_background=true but '
                 'no TaskManager is attached. Ensure LLMAgent wires task_manager '
-                'into AgentTool via set_task_manager().')
+                'into AgentTool via set_task_manager().'
+            )
 
         ctx = mp.get_context('spawn')
         result_queue = ctx.Queue(maxsize=1)
         process_payload = self._serialize_payload_for_process(payload)
         proc = ctx.Process(
             target=_run_agent_in_subprocess,
-            args=(spec, self._trust_remote_code, process_payload, False, None,
-                  result_queue),
+            args=(spec, self._trust_remote_code, process_payload, False, None, result_queue),
             name=f'agent_tool_bg_{spec.tool_name}',
         )
         proc.start()
@@ -755,9 +708,7 @@ class AgentTool(ToolBase):
             try:
                 result = await self._wait_process_result(proc, result_queue)
                 if result is None or not result.get('ok'):
-                    err = (result
-                           or {}).get('error',
-                                      'subprocess exited without result')
+                    err = (result or {}).get('error', 'subprocess exited without result')
                     tb = (result or {}).get('traceback', '')
                     if tb:
                         logger.warning(tb)
@@ -787,10 +738,10 @@ class AgentTool(ToolBase):
                 'task_id': task_id,
                 'tool_name': spec.tool_name,
             },
-            ensure_ascii=False)
+            ensure_ascii=False,
+        )
 
-    async def _call_dynamic(self, tool_args: dict,
-                            spec: '_AgentToolSpec') -> str:
+    async def _call_dynamic(self, tool_args: dict, spec: '_AgentToolSpec') -> str:
         if spec.tool_name == 'Task' and self._plugin_agent_registry is not None:
             return await self._call_plugin_task(tool_args, spec)
 
@@ -802,13 +753,11 @@ class AgentTool(ToolBase):
         async def _run_one(i: int, task: dict) -> str:
             system = task.get('system', '')
             query = task.get('query', '')
-            task_config = dict(base_config) if isinstance(base_config,
-                                                          dict) else {}
+            task_config = dict(base_config) if isinstance(base_config, dict) else {}
             # Avoid inheriting the parent agent's snapshot preference into each
             # split sub-task; sub-agents use ms_agent_subagent defaults instead.
             task_config.pop('enable_snapshots', None)
-            if 'prompt' not in task_config or not isinstance(
-                    task_config.get('prompt'), dict):
+            if 'prompt' not in task_config or not isinstance(task_config.get('prompt'), dict):
                 task_config['prompt'] = {}
             task_config['prompt']['system'] = system
             sub_spec = _AgentToolSpec(
@@ -860,12 +809,11 @@ class AgentTool(ToolBase):
         formatted = ''
         for i, content in enumerate(res_list):
             if len(content) > spec.max_subtask_output_chars:
-                content = content[:spec.max_subtask_output_chars]
+                content = content[: spec.max_subtask_output_chars]
             formatted += f'SubTask{i}:{content}\n'
         return formatted
 
-    async def _call_plugin_task(self, tool_args: dict,
-                                spec: '_AgentToolSpec') -> str:
+    async def _call_plugin_task(self, tool_args: dict, spec: '_AgentToolSpec') -> str:
         from ms_agent.plugins.agents import AgentDelegate
 
         registry = self._plugin_agent_registry
@@ -874,33 +822,30 @@ class AgentTool(ToolBase):
                 {
                     'error': 'No plugin subagents are registered.',
                 },
-                ensure_ascii=False)
+                ensure_ascii=False,
+            )
 
         entry = AgentDelegate.resolve_task_entry(registry, tool_args)
         if entry is None:
             agent_name = AgentDelegate.resolve_task_agent_name(tool_args)
-            available = ', '.join(item['namespaced_name']
-                                  for item in registry.list_all())
+            available = ', '.join(item['namespaced_name'] for item in registry.list_all())
             return json.dumps(
                 {
-                    'error': (f'Unknown plugin subagent {agent_name!r}. '
-                              f'Available: {available}'),
+                    'error': (f'Unknown plugin subagent {agent_name!r}. Available: {available}'),
                 },
-                ensure_ascii=False)
+                ensure_ascii=False,
+            )
 
         delegate_spec = AgentDelegate.to_agent_tool_spec(
             entry,
             self.config,
             trust_remote_code=self._trust_remote_code,
         )
-        prompt = (
-            tool_args.get('prompt') or tool_args.get('request')
-            or tool_args.get('description') or '')
+        prompt = tool_args.get('prompt') or tool_args.get('request') or tool_args.get('description') or ''
         if not isinstance(prompt, str):
             prompt = json.dumps(prompt, ensure_ascii=False)
 
-        use_subprocess = (
-            delegate_spec.run_in_thread and delegate_spec.run_in_process)
+        use_subprocess = delegate_spec.run_in_thread and delegate_spec.run_in_process
         agent = None if use_subprocess else self._build_agent(delegate_spec)
         messages = await self._run_agent(agent, prompt, delegate_spec)
         return self._format_output(messages, delegate_spec)
@@ -955,11 +900,9 @@ class AgentTool(ToolBase):
         for _, proc in active:
             self._terminate_process(proc, reason=reason)
 
-    async def _wait_process_result(self,
-                                   proc: mp.Process,
-                                   result_queue: Any,
-                                   on_poll: Optional[Callable[[],
-                                                              None]] = None):
+    async def _wait_process_result(
+        self, proc: mp.Process, result_queue: Any, on_poll: Optional[Callable[[], None]] = None
+    ):
         exited_at = None
         while True:
             if on_poll is not None:
@@ -974,16 +917,13 @@ class AgentTool(ToolBase):
             if not proc.is_alive():
                 if exited_at is None:
                     exited_at = monotonic()
-                elif (monotonic()
-                      - exited_at) >= self._PROCESS_EXIT_RESULT_GRACE_S:
+                elif (monotonic() - exited_at) >= self._PROCESS_EXIT_RESULT_GRACE_S:
                     return None
 
             await asyncio.sleep(self._PROCESS_POLL_INTERVAL_S)
 
     @staticmethod
-    def _drain_process_event_queue(
-            event_queue: Any, on_event: Callable[[Dict[str, Any]],
-                                                 None]) -> None:
+    def _drain_process_event_queue(event_queue: Any, on_event: Callable[[Dict[str, Any]], None]) -> None:
         if event_queue is None:
             return
         while True:
@@ -1007,11 +947,7 @@ class AgentTool(ToolBase):
             return [_message_from_data(msg) for msg in messages]
         return result_payload.get('raw', '')
 
-    async def _run_agent(self,
-                         agent,
-                         payload,
-                         spec: _AgentToolSpec,
-                         call_id: Optional[str] = None):
+    async def _run_agent(self, agent, payload, spec: _AgentToolSpec, call_id: Optional[str] = None):
         runtime_agent = agent
         runtime_agent_tag = getattr(runtime_agent, 'tag', None)
         runtime_agent_type = getattr(runtime_agent, 'AGENT_NAME', None)
@@ -1045,53 +981,67 @@ class AgentTool(ToolBase):
                 result = await runtime_agent.run(payload)
             if hasattr(result, '__aiter__'):
                 history = None
-                self._emit_chunk_event('start', {
-                    'call_id': call_id,
-                    'tool_name': spec.tool_name,
-                })
+                self._emit_chunk_event(
+                    'start',
+                    {
+                        'call_id': call_id,
+                        'tool_name': spec.tool_name,
+                    },
+                )
                 if _writer is not None:
                     _writer.on_start(runtime_agent_tag)
                 async for chunk in result:
                     history = chunk
                     self._emit_chunk_event(
-                        'chunk', {
+                        'chunk',
+                        {
                             'call_id': call_id,
                             'tool_name': spec.tool_name,
                             'history': chunk,
-                        })
+                        },
+                    )
                     if _writer is not None:
                         _writer.on_chunk(chunk)
                 if history is not None:
                     self._emit_chunk_event(
-                        'end', {
+                        'end',
+                        {
                             'call_id': call_id,
                             'tool_name': spec.tool_name,
                             'history': history,
-                        })
+                        },
+                    )
                     if _writer is not None:
                         _writer.on_end(history)
                 result = history
             else:
-                self._emit_chunk_event('start', {
-                    'call_id': call_id,
-                    'tool_name': spec.tool_name,
-                })
+                self._emit_chunk_event(
+                    'start',
+                    {
+                        'call_id': call_id,
+                        'tool_name': spec.tool_name,
+                    },
+                )
                 if _writer is not None:
                     _writer.on_start(runtime_agent_tag)
                 self._emit_chunk_event(
-                    'chunk', {
+                    'chunk',
+                    {
                         'call_id': call_id,
                         'tool_name': spec.tool_name,
                         'history': result,
-                    })
+                    },
+                )
                 if _writer is not None:
                     _writer.on_chunk(result)
                 self._emit_chunk_event(
-                    'end', {
+                    'end',
+                    {
                         'call_id': call_id,
                         'tool_name': spec.tool_name,
                         'history': result,
-                    })
+                    },
+                )
                 if _writer is not None:
                     _writer.on_end(result)
             return result
@@ -1114,48 +1064,45 @@ class AgentTool(ToolBase):
                 history = self._restore_process_result(history_payload)
                 if self._chunk_cb:
                     self._emit_chunk_event(
-                        'chunk', {
+                        'chunk',
+                        {
                             'call_id': call_id,
                             'tool_name': spec.tool_name,
                             'history': history,
-                        })
+                        },
+                    )
                 if _writer is not None:
                     _writer.on_chunk(history)
 
             try:
                 if self._chunk_cb:
-                    self._emit_chunk_event('start', {
-                        'call_id': call_id,
-                        'tool_name': spec.tool_name,
-                    })
+                    self._emit_chunk_event(
+                        'start',
+                        {
+                            'call_id': call_id,
+                            'tool_name': spec.tool_name,
+                        },
+                    )
                 if _writer is not None:
                     # agent_tag unknown until subprocess completes; pass None
                     _writer.on_start(None)
                 process_payload = self._serialize_payload_for_process(payload)
                 proc = ctx.Process(
                     target=_run_agent_in_subprocess,
-                    args=(spec, self._trust_remote_code, process_payload,
-                          need_events, event_queue, result_queue),
+                    args=(spec, self._trust_remote_code, process_payload, need_events, event_queue, result_queue),
                     name=f'agent_tool_{spec.tool_name}',
                 )
                 proc.start()
                 self._register_process(run_id, proc)
                 result = await self._wait_process_result(
-                    proc,
-                    result_queue,
-                    on_poll=lambda: self._drain_process_event_queue(
-                        event_queue, _emit_stream_event))
+                    proc, result_queue, on_poll=lambda: self._drain_process_event_queue(event_queue, _emit_stream_event)
+                )
                 if result is None:
-                    raise RuntimeError(
-                        f'AgentTool subprocess exited without result: {spec.tool_name}'
-                    )
-                self._drain_process_event_queue(event_queue,
-                                                _emit_stream_event)
+                    raise RuntimeError(f'AgentTool subprocess exited without result: {spec.tool_name}')
+                self._drain_process_event_queue(event_queue, _emit_stream_event)
                 if not result.get('ok'):
-                    runtime_agent_tag = result.get(
-                        'agent_tag') or runtime_agent_tag
-                    runtime_agent_type = result.get(
-                        'agent_type') or runtime_agent_type
+                    runtime_agent_tag = result.get('agent_tag') or runtime_agent_tag
+                    runtime_agent_type = result.get('agent_type') or runtime_agent_type
                     tb = result.get('traceback', '')
                     if tb:
                         logger.warning(tb)
@@ -1164,27 +1111,28 @@ class AgentTool(ToolBase):
                         _writer.on_error(err_msg)
                     raise RuntimeError(err_msg)
                 result_payload = result.get('result', {}) or {}
-                runtime_agent_tag = result_payload.get(
-                    'agent_tag') or runtime_agent_tag
-                runtime_agent_type = result_payload.get(
-                    'agent_type') or runtime_agent_type
+                runtime_agent_tag = result_payload.get('agent_tag') or runtime_agent_tag
+                runtime_agent_type = result_payload.get('agent_type') or runtime_agent_type
                 restored = self._restore_process_result(result_payload)
-                streamed_chunks = int(
-                    result_payload.get('streamed_chunks', 0) or 0)
+                streamed_chunks = int(result_payload.get('streamed_chunks', 0) or 0)
                 if self._chunk_cb:
                     if streamed_chunks <= 0:
                         self._emit_chunk_event(
-                            'chunk', {
+                            'chunk',
+                            {
                                 'call_id': call_id,
                                 'tool_name': spec.tool_name,
                                 'history': restored,
-                            })
+                            },
+                        )
                     self._emit_chunk_event(
-                        'end', {
+                        'end',
+                        {
                             'call_id': call_id,
                             'tool_name': spec.tool_name,
                             'history': restored,
-                        })
+                        },
+                    )
                 # Always finalise the writer regardless of _chunk_cb.
                 if _writer is not None:
                     _writer.on_end(restored)
@@ -1207,8 +1155,7 @@ class AgentTool(ToolBase):
                     except Exception:
                         pass
                     if proc.is_alive():
-                        self._terminate_process(
-                            proc, reason='did not exit after result handling')
+                        self._terminate_process(proc, reason='did not exit after result handling')
                 try:
                     result_queue.close()
                     result_queue.join_thread()
@@ -1249,8 +1196,7 @@ class AgentTool(ToolBase):
                 self._stream_paths[store_key] = _writer.stream_path
             return result
         except BaseException as exc:
-            status = 'cancelled' if isinstance(
-                exc, asyncio.CancelledError) else 'error'
+            status = 'cancelled' if isinstance(exc, asyncio.CancelledError) else 'error'
             raise
         finally:
             end_ts = now_iso()
@@ -1274,12 +1220,9 @@ class AgentTool(ToolBase):
             try:
                 await append_stats(get_stats_path(self.config), record)
             except Exception as exc:
-                logger.warning(
-                    f'Failed to write agent tool stats for {spec.tool_name}: {exc}'
-                )
+                logger.warning(f'Failed to write agent tool stats for {spec.tool_name}: {exc}')
 
-    def _save_transcript(self, messages: Any,
-                         agent_tag: Optional[str]) -> None:
+    def _save_transcript(self, messages: Any, agent_tag: Optional[str]) -> None:
         if not isinstance(messages, list) or not agent_tag:
             return
         try:
@@ -1289,21 +1232,16 @@ class AgentTool(ToolBase):
             path = os.path.join(subagents_dir, f'{agent_tag}.jsonl')
             with open(path, 'w', encoding='utf-8') as f:
                 for msg in messages:
-                    f.write(
-                        json.dumps(_msg_to_dict(msg), ensure_ascii=False)
-                        + '\n')
+                    f.write(json.dumps(_msg_to_dict(msg), ensure_ascii=False) + '\n')
         except Exception as exc:
-            logger.warning(
-                f'Failed to save sub-agent transcript for {agent_tag}: {exc}')
+            logger.warning(f'Failed to save sub-agent transcript for {agent_tag}: {exc}')
 
     def _build_payload(self, tool_args: dict, spec: _AgentToolSpec):
         if spec.input_mode == 'messages':
             field = spec.request_field or 'messages'
             raw_messages = tool_args.get(field)
             if not isinstance(raw_messages, list):
-                raise ValueError(
-                    f'Agent tool "{spec.tool_name}" expects "{field}" to be a list of messages.'
-                )
+                raise ValueError(f'Agent tool "{spec.tool_name}" expects "{field}" to be a list of messages.')
             return [
                 Message(
                     role=msg.get('role', 'user'),
@@ -1312,7 +1250,8 @@ class AgentTool(ToolBase):
                     tool_call_id=msg.get('tool_call_id'),
                     name=msg.get('name'),
                     reasoning_content=msg.get('reasoning_content', ''),
-                ) for msg in raw_messages  # TODO: Change role to user or not
+                )
+                for msg in raw_messages  # TODO: Change role to user or not
             ]
 
         if spec.input_template:
@@ -1322,7 +1261,9 @@ class AgentTool(ToolBase):
             except Exception as exc:
                 logger.warning(
                     'Failed to render input template for tool %s: %s. Falling back to JSON payload.',
-                    spec.tool_name, exc)
+                    spec.tool_name,
+                    exc,
+                )
 
         field = spec.request_field or 'request'
         if field in tool_args and isinstance(tool_args[field], str):
@@ -1336,31 +1277,25 @@ class AgentTool(ToolBase):
 
         if spec.output_mode == 'history':
             serialized = [self._serialize_message(msg) for msg in messages]
-            return self._truncate(
-                json.dumps(serialized, ensure_ascii=False, indent=2),
-                spec.max_output_chars)
+            return self._truncate(json.dumps(serialized, ensure_ascii=False, indent=2), spec.max_output_chars)
 
         if spec.output_mode == 'raw_json':
             serialized = [msg.to_dict() for msg in messages]  # type: ignore
-            return self._truncate(
-                json.dumps(serialized, ensure_ascii=False),
-                spec.max_output_chars)
+            return self._truncate(json.dumps(serialized, ensure_ascii=False), spec.max_output_chars)
 
         # Default: return final assistant message text
         for msg in reversed(messages):
             if getattr(msg, 'role', '') == 'assistant':
                 return self._truncate(msg.content or '', spec.max_output_chars)
 
-        return self._truncate(messages[-1].content or '',
-                              spec.max_output_chars)
+        return self._truncate(messages[-1].content or '', spec.max_output_chars)
 
     def _serialize_message(self, message: Message) -> Dict[str, Any]:
         data = message.to_dict()
         if data.get('tool_calls'):
             for call in data['tool_calls']:
                 if isinstance(call.get('arguments'), dict):
-                    call['arguments'] = json.dumps(
-                        call['arguments'], ensure_ascii=False)
+                    call['arguments'] = json.dumps(call['arguments'], ensure_ascii=False)
         return data
 
     @staticmethod

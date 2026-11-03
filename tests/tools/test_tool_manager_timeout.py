@@ -7,16 +7,14 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from ms_agent.agent.llm_agent import LLMAgent  # noqa: F401 — breaks tools import cycle
-
-from ms_agent.tools.tool_manager import (
+from ms_agent.agent.llm_agent import LLMAgent  # noqa: F401, E402 — breaks tools import cycle
+from ms_agent.tools.tool_manager import (  # noqa: E402
     effective_tool_wait_seconds,
     parse_timeout_from_tool_args,
 )
 
 
 class TestToolManagerTimeout(unittest.TestCase):
-
     def test_parse_timeout(self):
         self.assertIsNone(parse_timeout_from_tool_args(None))
         self.assertIsNone(parse_timeout_from_tool_args({}))

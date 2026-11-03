@@ -36,6 +36,7 @@ Configuration::
 
 Dependencies: ``pip install mempalace``
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -57,16 +58,19 @@ _CONDENSED_PROTOCOL = (
     '1. BEFORE RESPONDING about any person, project, or past event: '
     'call palace_search FIRST. Never guess — verify.\n'
     '2. Use palace_add to save important facts, decisions, and preferences.\n'
-    '3. When facts change: add the corrected fact via palace_add.')
+    '3. When facts change: add the corrected fact via palace_add.'
+)
 
 
 def _safe_sanitize_name(value: str, label: str = 'name') -> str:
     """Sanitize a wing/room name, falling back to basic cleaning."""
     try:
         from mempalace.config import sanitize_name
+
         return sanitize_name(value, label)
     except (ImportError, Exception):
         import re
+
         cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', value or '')
         return cleaned[:128].strip('_') or 'default'
 
@@ -75,6 +79,7 @@ def _safe_sanitize_content(content: str) -> str:
     """Sanitize drawer content, falling back to length trim."""
     try:
         from mempalace.config import sanitize_content
+
         return sanitize_content(content)
     except (ImportError, Exception):
         return (content or '')[:100000].strip()
@@ -84,9 +89,9 @@ def _safe_sanitize_query(query: str) -> str:
     """Sanitize a search query against prompt contamination."""
     try:
         from mempalace.config import sanitize_query
+
         result = sanitize_query(query)
-        return result.get('clean_query', query) if isinstance(
-            result, dict) else str(result)
+        return result.get('clean_query', query) if isinstance(result, dict) else str(result)
     except (ImportError, Exception):
         return (query or '').strip()[:500]
 
@@ -111,8 +116,7 @@ class MempalaceBackend(BaseMemoryBackend):
         opts = config.backend_options.get('mempalace', {})
         self._palace_path = opts.get('palace_path', '~/.mempalace/palace')
         self._wing = opts.get('wing', 'default')
-        self._collection_name = opts.get('collection_name',
-                                         'mempalace_drawers')
+        self._collection_name = opts.get('collection_name', 'mempalace_drawers')
         self._auto_search = opts.get('auto_search', True)
         self._max_results = opts.get('max_search_results', 5)
         self._max_distance = opts.get('max_distance', 1.5)
@@ -142,8 +146,7 @@ class MempalaceBackend(BaseMemoryBackend):
             self._stack = MemoryStack(**stack_kwargs)
             logger.info('[mempalace_backend] Palace initialized')
         except ImportError:
-            logger.warning('[mempalace_backend] mempalace not installed. '
-                           'Install with: pip install mempalace')
+            logger.warning('[mempalace_backend] mempalace not installed. Install with: pip install mempalace')
         except Exception as e:
             logger.warning('[mempalace_backend] Init failed: %s', e)
 
@@ -164,10 +167,8 @@ class MempalaceBackend(BaseMemoryBackend):
         wake_up = self._get_wake_up()
         if wake_up and messages and messages[0].get('role') == 'system':
             sys_msg = {**messages[0]}
-            protocol = (f'\n\n{_CONDENSED_PROTOCOL}'
-                        if self._inject_protocol else '')
-            block = (f'\n\n<long-term-memory>\n{wake_up}{protocol}'
-                     f'\n</long-term-memory>')
+            protocol = f'\n\n{_CONDENSED_PROTOCOL}' if self._inject_protocol else ''
+            block = f'\n\n<long-term-memory>\n{wake_up}{protocol}\n</long-term-memory>'
             if '<long-term-memory>' not in (sys_msg.get('content') or ''):
                 sys_msg['content'] = (sys_msg.get('content') or '') + block
             messages[0] = sys_msg
@@ -177,8 +178,7 @@ class MempalaceBackend(BaseMemoryBackend):
             query = self._extract_query(messages)
             if query:
                 try:
-                    results = await asyncio.to_thread(self._search_drawers,
-                                                      query)
+                    results = await asyncio.to_thread(self._search_drawers, query)
                     if results:
                         messages = self._inject_context(messages, results)
                 except Exception as e:
@@ -200,12 +200,12 @@ class MempalaceBackend(BaseMemoryBackend):
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         return [
             {
-                'tool_name':
-                'palace_search',
-                'description':
-                ('Search the memory palace for relevant memories. '
-                 'Use before answering questions about prior work, '
-                 'decisions, preferences, or people.'),
+                'tool_name': 'palace_search',
+                'description': (
+                    'Search the memory palace for relevant memories. '
+                    'Use before answering questions about prior work, '
+                    'decisions, preferences, or people.'
+                ),
                 'parameters': {
                     'type': 'object',
                     'properties': {
@@ -227,12 +227,12 @@ class MempalaceBackend(BaseMemoryBackend):
                 },
             },
             {
-                'tool_name':
-                'palace_add',
-                'description':
-                ('Add a new memory (drawer) to the palace. '
-                 'Use to save important facts, preferences, or decisions. '
-                 'Idempotent: adding the same content twice is a no-op.'),
+                'tool_name': 'palace_add',
+                'description': (
+                    'Add a new memory (drawer) to the palace. '
+                    'Use to save important facts, preferences, or decisions. '
+                    'Idempotent: adding the same content twice is a no-op.'
+                ),
                 'parameters': {
                     'type': 'object',
                     'properties': {
@@ -272,15 +272,15 @@ class MempalaceBackend(BaseMemoryBackend):
         query: str,
         limit: int = 10,
     ) -> List[MemoryEntry]:
-        results = await asyncio.to_thread(
-            self._search_drawers, query, limit=limit)
+        results = await asyncio.to_thread(self._search_drawers, query, limit=limit)
         return [
             MemoryEntry(
                 id=r.get('id', ''),
                 content=r.get('document', ''),
                 source='mempalace',
                 metadata=r.get('metadata', {}),
-            ) for r in results
+            )
+            for r in results
         ]
 
     # -- Cache -------------------------------------------------------------
@@ -314,6 +314,7 @@ class MempalaceBackend(BaseMemoryBackend):
         sanitized = _safe_sanitize_query(query)
         try:
             from mempalace.searcher import search_memories
+
             results = search_memories(
                 sanitized,
                 palace_path=self._palace_path,
@@ -339,13 +340,14 @@ class MempalaceBackend(BaseMemoryBackend):
 
                 hits = results.get('results', [])
                 if isinstance(hits, list):
-                    return [{
-                        'id': h.get('id', str(i)),
-                        'document': h.get('text', ''),
-                        'metadata':
-                        {k: v
-                         for k, v in h.items() if k != 'text'},
-                    } for i, h in enumerate(hits)]
+                    return [
+                        {
+                            'id': h.get('id', str(i)),
+                            'document': h.get('text', ''),
+                            'metadata': {k: v for k, v in h.items() if k != 'text'},
+                        }
+                        for i, h in enumerate(hits)
+                    ]
             if isinstance(results, list):
                 return results
         except Exception as e:
@@ -384,11 +386,12 @@ class MempalaceBackend(BaseMemoryBackend):
             if messages[i].get('role') == 'user':
                 user_copy = {**messages[i]}
                 user_copy['content'] = (
-                    f"{user_copy['content']}\n\n"
+                    f'{user_copy["content"]}\n\n'
                     f'<memory-context>\n'
                     f'[System note: Retrieved from memory palace]\n'
                     f'{context}\n'
-                    f'</memory-context>')
+                    f'</memory-context>'
+                )
                 messages[i] = user_copy
                 break
         return messages
@@ -396,14 +399,16 @@ class MempalaceBackend(BaseMemoryBackend):
     async def _handle_search(self, args: Dict[str, Any]) -> str:
         query = args.get('query', '')
         max_r = args.get('max_results', self._max_results)
-        results = await asyncio.to_thread(
-            self._search_drawers, query, limit=max_r)
+        results = await asyncio.to_thread(self._search_drawers, query, limit=max_r)
         if not results:
             return json.dumps({'results': []}, ensure_ascii=False)
-        formatted = [{
-            'content': r.get('document', '')[:500],
-            'metadata': r.get('metadata', {}),
-        } for r in results]
+        formatted = [
+            {
+                'content': r.get('document', '')[:500],
+                'metadata': r.get('metadata', {}),
+            }
+            for r in results
+        ]
         return json.dumps({'results': formatted}, ensure_ascii=False)
 
     async def _handle_add(self, args: Dict[str, Any]) -> str:
@@ -425,31 +430,37 @@ class MempalaceBackend(BaseMemoryBackend):
             try:
                 existing = self._collection.get(ids=[doc_id], include=[])
                 if existing and existing.get('ids'):
-                    return json.dumps({
-                        'status': 'already_exists',
-                        'id': doc_id,
-                    })
+                    return json.dumps(
+                        {
+                            'status': 'already_exists',
+                            'id': doc_id,
+                        }
+                    )
             except Exception:
                 pass
 
             self._collection.upsert(
                 ids=[doc_id],
                 documents=[content],
-                metadatas=[{
-                    'wing': wing,
-                    'room': room,
-                    'added_by': 'ms-agent',
-                    'filed_at': datetime.now().isoformat(),
-                    'chunk_index': 0,
-                }],
+                metadatas=[
+                    {
+                        'wing': wing,
+                        'room': room,
+                        'added_by': 'ms-agent',
+                        'filed_at': datetime.now().isoformat(),
+                        'chunk_index': 0,
+                    }
+                ],
             )
             self._wake_up_cache = None
-            return json.dumps({
-                'status': 'saved',
-                'id': doc_id,
-                'wing': wing,
-                'room': room,
-            })
+            return json.dumps(
+                {
+                    'status': 'saved',
+                    'id': doc_id,
+                    'wing': wing,
+                    'room': room,
+                }
+            )
         except Exception as e:
             return json.dumps({'error': str(e)})
 

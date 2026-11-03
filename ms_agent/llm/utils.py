@@ -2,6 +2,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Union
+
 from typing_extensions import Literal, Required, TypedDict
 
 
@@ -149,7 +150,7 @@ class Message:
                     'function': {
                         'name': tool_call['tool_name'],
                         'arguments': tool_call['arguments'],
-                    }
+                    },
                 }
         required = ['content', 'role']
         # Never send UI-only fields to model providers.
@@ -171,11 +172,7 @@ class Message:
             # field not listed here, so omitting it leaks the refs.
             'attachments',
         ]
-        return {
-            key: value
-            for key, value in raw_dict.items()
-            if (value or key in required) and key not in rm
-        }
+        return {key: value for key, value in raw_dict.items() if (value or key in required) and key not in rm}
 
 
 @dataclass
@@ -217,7 +214,9 @@ class ToolResult:
                 attachments=raw.get('attachments', []) or [],
                 extra={
                     k: v
-                    for k, v in raw.items() if k not in [
+                    for k, v in raw.items()
+                    if k
+                    not in [
                         'text',
                         'resources',
                         'result',
@@ -226,5 +225,6 @@ class ToolResult:
                         'is_error',
                         'attachments',
                     ]
-                })
+                },
+            )
         raise TypeError('tool_call_result must be str or dict')

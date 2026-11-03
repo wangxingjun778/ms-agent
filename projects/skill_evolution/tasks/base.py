@@ -1,5 +1,5 @@
 import random
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Literal, Optional
 
@@ -22,7 +22,7 @@ class BaseEvaluationResult:
 
     messages: List[Message]
     score: float
-    status: Literal["success", "failure"]
+    status: Literal['success', 'failure']
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -66,13 +66,9 @@ class BaseDataset(ABC):
 
 
 class BaseEvaluator(ABC):
-
     @abstractmethod
     async def evaluate(
-        self, 
-        messages: List[Message], 
-        data_item: BaseDataItem,
-        evaluation_output_dir: Optional[str] = None
+        self, messages: List[Message], data_item: BaseDataItem, evaluation_output_dir: Optional[str] = None
     ) -> BaseEvaluationResult:
         """Evaluate based on the interaction messages and the corresponding data item.
 

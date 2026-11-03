@@ -45,6 +45,7 @@ def _resolve_log_file(log_file: Optional[str]) -> Optional[str]:
         return None
     if env.strip().lower() in ('1', 'true', 'yes', 'on'):
         from ms_agent.project.paths import global_logs_dir
+
         d = global_logs_dir()
         try:
             d.mkdir(parents=True, exist_ok=True)
@@ -55,10 +56,8 @@ def _resolve_log_file(log_file: Optional[str]) -> Optional[str]:
     return env
 
 
-def get_logger(log_file: Optional[str] = None,
-               log_level: Optional[int] = None,
-               file_mode: str = 'w'):
-    """ Get logging logger
+def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, file_mode: str = 'w'):
+    """Get logging logger
 
     Args:
         log_file: Log filename. File logging is opt-in: when omitted (and no

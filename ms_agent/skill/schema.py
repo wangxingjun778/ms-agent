@@ -5,20 +5,21 @@ Skill Directory Schema
 Defines the data structure and validation logic for Agent Skills.
 Each Skill is represented as a self-contained directory with metadata.
 """
+
 import hashlib
 import os
 import re
 import stat
-import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 from ms_agent.utils.logger import logger
 
 SUPPORTED_SCRIPT_EXT = ('.py', '.sh', '.js')
-SUPPORTED_READ_EXT = ('.md', '.txt', '.py', '.json', '.yaml', '.yml', '.sh',
-                      '.js', '.html', '.xml')
+SUPPORTED_READ_EXT = ('.md', '.txt', '.py', '.json', '.yaml', '.yml', '.sh', '.js', '.html', '.xml')
 
 
 @dataclass
@@ -32,6 +33,7 @@ class SkillFile:
         path: Relative path within Skill directory
         required: Whether this file is required
     """
+
     name: str
     type: str
     path: Path
@@ -56,12 +58,7 @@ class SkillFile:
         Returns:
             Dictionary containing file information
         """
-        return {
-            'name': self.name,
-            'type': self.type,
-            'path': str(self.path),
-            'required': self.required
-        }
+        return {'name': self.name, 'type': self.type, 'path': str(self.path), 'required': self.required}
 
 
 @dataclass
@@ -82,6 +79,7 @@ class SkillSchema:
         scripts: List of script files (optional)
         references: List of reference documents (optional)
     """
+
     skill_id: str
     name: str
     description: str
@@ -142,8 +140,7 @@ class SkillSchema:
             return True
 
         except Exception as e:
-            logger.error(
-                f'Skill validation failed with an unexpected error: {e}')
+            logger.error(f'Skill validation failed with an unexpected error: {e}')
             return False
 
     def get_file_by_name(self, name: str) -> Optional[SkillFile]:
@@ -169,32 +166,17 @@ class SkillSchema:
             Dictionary containing all schema information
         """
         return {
-            'skill_id':
-            self.skill_id,
-            'name':
-            self.name,
-            'description':
-            self.description,
-            'version':
-            self.version,
-            'author':
-            self.author,
-            'tags':
-            self.tags,
-            'skill_path':
-            str(self.skill_path),
-            'files': [{
-                'name': f.name,
-                'type': f.type,
-                'path': f.path,
-                'required': f.required
-            } for f in self.files],
-            'scripts':
-            self.scripts,
-            'references':
-            self.references,
-            'resources':
-            self.resources,
+            'skill_id': self.skill_id,
+            'name': self.name,
+            'description': self.description,
+            'version': self.version,
+            'author': self.author,
+            'tags': self.tags,
+            'skill_path': str(self.skill_path),
+            'files': [{'name': f.name, 'type': f.type, 'path': f.path, 'required': f.required} for f in self.files],
+            'scripts': self.scripts,
+            'references': self.references,
+            'resources': self.resources,
         }
 
 
@@ -240,13 +222,9 @@ class SkillSchemaParser:
 
     @staticmethod
     def _is_ignored_name(name: str) -> bool:
-        ignored_names = {
-            '.DS_Store', '__pycache__', '.git', '.gitignore', '.pytest_cache',
-            '.mypy_cache'
-        }
+        ignored_names = {'.DS_Store', '__pycache__', '.git', '.gitignore', '.pytest_cache', '.mypy_cache'}
         ignored_suffixes = {'.pyc', '.pyo'}
-        return ((name in ignored_names)
-                or (os.path.splitext(name)[1] in ignored_suffixes))
+        return (name in ignored_names) or (os.path.splitext(name)[1] in ignored_suffixes)
 
     @staticmethod
     def parse_skill_directory(directory_path: str | Path) -> Optional[SkillSchema]:
@@ -287,8 +265,7 @@ class SkillSchemaParser:
         resources = []
         digest = hashlib.sha256()
 
-        def _walk(current_path: Path, relative_dir: str,
-                  visible_dir: bool) -> None:
+        def _walk(current_path: Path, relative_dir: str, visible_dir: bool) -> None:
             # DirEntry keeps type/stat data from the same scandir call.  This
             # avoids a second filesystem lookup while retaining deterministic
             # files-first DFS order (the legacy notice signature's order).
@@ -311,12 +288,9 @@ class SkillSchemaParser:
 
                 filename = entry.name
                 file_path = current_path / filename
-                relative = (
-                    filename
-                    if not relative_dir else f'{relative_dir}/{filename}')
+                relative = filename if not relative_dir else f'{relative_dir}/{filename}'
                 if visible_dir and not filename.startswith('.'):
-                    signature_row = (f'{relative}|{file_stat.st_mtime_ns}|'
-                                     f'{file_stat.st_size}\n')
+                    signature_row = f'{relative}|{file_stat.st_mtime_ns}|{file_stat.st_size}\n'
                     digest.update(signature_row.encode())
 
                 if SkillSchemaParser._is_ignored_name(filename):
@@ -324,18 +298,13 @@ class SkillSchemaParser:
 
                 suffix = os.path.splitext(filename)[1]
                 file_type = suffix if suffix else '.unknown'
-                skill_file = SkillFile(
-                    name=filename,
-                    type=file_type,
-                    path=file_path,
-                    required=(filename == 'SKILL.md'))
+                skill_file = SkillFile(name=filename, type=file_type, path=file_path, required=(filename == 'SKILL.md'))
                 files.append(skill_file)
 
                 # Get scripts, references and resources
                 if skill_file.type in SUPPORTED_SCRIPT_EXT:
                     scripts.append(skill_file)
-                elif (skill_file.type == '.md'
-                      and skill_file.name != 'SKILL.md'):
+                elif skill_file.type == '.md' and skill_file.name != 'SKILL.md':
                     references.append(skill_file)
                 else:
                     resources.append(skill_file)
@@ -344,9 +313,7 @@ class SkillSchemaParser:
             # historically included their non-ignored support files.  Only the
             # private change signature prunes them.
             for dirname in directories:
-                child_relative = (
-                    dirname
-                    if not relative_dir else f'{relative_dir}/{dirname}')
+                child_relative = dirname if not relative_dir else f'{relative_dir}/{dirname}'
                 _walk(
                     current_path / dirname,
                     child_relative,

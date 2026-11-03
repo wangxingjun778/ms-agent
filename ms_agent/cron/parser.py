@@ -7,6 +7,7 @@ Supported formats:
 
 Optional timezone suffix: "0 9 * * * Asia/Shanghai"
 """
+
 from __future__ import annotations
 
 import re
@@ -47,10 +48,10 @@ _ISO_RE = re.compile(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}')
 def _try_import_croniter():
     try:
         from croniter import croniter
+
         return croniter
     except ImportError:
-        raise ImportError('croniter is required for cron expressions. '
-                          'Install it with: pip install croniter>=1.3.0')
+        raise ImportError('croniter is required for cron expressions. Install it with: pip install croniter>=1.3.0')
 
 
 def _validate_cron_expr(expr: str) -> None:
@@ -59,8 +60,7 @@ def _validate_cron_expr(expr: str) -> None:
         raise ValueError(f'Invalid cron expression: {expr!r}')
 
 
-def parse_schedule(schedule_str: str,
-                   default_timezone: Optional[str] = None) -> CronSchedule:
+def parse_schedule(schedule_str: str, default_timezone: Optional[str] = None) -> CronSchedule:
     """Parse a schedule string into a CronSchedule.
 
     Args:
@@ -110,8 +110,8 @@ def parse_schedule(schedule_str: str,
         expr = raw
     else:
         raise ValueError(
-            f'Cannot parse schedule: {raw!r}. '
-            f'Expected cron (5 fields), "every <N><unit>", or ISO timestamp.')
+            f'Cannot parse schedule: {raw!r}. Expected cron (5 fields), "every <N><unit>", or ISO timestamp.'
+        )
 
     _validate_cron_expr(expr)
     return CronSchedule(
@@ -121,8 +121,7 @@ def parse_schedule(schedule_str: str,
     )
 
 
-def compute_next_run(schedule: CronSchedule,
-                     base_time: Optional[datetime] = None) -> Optional[str]:
+def compute_next_run(schedule: CronSchedule, base_time: Optional[datetime] = None) -> Optional[str]:
     """Compute the next run time as ISO 8601 string.
 
     Args:
@@ -138,16 +137,16 @@ def compute_next_run(schedule: CronSchedule,
     if schedule.kind == 'cron':
         croniter_cls = _try_import_croniter()
         import pytz
-        tz = pytz.timezone(
-            schedule.timezone) if schedule.timezone else timezone.utc
+
+        tz = pytz.timezone(schedule.timezone) if schedule.timezone else timezone.utc
         local_base = base_time.astimezone(tz)
         cron = croniter_cls(schedule.expr, local_base)
         next_dt = cron.get_next(datetime)
-        return next_dt.astimezone(
-            timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')
+        return next_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')
 
     elif schedule.kind == 'interval':
         from datetime import timedelta
+
         next_dt = base_time + timedelta(seconds=schedule.interval_seconds)
         return next_dt.strftime('%Y-%m-%dT%H:%M:%S+00:00')
 
@@ -157,8 +156,7 @@ def compute_next_run(schedule: CronSchedule,
     return None
 
 
-def advance_next_run(schedule: CronSchedule,
-                     current_next: str) -> Optional[str]:
+def advance_next_run(schedule: CronSchedule, current_next: str) -> Optional[str]:
     """Advance past the current next_run to compute the subsequent one.
 
     For cron/interval schedules, computes the run *after* current_next.
@@ -181,18 +179,18 @@ def advance_next_run(schedule: CronSchedule,
     if schedule.kind == 'cron':
         croniter_cls = _try_import_croniter()
         import pytz
-        tz = pytz.timezone(
-            schedule.timezone) if schedule.timezone else timezone.utc
+
+        tz = pytz.timezone(schedule.timezone) if schedule.timezone else timezone.utc
         # Fast-forward: start croniter from max(base, now) so we never loop
         # over historical fire times.
         effective_base = max(base, now).astimezone(tz)
         cron = croniter_cls(schedule.expr, effective_base)
         next_dt = cron.get_next(datetime)
-        return next_dt.astimezone(
-            timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')
+        return next_dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')
 
     elif schedule.kind == 'interval':
         from datetime import timedelta
+
         step = timedelta(seconds=schedule.interval_seconds)
         if base >= now:
             candidate = base + step

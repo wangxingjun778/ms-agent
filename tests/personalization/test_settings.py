@@ -7,7 +7,6 @@ from ms_agent.personalization.types import PersonalizationConfig
 
 
 class TestPersonalizationSettings:
-
     @pytest.fixture
     def settings_dir(self, tmp_path):
         d = tmp_path / '.ms_agent'
@@ -26,9 +25,7 @@ class TestPersonalizationSettings:
         assert config.memory_backend is None
 
     def test_load_missing_section(self, settings_dir):
-        (settings_dir / 'settings.json').write_text(
-            json.dumps({'llm': {'model': 'test'}})
-        )
+        (settings_dir / 'settings.json').write_text(json.dumps({'llm': {'model': 'test'}}))
         s = PersonalizationSettings(global_dir=str(settings_dir))
         config = s.load()
         assert config.global_instruction == ''

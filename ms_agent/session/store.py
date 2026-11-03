@@ -1,4 +1,5 @@
 """Session store with user_id / session_id isolation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -38,8 +39,7 @@ class SessionStore:
     def __init__(self, base_dir: str, user_id: str) -> None:
         """Initialize an isolated store without creating any session files."""
         self.user_id = self._validate_id(user_id, 'user_id')
-        self.base_path = (
-            Path(base_dir).expanduser() / 'users' / self.user_id / 'sessions')
+        self.base_path = Path(base_dir).expanduser() / 'users' / self.user_id / 'sessions'
         self._locks: Dict[str, asyncio.Lock] = {}
 
     async def load_history(self, session_id: str) -> List[Dict[str, Any]]:
@@ -57,8 +57,7 @@ class SessionStore:
                 parents=True,
                 exist_ok=True,
             )
-            return await asyncio.to_thread(
-                self._read_history_sync, self._jsonl_path(session_id))
+            return await asyncio.to_thread(self._read_history_sync, self._jsonl_path(session_id))
 
     async def append(
         self,
@@ -108,21 +107,18 @@ class SessionStore:
 
     async def list_sessions(self) -> List[Dict[str, Any]]:
         """List metadata for every session directory owned by this user."""
-        await asyncio.to_thread(
-            self.base_path.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(self.base_path.mkdir, parents=True, exist_ok=True)
         session_ids = await asyncio.to_thread(self._list_session_ids_sync)
         metadata = [await self.get_metadata(session_id) for session_id in session_ids]
         return sorted(
             metadata,
-            key=lambda item: str(item.get('updated_at')
-                                 or item.get('created_at') or ''),
+            key=lambda item: str(item.get('updated_at') or item.get('created_at') or ''),
             reverse=True,
         )
 
     async def create_session(self, session_id: Optional[str] = None) -> str:
         """Create a session log and metadata sidecar, then return its ID."""
-        session_id = self._validate_id(
-            session_id or str(uuid.uuid4()), 'session_id')
+        session_id = self._validate_id(session_id or str(uuid.uuid4()), 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
             await asyncio.to_thread(
@@ -156,13 +152,9 @@ class SessionStore:
 
     def _list_session_ids_sync(self) -> List[str]:
         try:
-            return [
-                path.name for path in self.base_path.iterdir()
-                if path.is_dir()
-            ]
+            return [path.name for path in self.base_path.iterdir() if path.is_dir()]
         except OSError as exc:
-            logger.warning('Unable to list sessions in %s: %s', self.base_path,
-                           exc)
+            logger.warning('Unable to list sessions in %s: %s', self.base_path, exc)
             return []
 
     @staticmethod
@@ -188,8 +180,7 @@ class SessionStore:
                     try:
                         record = json.loads(line)
                     except (json.JSONDecodeError, TypeError):
-                        logger.warning('Ignoring malformed session record %s:%s',
-                                       path, line_number)
+                        logger.warning('Ignoring malformed session record %s:%s', path, line_number)
                         continue
                     if not isinstance(record, dict):
                         continue
@@ -254,7 +245,13 @@ class SessionStore:
     @staticmethod
     def _validate_id(value: str, name: str) -> str:
         text = str(value or '').strip()
-        if (not text or text in {'.', '..'} or '/' in text or '\\' in text
-                or os.sep in text or (os.altsep and os.altsep in text)):
+        if (
+            not text
+            or text in {'.', '..'}
+            or '/' in text
+            or '\\' in text
+            or os.sep in text
+            or (os.altsep and os.altsep in text)
+        ):
             raise ValueError(f'{name} must be a non-empty path component')
         return text

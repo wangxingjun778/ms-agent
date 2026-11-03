@@ -22,6 +22,7 @@ Configuration::
           curate_timeout: 120
           min_query_length: 10
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -87,8 +88,7 @@ def _run_brv(
     if not brv_path:
         return {
             'success': False,
-            'error':
-            'brv CLI not found. Install: npm install -g byterover-cli',
+            'error': 'brv CLI not found. Install: npm install -g byterover-cli',
         }
 
     cmd = [brv_path] + args
@@ -131,12 +131,12 @@ def _run_brv(
 # -- Tool schemas ----------------------------------------------------------
 
 _QUERY_SCHEMA = {
-    'tool_name':
-    'brv_query',
-    'description':
-    ("Search ByteRover's persistent knowledge tree for relevant context. "
-     'Returns memories, project knowledge, architectural decisions, and '
-     'patterns from previous sessions.'),
+    'tool_name': 'brv_query',
+    'description': (
+        "Search ByteRover's persistent knowledge tree for relevant context. "
+        'Returns memories, project knowledge, architectural decisions, and '
+        'patterns from previous sessions.'
+    ),
     'parameters': {
         'type': 'object',
         'properties': {
@@ -150,12 +150,12 @@ _QUERY_SCHEMA = {
 }
 
 _CURATE_SCHEMA = {
-    'tool_name':
-    'brv_curate',
-    'description':
-    ("Store important information in ByteRover's persistent knowledge tree. "
-     'Use for architectural decisions, bug fixes, user preferences, project '
-     'patterns — anything worth remembering across sessions.'),
+    'tool_name': 'brv_curate',
+    'description': (
+        "Store important information in ByteRover's persistent knowledge tree. "
+        'Use for architectural decisions, bug fixes, user preferences, project '
+        'patterns — anything worth remembering across sessions.'
+    ),
     'parameters': {
         'type': 'object',
         'properties': {
@@ -169,15 +169,9 @@ _CURATE_SCHEMA = {
 }
 
 _STATUS_SCHEMA = {
-    'tool_name':
-    'brv_status',
-    'description': ('Check ByteRover status: CLI version, context tree stats, '
-                    'cloud sync state.'),
-    'parameters': {
-        'type': 'object',
-        'properties': {},
-        'required': []
-    },
+    'tool_name': 'brv_status',
+    'description': ('Check ByteRover status: CLI version, context tree stats, cloud sync state.'),
+    'parameters': {'type': 'object', 'properties': {}, 'required': []},
 }
 
 
@@ -210,18 +204,15 @@ class ByteRoverBackend(BaseMemoryBackend):
         Path(self._cwd).mkdir(parents=True, exist_ok=True)
 
         if _resolve_brv_path() is None:
-            logger.warning('[byterover_backend] brv CLI not found. '
-                           'Install: npm install -g byterover-cli')
+            logger.warning('[byterover_backend] brv CLI not found. Install: npm install -g byterover-cli')
             return
 
-        result = await asyncio.to_thread(
-            _run_brv, ['status'], timeout=15, cwd=self._cwd)
+        result = await asyncio.to_thread(_run_brv, ['status'], timeout=15, cwd=self._cwd)
         if result['success']:
             self._available = True
             logger.info('[byterover_backend] brv initialized at %s', self._cwd)
         else:
-            logger.warning('[byterover_backend] brv status check failed: %s',
-                           result.get('error'))
+            logger.warning('[byterover_backend] brv status check failed: %s', result.get('error'))
 
     async def close(self) -> None:
         if self._sync_thread and self._sync_thread.is_alive():
@@ -262,10 +253,7 @@ class ByteRoverBackend(BaseMemoryBackend):
         # Inject into system prompt
         if messages and messages[0].get('role') == 'system':
             sys_msg = {**messages[0]}
-            block = ('\n\n<long-term-memory>\n'
-                     '# ByteRover Context\n'
-                     f'{output}\n'
-                     '</long-term-memory>')
+            block = f'\n\n<long-term-memory>\n# ByteRover Context\n{output}\n</long-term-memory>'
             if '<long-term-memory>' not in (sys_msg.get('content') or ''):
                 sys_msg['content'] = (sys_msg.get('content') or '') + block
                 messages[0] = sys_msg
@@ -293,8 +281,7 @@ class ByteRoverBackend(BaseMemoryBackend):
         if len(user_content.strip()) < self._min_query_len:
             return
 
-        combined = (f'User: {user_content[:2000]}\n'
-                    f'Assistant: {assistant_content[:2000]}')
+        combined = f'User: {user_content[:2000]}\nAssistant: {assistant_content[:2000]}'
         self._background_curate(combined)
 
     # -- on_pre_compress ---------------------------------------------------
@@ -310,9 +297,7 @@ class ByteRoverBackend(BaseMemoryBackend):
         for msg in messages[-10:]:
             role = msg.get('role', '')
             content = msg.get('content', '')
-            if isinstance(
-                    content,
-                    str) and content.strip() and role in ('user', 'assistant'):
+            if isinstance(content, str) and content.strip() and role in ('user', 'assistant'):
                 parts.append(f'{role}: {content[:500]}')
 
         if not parts:
@@ -378,7 +363,9 @@ class ByteRoverBackend(BaseMemoryBackend):
     # -- Internal helpers --------------------------------------------------
 
     @staticmethod
-    def _extract_last_user_content(messages: List[Dict[str, Any]], ) -> str:
+    def _extract_last_user_content(
+        messages: List[Dict[str, Any]],
+    ) -> str:
         for m in reversed(messages):
             if m.get('role') == 'user':
                 content = m.get('content', '')
@@ -400,8 +387,7 @@ class ByteRoverBackend(BaseMemoryBackend):
             except Exception as e:
                 logger.debug('[byterover_backend] curate failed: %s', e)
 
-        self._sync_thread = threading.Thread(
-            target=_curate, daemon=True, name='brv-curate')
+        self._sync_thread = threading.Thread(target=_curate, daemon=True, name='brv-curate')
         self._sync_thread.start()
 
         if wait:
@@ -449,8 +435,7 @@ class ByteRoverBackend(BaseMemoryBackend):
     def _tool_status(self) -> str:
         result = _run_brv(['status'], timeout=15, cwd=self._cwd)
         if not result['success']:
-            return json.dumps(
-                {'error': result.get('error', 'Status check failed')})
+            return json.dumps({'error': result.get('error', 'Status check failed')})
         return json.dumps({'status': result.get('output', '')})
 
 

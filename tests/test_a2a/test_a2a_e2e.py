@@ -23,8 +23,7 @@ try:
 except ImportError:
     _SKIP_REASON = 'a2a-sdk or httpx not installed'
 
-_REPO_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DEFAULT_CONFIG = os.path.join(_REPO_ROOT, 'ms_agent', 'agent', 'agent.yaml')
 _A2A_TEST_CONFIG = os.environ.get('A2A_TEST_CONFIG', _DEFAULT_CONFIG)
 _A2A_TEST_PORT = int(os.environ.get('A2A_TEST_PORT', '19999'))
@@ -41,11 +40,18 @@ def a2a_server():
         pytest.skip('No agent config found for A2A E2E test')
 
     proc = subprocess.Popen(
-        [sys.executable, '-m', 'ms_agent.cli.cli',
-         'a2a',
-         '--config', _A2A_TEST_CONFIG,
-         '--host', '127.0.0.1',
-         '--port', str(_A2A_TEST_PORT)],
+        [
+            sys.executable,
+            '-m',
+            'ms_agent.cli.cli',
+            'a2a',
+            '--config',
+            _A2A_TEST_CONFIG,
+            '--host',
+            '127.0.0.1',
+            '--port',
+            str(_A2A_TEST_PORT),
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -66,16 +72,13 @@ def a2a_server():
 
 
 @pytest.mark.skipif(_SKIP_REASON is not None, reason=_SKIP_REASON or '')
-@pytest.mark.skipif(not _have_config(),
-                    reason='No agent config found for A2A E2E test')
+@pytest.mark.skipif(not _have_config(), reason='No agent config found for A2A E2E test')
 class TestA2AE2E:
-
     @pytest.mark.asyncio
     async def test_discover_agent_card(self, a2a_server):
         """Verify the A2A server publishes an Agent Card."""
         async with httpx.AsyncClient() as http:
-            resolver = A2ACardResolver(
-                httpx_client=http, base_url=a2a_server)
+            resolver = A2ACardResolver(httpx_client=http, base_url=a2a_server)
             card = await resolver.get_agent_card()
             assert card.name
             assert card.capabilities is not None
@@ -88,12 +91,10 @@ class TestA2AE2E:
             pytest.skip('No OPENAI_API_KEY for LLM-backed test')
 
         async with httpx.AsyncClient(timeout=120.0) as http:
-            resolver = A2ACardResolver(
-                httpx_client=http, base_url=a2a_server)
+            resolver = A2ACardResolver(httpx_client=http, base_url=a2a_server)
             card = await resolver.get_agent_card()
 
-            factory = ClientFactory(
-                config=ClientConfig(httpx_client=http))
+            factory = ClientFactory(config=ClientConfig(httpx_client=http))
             client = factory.create(card)
 
             message = create_text_message_object(content='Say hello in 3 words')

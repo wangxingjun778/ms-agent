@@ -19,27 +19,27 @@ from ms_agent.llm.utils import Message
 
 
 def _make_config(**overrides) -> DictConfig:
-    guard = {"threshold": 3, "lookback_rounds": 8, "max_warnings": 2}
+    guard = {'threshold': 3, 'lookback_rounds': 8, 'max_warnings': 2}
     guard.update(overrides)
-    return DictConfig({"repetition_guard": guard})
+    return DictConfig({'repetition_guard': guard})
 
 
-def _tool_call(tool_name: str, arguments: dict | str, call_id: str = "c1") -> dict:
+def _tool_call(tool_name: str, arguments: dict | str, call_id: str = 'c1') -> dict:
     args = json.dumps(arguments) if isinstance(arguments, dict) else arguments
     return {
-        "id": call_id,
-        "type": "function",
-        "tool_name": tool_name,
-        "arguments": args,
+        'id': call_id,
+        'type': 'function',
+        'tool_name': tool_name,
+        'arguments': args,
     }
 
 
 def _assistant_with_tools(*tool_calls) -> Message:
-    return Message(role="assistant", content="Let me do a tool calling.", tool_calls=list(tool_calls))
+    return Message(role='assistant', content='Let me do a tool calling.', tool_calls=list(tool_calls))
 
 
-def _tool_result(call_id: str, content: str = "ok") -> Message:
-    return Message(role="tool", content=content, tool_call_id=call_id)
+def _tool_result(call_id: str, content: str = 'ok') -> Message:
+    return Message(role='tool', content=content, tool_call_id=call_id)
 
 
 class TestArgsHash:
@@ -54,7 +54,7 @@ class TestArgsHash:
         assert a != b
 
     def test_invalid_json(self):
-        h = _args_hash("not json")
+        h = _args_hash('not json')
         assert isinstance(h, str) and len(h) == 12
 
 
@@ -64,23 +64,23 @@ class TestExtractRecentToolCalls:
 
     def test_collects_from_assistant_messages(self):
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
-            _assistant_with_tools(_tool_call("shell", {"command": "ls"})),
-            _tool_result("c1", "file1 file2"),
-            _assistant_with_tools(_tool_call("shell", {"command": "pwd"})),
-            _tool_result("c1", "/app"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
+            _assistant_with_tools(_tool_call('shell', {'command': 'ls'})),
+            _tool_result('c1', 'file1 file2'),
+            _assistant_with_tools(_tool_call('shell', {'command': 'pwd'})),
+            _tool_result('c1', '/app'),
         ]
         calls = _extract_recent_tool_calls(msgs, 8)
         assert len(calls) == 2
-        assert calls[0][0] == "shell"
-        assert calls[1][0] == "shell"
+        assert calls[0][0] == 'shell'
+        assert calls[1][0] == 'shell'
 
     def test_respects_lookback(self):
-        msgs = [Message(role="system", content="sys")]
+        msgs = [Message(role='system', content='sys')]
         for i in range(10):
-            msgs.append(_assistant_with_tools(_tool_call("shell", {"command": f"cmd{i}"}, f"c{i}")))
-            msgs.append(_tool_result(f"c{i}"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': f'cmd{i}'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}'))
 
         calls = _extract_recent_tool_calls(msgs, 3)
         assert len(calls) == 3
@@ -89,27 +89,27 @@ class TestExtractRecentToolCalls:
 class TestDetectRepetition:
     def test_no_repetition(self):
         calls = [
-            ("shell", "hash1", "shell(ls)"),
-            ("shell", "hash2", "shell(pwd)"),
-            ("shell", "hash3", "shell(cat)"),
+            ('shell', 'hash1', 'shell(ls)'),
+            ('shell', 'hash2', 'shell(pwd)'),
+            ('shell', 'hash3', 'shell(cat)'),
         ]
         assert _detect_repetition(calls, 3) is None
 
     def test_detects_at_threshold(self):
         calls = [
-            ("shell", "abc123", "shell(ls)"),
-            ("shell", "abc123", "shell(ls)"),
-            ("shell", "abc123", "shell(ls)"),
+            ('shell', 'abc123', 'shell(ls)'),
+            ('shell', 'abc123', 'shell(ls)'),
+            ('shell', 'abc123', 'shell(ls)'),
         ]
         rep = _detect_repetition(calls, 3)
         assert rep is not None
         assert rep.count == 3
-        assert rep.tool_name == "shell"
+        assert rep.tool_name == 'shell'
 
     def test_below_threshold(self):
         calls = [
-            ("shell", "abc123", "shell(ls)"),
-            ("shell", "abc123", "shell(ls)"),
+            ('shell', 'abc123', 'shell(ls)'),
+            ('shell', 'abc123', 'shell(ls)'),
         ]
         assert _detect_repetition(calls, 3) is None
 
@@ -119,15 +119,15 @@ class TestDetectRepetition:
 
 class TestSummarizeCall:
     def test_command_arg(self):
-        s = _summarize_call("shell", '{"command": "ls -la"}')
-        assert "shell" in s
-        assert "ls -la" in s
+        s = _summarize_call('shell', '{"command": "ls -la"}')
+        assert 'shell' in s
+        assert 'ls -la' in s
 
     def test_truncates_long_command(self):
-        long_cmd = "x" * 200
-        s = _summarize_call("shell", json.dumps({"command": long_cmd}))
+        long_cmd = 'x' * 200
+        s = _summarize_call('shell', json.dumps({'command': long_cmd}))
         assert len(s) < 200
-        assert "..." in s
+        assert '...' in s
 
 
 class TestRepetitionGuardCallback:
@@ -136,15 +136,15 @@ class TestRepetitionGuardCallback:
         cb = RepetitionGuardCallback(_make_config())
         runtime = Runtime()
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
         ]
         for i in range(5):
-            msgs.append(_assistant_with_tools(_tool_call("shell", {"command": f"cmd{i}"}, f"c{i}")))
-            msgs.append(_tool_result(f"c{i}"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': f'cmd{i}'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}'))
 
         await cb.after_tool_call(runtime, msgs)
-        user_msgs = [m for m in msgs if m.role == "user"]
+        user_msgs = [m for m in msgs if m.role == 'user']
         assert len(user_msgs) == 1
 
     @pytest.mark.asyncio
@@ -152,23 +152,19 @@ class TestRepetitionGuardCallback:
         cb = RepetitionGuardCallback(_make_config())
         runtime = Runtime()
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
         ]
         for i in range(3):
-            msgs.append(
-                _assistant_with_tools(
-                    _tool_call("shell", {"command": "make build"}, f"c{i}")
-                )
-            )
-            msgs.append(_tool_result(f"c{i}", "error: build failed"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'make build'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}', 'error: build failed'))
 
         await cb.after_tool_call(runtime, msgs)
-        user_msgs = [m for m in msgs if m.role == "user"]
+        user_msgs = [m for m in msgs if m.role == 'user']
         assert len(user_msgs) == 2
         injected = user_msgs[-1].content
-        assert "repeating the same approach" in injected
-        assert "make build" in injected
+        assert 'repeating the same approach' in injected
+        assert 'make build' in injected
         assert runtime.should_stop is False
 
     @pytest.mark.asyncio
@@ -176,26 +172,18 @@ class TestRepetitionGuardCallback:
         cb = RepetitionGuardCallback(_make_config(max_warnings=1))
         runtime = Runtime()
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
         ]
         for i in range(3):
-            msgs.append(
-                _assistant_with_tools(
-                    _tool_call("shell", {"command": "make build"}, f"c{i}")
-                )
-            )
-            msgs.append(_tool_result(f"c{i}", "error"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'make build'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}', 'error'))
 
         await cb.after_tool_call(runtime, msgs)
         assert cb._warnings_given == 1
 
-        msgs.append(
-            _assistant_with_tools(
-                _tool_call("shell", {"command": "make build"}, "c99")
-            )
-        )
-        msgs.append(_tool_result("c99", "error"))
+        msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'make build'}, 'c99')))
+        msgs.append(_tool_result('c99', 'error'))
 
         await cb.after_tool_call(runtime, msgs)
         assert runtime.should_stop is True
@@ -205,16 +193,12 @@ class TestRepetitionGuardCallback:
         cb = RepetitionGuardCallback(_make_config())
         runtime = Runtime()
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
         ]
         for i in range(4):
-            msgs.append(
-                _assistant_with_tools(
-                    _tool_call("shell", {"command": "ls"}, f"c{i}")
-                )
-            )
-            msgs.append(_tool_result(f"c{i}"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'ls'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}'))
 
         await cb.after_tool_call(runtime, msgs)
         assert cb._warnings_given == 1
@@ -227,27 +211,19 @@ class TestRepetitionGuardCallback:
         cb = RepetitionGuardCallback(_make_config())
         runtime = Runtime()
         msgs = [
-            Message(role="system", content="sys"),
-            Message(role="user", content="do something"),
+            Message(role='system', content='sys'),
+            Message(role='user', content='do something'),
         ]
         for i in range(3):
-            msgs.append(
-                _assistant_with_tools(
-                    _tool_call("shell", {"command": "ls"}, f"c{i}")
-                )
-            )
-            msgs.append(_tool_result(f"c{i}"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'ls'}, f'c{i}')))
+            msgs.append(_tool_result(f'c{i}'))
 
         await cb.after_tool_call(runtime, msgs)
         assert cb._warnings_given == 1
 
         for i in range(3):
-            msgs.append(
-                _assistant_with_tools(
-                    _tool_call("shell", {"command": "pwd"}, f"d{i}")
-                )
-            )
-            msgs.append(_tool_result(f"d{i}"))
+            msgs.append(_assistant_with_tools(_tool_call('shell', {'command': 'pwd'}, f'd{i}')))
+            msgs.append(_tool_result(f'd{i}'))
 
         await cb.after_tool_call(runtime, msgs)
         assert cb._warnings_given == 2

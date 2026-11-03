@@ -1,4 +1,5 @@
 """Model I/O must not starve other tasks, including before response headers."""
+
 import asyncio
 import json
 import threading
@@ -22,7 +23,6 @@ from ms_agent.llm.utils import Message
 
 
 class ResponseBody(httpx.SyncByteStream):
-
     def __init__(self, stream, *, wait_for_body=False, protocol='openai'):
         self.stream = stream
         self.protocol = protocol
@@ -39,89 +39,105 @@ class ResponseBody(httpx.SyncByteStream):
         assert self.release.wait(10), 'test did not release response body'
         if self.protocol == 'anthropic':
             message = {
-                'id': 'probe', 'type': 'message', 'role': 'assistant',
-                'model': 'probe', 'content': [], 'stop_reason': None,
+                'id': 'probe',
+                'type': 'message',
+                'role': 'assistant',
+                'model': 'probe',
+                'content': [],
+                'stop_reason': None,
                 'stop_sequence': None,
                 'usage': {'input_tokens': 1, 'output_tokens': 1},
             }
             if self.stream:
                 events = [
                     {'type': 'message_start', 'message': message},
-                    {'type': 'content_block_start', 'index': 0,
-                     'content_block': {'type': 'text', 'text': ''}},
-                    {'type': 'content_block_delta', 'index': 0,
-                     'delta': {'type': 'text_delta', 'text': 'OK'}},
+                    {'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}},
+                    {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': 'OK'}},
                     {'type': 'content_block_stop', 'index': 0},
-                    {'type': 'message_delta',
-                     'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
-                     'usage': {'output_tokens': 1}},
+                    {
+                        'type': 'message_delta',
+                        'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                        'usage': {'output_tokens': 1},
+                    },
                     {'type': 'message_stop'},
                 ]
                 for event in events:
-                    yield (f"event: {event['type']}\ndata: "
-                           + json.dumps(event) + '\n\n').encode()
+                    yield (f'event: {event["type"]}\ndata: ' + json.dumps(event) + '\n\n').encode()
             else:
-                message.update(content=[{'type': 'text', 'text': 'OK'}],
-                               stop_reason='end_turn')
+                message.update(content=[{'type': 'text', 'text': 'OK'}], stop_reason='end_turn')
                 yield json.dumps(message).encode()
             return
         if self.stream:
             for delta, reason in [({'content': 'OK'}, None), ({}, 'stop')]:
                 chunk = {
-                    'id': 'probe', 'object': 'chat.completion.chunk',
-                    'created': 0, 'model': 'probe',
-                    'choices': [{'index': 0, 'delta': delta,
-                                 'finish_reason': reason}],
+                    'id': 'probe',
+                    'object': 'chat.completion.chunk',
+                    'created': 0,
+                    'model': 'probe',
+                    'choices': [{'index': 0, 'delta': delta, 'finish_reason': reason}],
                 }
                 yield ('data: ' + json.dumps(chunk) + '\n\n').encode()
             yield b'data: [DONE]\n\n'
         else:
-            yield json.dumps({
-                'id': 'probe', 'object': 'chat.completion', 'created': 0,
-                'model': 'probe', 'choices': [{'index': 0,
-                    'message': {'role': 'assistant', 'content': 'OK'},
-                    'finish_reason': 'stop'}],
-                'usage': {'prompt_tokens': 1, 'completion_tokens': 1,
-                          'total_tokens': 2},
-            }).encode()
+            yield json.dumps(
+                {
+                    'id': 'probe',
+                    'object': 'chat.completion',
+                    'created': 0,
+                    'model': 'probe',
+                    'choices': [
+                        {'index': 0, 'message': {'role': 'assistant', 'content': 'OK'}, 'finish_reason': 'stop'}
+                    ],
+                    'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
+                }
+            ).encode()
 
     def close(self):
         self.closed.set()
         self.release.set()
 
 
-def make_agent(handler=None, *, stream=True, legacy=False, protocol='openai',
-               base_url='http://model.test/v1', http_client=None):
-    config = OmegaConf.create({
-        'llm': {'model': 'probe'}, 'generation_config': {'stream': stream}})
+def make_agent(
+    handler=None, *, stream=True, legacy=False, protocol='openai', base_url='http://model.test/v1', http_client=None
+):
+    config = OmegaConf.create({'llm': {'model': 'probe'}, 'generation_config': {'stream': stream}})
     if protocol == 'anthropic':
         pytest.importorskip('anthropic')
         from ms_agent.llm.anthropic_llm import Anthropic
-        from ms_agent.llm.transport.anthropic_messages import (
-            AnthropicMessagesTransport)
+        from ms_agent.llm.transport.anthropic_messages import AnthropicMessagesTransport
+
         cls = Anthropic if legacy else AnthropicMessagesTransport
     else:
         cls = LegacyOpenAI if legacy else OpenAICompatTransport
     credentials = {'api_key': 'local-test', 'base_url': base_url}
-    llm = (cls(config, **credentials) if legacy else cls(
-        model='probe', generation_config={'stream': stream}, **credentials))
+    llm = (
+        cls(config, **credentials)
+        if legacy
+        else cls(model='probe', generation_config={'stream': stream}, **credentials)
+    )
     llm.client.close()
     llm.client = type(llm.client)(
-        **credentials, max_retries=0, timeout=2,
-        http_client=http_client or httpx.Client(
-            transport=httpx.MockTransport(handler)))
+        **credentials,
+        max_retries=0,
+        timeout=2,
+        http_client=http_client or httpx.Client(transport=httpx.MockTransport(handler)),
+    )
     agent = LLMAgent.__new__(LLMAgent)
     agent.llm = llm
-    agent.config = OmegaConf.create({
-        'generation_config': {'stream': stream, 'stream_output': False}})
+    agent.config = OmegaConf.create({'generation_config': {'stream': stream, 'stream_output': False}})
     agent.task_manager = None
     agent.load_cache = False
     agent._event_sink = None
     agent.on_generate_response = AsyncMock()
     agent.tool_manager = SimpleNamespace(get_tools=AsyncMock(return_value=[]))
     agent.on_tool_call = AsyncMock()
-    for method in ('log_output', 'handle_new_response', 'save_history',
-                   '_emit_tool_composing', '_record_image_deliveries'):
+    for method in (
+        'log_output',
+        'handle_new_response',
+        'save_history',
+        '_emit_tool_composing',
+        '_record_image_deliveries',
+    ):
         setattr(agent, method, Mock())
     return agent
 
@@ -131,13 +147,15 @@ def run_async(test):
     @wraps(test)
     def run(*args, **kwargs):
         return asyncio.run(test(*args, **kwargs))
+
     return run
 
 
 async def reached(event):
     async def wait():
         while not event.is_set():
-            await asyncio.sleep(.01)
+            await asyncio.sleep(0.01)
+
     # Do not use the executor being tested to wait for its progress.
     await asyncio.wait_for(wait(), 5)
 
@@ -145,15 +163,17 @@ async def reached(event):
 async def cancel(task):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(task, .5)
+        await asyncio.wait_for(task, 0.5)
 
 
 @asynccontextmanager
 async def running(agent, *releases):
     async def step():
         # Exercise the real step body without unrelated retry/backoff policy.
-        return [rows async for rows in LLMAgent.step.__wrapped__(
-            agent, [Message(role='user', content='Respond with OK')])]
+        return [
+            rows async for rows in LLMAgent.step.__wrapped__(agent, [Message(role='user', content='Respond with OK')])
+        ]
+
     llm = agent.llm  # Cleanup must retain this client if a test replaces it.
     task = asyncio.create_task(step())
     try:
@@ -167,11 +187,11 @@ async def running(agent, *releases):
 
 
 @asynccontextmanager
-async def mock_request(protocol, *, stream=True, legacy=False,
-                       wait_for='headers', error=None):
+async def mock_request(protocol, *, stream=True, legacy=False, wait_for='headers', error=None):
     body = ResponseBody(stream, wait_for_body=True, protocol=protocol)
-    request = SimpleNamespace(body=body, headers_entered=threading.Event(),
-                              release_headers=threading.Event(), threads=[])
+    request = SimpleNamespace(
+        body=body, headers_entered=threading.Event(), release_headers=threading.Event(), threads=[]
+    )
     if wait_for == 'body':
         request.release_headers.set()
 
@@ -181,11 +201,11 @@ async def mock_request(protocol, *, stream=True, legacy=False,
         assert request.release_headers.wait(10), 'headers not released'
         if error:
             raise error('simulated timeout', request=http_request)
-        return httpx.Response(200, stream=body, headers={
-            'Content-Type': 'text/event-stream' if stream else 'application/json'})
+        return httpx.Response(
+            200, stream=body, headers={'Content-Type': 'text/event-stream' if stream else 'application/json'}
+        )
 
-    request.agent = make_agent(handle, stream=stream, legacy=legacy,
-                               protocol=protocol)
+    request.agent = make_agent(handle, stream=stream, legacy=legacy, protocol=protocol)
     async with running(request.agent, request.release_headers, body.release) as task:
         request.task = task
         yield request
@@ -202,7 +222,7 @@ async def test_first_request_leaves_event_loop_responsive(stream, legacy, protoc
         assert not r.task.done()
         tick = asyncio.Event()
         asyncio.get_running_loop().call_soon(tick.set)
-        await asyncio.wait_for(tick.wait(), .5)
+        await asyncio.wait_for(tick.wait(), 0.5)
         r.release_headers.set()
         r.body.release.set()
         await asyncio.wait_for(r.task, 2)
@@ -259,6 +279,7 @@ async def test_cancel_during_stream_read_interrupts_and_closes_iterator(legacy, 
                 finally:
                     chunks.close()
                     iterator_closed.set()
+
             return tracked_chunks()
 
         r.agent.llm.generate = tracked_generate
@@ -305,8 +326,7 @@ async def test_slow_model_does_not_starve_host_executor(wait_for_body, protocol)
     asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=1))
     async with mock_request(protocol, wait_for='body' if wait_for_body else 'headers') as r:
         await reached(r.body.entered if wait_for_body else r.headers_entered)
-        assert await asyncio.wait_for(
-            asyncio.to_thread(lambda: 'session storage'), .5) == 'session storage'
+        assert await asyncio.wait_for(asyncio.to_thread(lambda: 'session storage'), 0.5) == 'session storage'
 
 
 @pytest.mark.parametrize('protocol', ['openai', 'anthropic'])
@@ -317,7 +337,6 @@ async def test_cancel_stalled_tcp_read_releases_model_worker(monkeypatch, protoc
     release, reading = threading.Event(), threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
-
         def log_message(self, *args):
             pass
 
@@ -331,7 +350,6 @@ async def test_cancel_stalled_tcp_read_releases_model_worker(monkeypatch, protoc
             release.wait(5)
 
     class MarkRead(httpx.SyncByteStream):
-
         def __init__(self, inner):
             self.inner = inner
 
@@ -352,15 +370,17 @@ async def test_cancel_stalled_tcp_read_releases_model_worker(monkeypatch, protoc
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
             monkeypatch.setattr(io, '_executor', pool)
-            agent = make_agent(legacy=legacy, protocol=protocol,
-                               base_url=f'http://127.0.0.1:{server.server_port}',
-                               http_client=httpx.Client(event_hooks={'response': [mark_response]}))
+            agent = make_agent(
+                legacy=legacy,
+                protocol=protocol,
+                base_url=f'http://127.0.0.1:{server.server_port}',
+                http_client=httpx.Client(event_hooks={'response': [mark_response]}),
+            )
             async with running(agent, release) as task:
                 await reached(reading)
-                await asyncio.sleep(.05)  # Let the worker enter recv().
+                await asyncio.sleep(0.05)  # Let the worker enter recv().
                 await cancel(task)
-                assert await asyncio.wait_for(
-                    io.run_in_llm_executor(lambda: 'next request'), .5) == 'next request'
+                assert await asyncio.wait_for(io.run_in_llm_executor(lambda: 'next request'), 0.5) == 'next request'
                 assert not release.is_set()
     finally:
         release.set()
@@ -369,13 +389,12 @@ async def test_cancel_stalled_tcp_read_releases_model_worker(monkeypatch, protoc
         thread.join(timeout=2)
 
 
-@pytest.mark.parametrize('http_version,closed', [('HTTP/2', False),
-                                               ('HTTP/1.1', True)])
+@pytest.mark.parametrize('http_version,closed', [('HTTP/2', False), ('HTTP/1.1', True)])
 def test_interrupt_preserves_shared_or_released_connection(http_version, closed):
     network = Mock()
     response = httpx.Response(
-        200, stream=ResponseBody(True),
-        extensions={'http_version': http_version.encode(), 'network_stream': network})
+        200, stream=ResponseBody(True), extensions={'http_version': http_version.encode(), 'network_stream': network}
+    )
     if closed:
         response.close()
     stream = SimpleNamespace(response=response, close=Mock())

@@ -6,10 +6,11 @@ prompt and mid-conversation re-prompts: informational commands re-prompt,
 is submitted as the task. `LLMAgent._resolve_interactive` decides when that
 loop runs at all.
 """
+
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
 from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
@@ -111,8 +112,7 @@ class TestInteractiveSession:
     @pytest.mark.asyncio
     async def test_submit_prompt_command_returns_content(self):
         async def submit(ctx):
-            return CommandResult(
-                type=CommandResultType.SUBMIT_PROMPT, content='expanded prompt')
+            return CommandResult(type=CommandResultType.SUBMIT_PROMPT, content='expanded prompt')
 
         router = CommandRouter()
         router.register(CommandDef(name='go', description='x'), submit)
@@ -183,11 +183,11 @@ class TestCallbackWiring:
 
     def _input_callbacks(self, agent):
         from ms_agent.callbacks.input_callback import InputCallback
+
         return [c for c in agent.callbacks if isinstance(c, InputCallback)]
 
     def test_interactive_injects_shared_router(self):
-        agent = _make_callback_agent(
-            {'callbacks': ['input_callback'], 'local_dir': '/tmp'})
+        agent = _make_callback_agent({'callbacks': ['input_callback'], 'local_dir': '/tmp'})
         agent._interactive = True
         agent.register_callback_from_config()
         cbs = self._input_callbacks(agent)
@@ -197,8 +197,7 @@ class TestCallbackWiring:
 
     def test_non_interactive_skips_input_callback(self):
         # Listed but not interactive -> must not register (would block input()).
-        agent = _make_callback_agent(
-            {'callbacks': ['input_callback'], 'local_dir': '/tmp'})
+        agent = _make_callback_agent({'callbacks': ['input_callback'], 'local_dir': '/tmp'})
         agent._interactive = False
         agent.register_callback_from_config()
         assert self._input_callbacks(agent) == []

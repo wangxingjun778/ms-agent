@@ -4,6 +4,7 @@ Migrated from ``ContextCompressor.summarize`` / ``compress``.  This strategy
 replaces old messages with a summary message and advances
 ``last_consolidated``, but the original data is preserved in the SessionLog.
 """
+
 from __future__ import annotations
 
 import json
@@ -77,7 +78,7 @@ def _estimate_total_tokens(messages: List[Dict[str, Any]]) -> int:
         ct = int(msg.get('completion_tokens', 0) or 0)
         if pt or ct:
             base = pt + ct
-            tail = sum(_estimate_message_tokens(m) for m in messages[i + 1:])
+            tail = sum(_estimate_message_tokens(m) for m in messages[i + 1 :])
             return base + tail
 
     return sum(_estimate_message_tokens(m) for m in messages)
@@ -129,25 +130,24 @@ class SummaryCompactor:
                 result.append(msg)
                 break
 
-        result.append({
-            'role':
-            'user',
-            'content':
-            f'[Conversation Summary]\n{summary}\n\n'
-            'Please continue based on this summary.',
-        })
+        result.append(
+            {
+                'role': 'user',
+                'content': f'[Conversation Summary]\n{summary}\n\nPlease continue based on this summary.',
+            }
+        )
 
         if visible and visible[-1].get('role') == 'user':
             last_user = visible[-1]
-            if last_user.get('content') and last_user['content'] != result[-1][
-                    'content']:
+            if last_user.get('content') and last_user['content'] != result[-1]['content']:
                 result.append(last_user)
 
         tokens_after = _estimate_total_tokens(result)
 
         logger.info(
             f'[summary_compactor] Compressed {len(visible)} messages to '
-            f'{len(result)} ({tokens_before} -> {tokens_after} tokens)')
+            f'{len(result)} ({tokens_before} -> {tokens_after} tokens)'
+        )
 
         return result, {
             'summary': summary[:200],
@@ -155,11 +155,9 @@ class SummaryCompactor:
             'tokens_after': tokens_after,
         }
 
-    def _generate_summary(self, messages: List[Dict[str, Any]],
-                          config: Dict[str, Any]) -> Optional[str]:
+    def _generate_summary(self, messages: List[Dict[str, Any]], config: Dict[str, Any]) -> Optional[str]:
         prompt = config.get('summary_prompt', SUMMARY_PROMPT)
-        char_limit = config.get('summary_input_char_limit',
-                                SUMMARY_INPUT_CHAR_LIMIT)
+        char_limit = config.get('summary_input_char_limit', SUMMARY_INPUT_CHAR_LIMIT)
         conv_parts: List[str] = []
         for msg in messages:
             role = msg.get('role', '?').upper()
@@ -175,8 +173,8 @@ class SummaryCompactor:
 
         try:
             from ms_agent.llm.utils import Message
-            response = self.llm.generate([Message(role='user', content=query)],
-                                         stream=False)
+
+            response = self.llm.generate([Message(role='user', content=query)], stream=False)
             return response.content
         except Exception as e:
             logger.error(f'[summary_compactor] Summary generation failed: {e}')

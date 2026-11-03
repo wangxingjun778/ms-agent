@@ -1,4 +1,5 @@
 """Tests for ms_agent.cron.repository."""
+
 import json
 import tempfile
 from pathlib import Path
@@ -121,7 +122,7 @@ class TestRunRecordInState:
     def test_max_history(self):
         state = CronJobState(MAX_HISTORY=3)
         for i in range(5):
-            state.record_run(RunRecord(run_at=f'2025-01-0{i+1}T00:00:00', duration_ms=100, status='ok'))
+            state.record_run(RunRecord(run_at=f'2025-01-0{i + 1}T00:00:00', duration_ms=100, status='ok'))
         assert len(state.run_history) == 3
         assert state.run_count == 5
 

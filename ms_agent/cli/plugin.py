@@ -11,6 +11,7 @@ from ms_agent.plugins.config_manager import PluginConfigManager
 from ms_agent.plugins.installer import PluginInstaller, UnsupportedPluginSource
 from ms_agent.plugins.runtime import PluginRuntime
 from ms_agent.utils import get_logger
+
 from .base import CLICommand
 
 logger = get_logger()
@@ -42,13 +43,11 @@ class PluginCMD(CLICommand):
 
         install = subparsers.add_parser(
             'install',
-            help=
-            'Install a plugin from local path, github://, modelscope://, or marketplace alias',
+            help='Install a plugin from local path, github://, modelscope://, or marketplace alias',
         )
         install.add_argument(
             'source',
-            help=('Plugin source, e.g. ./path, github://org/repo@ref#subdir, '
-                  'or hookify@claude-plugins-official'),
+            help=('Plugin source, e.g. ./path, github://org/repo@ref#subdir, or hookify@claude-plugins-official'),
         )
         install.add_argument(
             '--scope',
@@ -153,8 +152,7 @@ class PluginCMD(CLICommand):
             raise SystemExit(f'Unknown plugin command: {command}')
 
     def _global_root(self) -> Path:
-        return Path(os.environ.get('MS_AGENT_HOME',
-                                   '~/.ms_agent')).expanduser()
+        return Path(os.environ.get('MS_AGENT_HOME', '~/.ms_agent')).expanduser()
 
     def _project_path(self) -> str:
         return self.args.project_path or os.getcwd()
@@ -179,9 +177,8 @@ class PluginCMD(CLICommand):
         except UnsupportedPluginSource as exc:
             raise SystemExit(str(exc)) from exc
 
-        print(f"Installed plugin '{manifest.plugin_id}' "
-              f'({manifest.format.value}) at {manifest.root}')
-        print(f"Capabilities: {', '.join(sorted(manifest.capabilities))}")
+        print(f"Installed plugin '{manifest.plugin_id}' ({manifest.format.value}) at {manifest.root}")
+        print(f'Capabilities: {", ".join(sorted(manifest.capabilities))}')
 
     def _list(self) -> None:
         global_root = self._global_root()
@@ -198,8 +195,7 @@ class PluginCMD(CLICommand):
             status = item.get('status', 'unknown')
             enabled = 'enabled' if item.get('enabled') else 'disabled'
             caps = ', '.join(item.get('capabilities') or [])
-            print(f"- {item['plugin_id']} [{status}, {enabled}] "
-                  f"caps={caps or 'none'}")
+            print(f'- {item["plugin_id"]} [{status}, {enabled}] caps={caps or "none"}')
 
     async def _toggle(self) -> None:
         if self.args.disable and self.args.enable:

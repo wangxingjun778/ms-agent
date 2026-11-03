@@ -14,8 +14,7 @@ from typing import Any, Literal, Sequence
 from .config import SafetyConfig
 from .matcher import PermissionMatcher
 from .path_validator import validate_path
-from .shell_validator import (PathSafetyConfig, SafetyDecision,
-                              ShellPathValidator)
+from .shell_validator import PathSafetyConfig, SafetyDecision, ShellPathValidator
 
 
 class SafetyGuard:
@@ -49,21 +48,18 @@ class SafetyGuard:
             safety_config=path_safety_cfg,
         )
 
-    def check(self, tool_name: str, tool_args: dict[str,
-                                                    Any]) -> SafetyDecision:
+    def check(self, tool_name: str, tool_args: dict[str, Any]) -> SafetyDecision:
         # 1. Generic safety rules
         for rule in self._config.patterns:
             if self._matcher.match_with_content(rule, tool_name, tool_args):
-                return SafetyDecision(
-                    action='deny', reason=f'Blocked by safety rule: {rule}')
+                return SafetyDecision(action='deny', reason=f'Blocked by safety rule: {rule}')
 
         # 2. Tool-specific checks
         if tool_name.endswith('---shell_executor'):
             command = tool_args.get('command', '')
             return self._shell_validator.check(command)
 
-        if tool_name.endswith('---write_file') or tool_name.endswith(
-                '---edit_file'):
+        if tool_name.endswith('---write_file') or tool_name.endswith('---edit_file'):
             return self._check_file_path(tool_args.get('path', ''), 'write')
 
         if tool_name.endswith('---read_file'):
@@ -75,8 +71,7 @@ class SafetyGuard:
                         result = self._check_file_path(p.strip(), 'read')
                         if result.action != 'allow':
                             return result
-                return SafetyDecision(
-                    action='allow', reason='All read paths validated')
+                return SafetyDecision(action='allow', reason='All read paths validated')
             return self._check_file_path(path, 'read')
 
         if tool_name.endswith('---grep') or tool_name.endswith('---glob'):
@@ -85,8 +80,7 @@ class SafetyGuard:
         # 3. No rule matched → allow
         return SafetyDecision(action='allow', reason='No safety rule matched')
 
-    def _check_file_path(self, path: str,
-                         op_type: Literal['read', 'write']) -> SafetyDecision:
+    def _check_file_path(self, path: str, op_type: Literal['read', 'write']) -> SafetyDecision:
         if not path:
             return SafetyDecision(action='deny', reason='Empty file path')
 
@@ -108,11 +102,9 @@ class SafetyGuard:
             self._allowed_dirs,
             op_type,
             read_only_dirs=self._read_only_dirs,
-            sensitive_paths=self._sensitive_read_paths)
+            sensitive_paths=self._sensitive_read_paths,
+        )
         if not result.allowed:
-            return SafetyDecision(
-                action=result.action,
-                reason=result.reason,
-                category=result.category)
+            return SafetyDecision(action=result.action, reason=result.reason, category=result.category)
 
         return SafetyDecision(action='allow', reason='Path validation passed')

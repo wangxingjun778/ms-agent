@@ -12,11 +12,13 @@ api.tavily.com on 2026-08-20 shape these tests:
   the user. It must therefore reach them, and the old code turned every failure
   into "No search results found."
 """
+
 import json
 from io import BytesIO
 from urllib.error import HTTPError
 
 import pytest
+
 from ms_agent.tools.search.tavily import http as tavily_http
 from ms_agent.tools.search.tavily.schema import TavilySearchRequest
 from ms_agent.tools.search.tavily.search import KEYLESS_HEADER, TavilySearch
@@ -26,9 +28,11 @@ from ms_agent.tools.search.websearch_tool import WebSearchTool
 REAL_QUOTA_BODY = {
     'error': {
         'code': 'hourly_cap_reached',
-        'message': ('You reached the hourly keyless Tavily limit. To continue '
-                    'immediately, pay via x402 agentic payment or sign up at '
-                    'https://tavily.com for a Tavily API key.'),
+        'message': (
+            'You reached the hourly keyless Tavily limit. To continue '
+            'immediately, pay via x402 agentic payment or sign up at '
+            'https://tavily.com for a Tavily API key.'
+        ),
         'next_actions': [],
         'window': 'hour',
         'retry_after_seconds': 62,
@@ -39,16 +43,15 @@ REAL_AUTH_BODY = {'detail': {'error': 'Unauthorized: missing or invalid API key.
 
 
 class _Hdrs(dict):
-
     def get(self, key, default=None):
         return dict.get(self, key.lower(), default)
 
 
 def _raise_http(status, body, headers=None):
     def boom(*args, **kwargs):
-        raise HTTPError('https://api.tavily.com/search', status, 'err',
-                        _Hdrs(headers or {}),
-                        BytesIO(json.dumps(body).encode()))
+        raise HTTPError(
+            'https://api.tavily.com/search', status, 'err', _Hdrs(headers or {}), BytesIO(json.dumps(body).encode())
+        )
 
     return boom
 
@@ -59,6 +62,7 @@ def no_env_key(monkeypatch):
 
 
 # --------------------------------------------------------------- body shape
+
 
 def test_api_key_is_omitted_when_absent():
     """Present-but-empty would be tolerated; absent is the only unambiguous
@@ -75,6 +79,7 @@ def test_api_key_is_sent_when_present():
 
 
 # ------------------------------------------------------------ mode selection
+
 
 def test_missing_key_selects_keyless_instead_of_raising(no_env_key):
     """Regression: this used to raise ValueError, which WebSearchTool.connect()
@@ -104,8 +109,7 @@ def test_keyless_header_is_sent_and_key_field_absent(no_env_key, monkeypatch):
         seen['headers'] = headers
         return {'results': []}
 
-    monkeypatch.setattr('ms_agent.tools.search.tavily.search.post_json',
-                        fake_post)
+    monkeypatch.setattr('ms_agent.tools.search.tavily.search.post_json', fake_post)
     TavilySearch().search(TavilySearchRequest(query='q', max_results=1))
     assert seen['headers'] == KEYLESS_HEADER
     assert 'api_key' not in seen['body']
@@ -113,10 +117,9 @@ def test_keyless_header_is_sent_and_key_field_absent(no_env_key, monkeypatch):
 
 # ------------------------------------------------------- error classification
 
+
 def test_quota_error_is_parsed_with_code_and_retry_after(monkeypatch):
-    monkeypatch.setattr(
-        tavily_http, 'urlopen',
-        _raise_http(429, REAL_QUOTA_BODY, {'retry-after': '62'}))
+    monkeypatch.setattr(tavily_http, 'urlopen', _raise_http(429, REAL_QUOTA_BODY, {'retry-after': '62'}))
     with pytest.raises(tavily_http.TavilyHTTPError) as ctx:
         tavily_http.post_json('https://api.tavily.com/search', {'query': 'q'})
     err = ctx.value
@@ -127,8 +130,7 @@ def test_quota_error_is_parsed_with_code_and_retry_after(monkeypatch):
 
 
 def test_auth_error_is_recognised_through_the_detail_envelope(monkeypatch):
-    monkeypatch.setattr(tavily_http, 'urlopen',
-                        _raise_http(401, REAL_AUTH_BODY))
+    monkeypatch.setattr(tavily_http, 'urlopen', _raise_http(401, REAL_AUTH_BODY))
     with pytest.raises(tavily_http.TavilyHTTPError) as ctx:
         tavily_http.post_json('https://api.tavily.com/search', {'query': 'q'})
     assert ctx.value.is_auth and not ctx.value.is_quota
@@ -137,9 +139,8 @@ def test_auth_error_is_recognised_through_the_detail_envelope(monkeypatch):
 def test_retry_after_falls_back_to_the_header(monkeypatch):
     """Some responses carry the header but no retry_after_seconds field."""
     monkeypatch.setattr(
-        tavily_http, 'urlopen',
-        _raise_http(429, {'error': {'code': 'hourly_cap_reached'}},
-                    {'retry-after': '90'}))
+        tavily_http, 'urlopen', _raise_http(429, {'error': {'code': 'hourly_cap_reached'}}, {'retry-after': '90'})
+    )
     with pytest.raises(tavily_http.TavilyHTTPError) as ctx:
         tavily_http.post_json('https://api.tavily.com/search', {'query': 'q'})
     assert ctx.value.retry_after == 90
@@ -147,9 +148,9 @@ def test_retry_after_falls_back_to_the_header(monkeypatch):
 
 # ------------------------------------------------ what the MODEL is told
 
+
 def _payload(status, code='', retry_after=None):
-    err = tavily_http.TavilyHTTPError(
-        'boom', status=status, code=code, retry_after=retry_after)
+    err = tavily_http.TavilyHTTPError('boom', status=status, code=code, retry_after=retry_after)
     return WebSearchTool._search_error_payload('tavily', err)
 
 

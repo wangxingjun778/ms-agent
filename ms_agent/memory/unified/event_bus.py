@@ -1,4 +1,5 @@
 """InMemoryEventBus — Phase 1 event bus backed by asyncio.Queue."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,6 +7,7 @@ import uuid
 from typing import Any, Callable, Dict, List
 
 from ms_agent.utils.logger import get_logger
+
 from .protocols import MemoryEvent
 
 logger = get_logger()

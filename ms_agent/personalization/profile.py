@@ -22,6 +22,7 @@ class ProfileManager:
         # different file than a UI writing to a redirected home (dead link).
         if global_dir is None:
             from ms_agent.project.paths import global_home
+
             self._dir = global_home()
         else:
             self._dir = Path(os.path.expanduser(global_dir))

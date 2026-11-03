@@ -1,10 +1,10 @@
 """Tests for hook context helpers."""
 
 from ms_agent.hooks.context import (
+    HookAttachment,
     apply_hook_result_to_messages,
     condense_hook_attachments_for_llm,
     extract_latest_user_prompt,
-    HookAttachment,
 )
 from ms_agent.hooks.events import HookResult
 from ms_agent.llm.utils import Message

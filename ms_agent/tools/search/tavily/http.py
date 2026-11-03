@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Minimal HTTP JSON client for Tavily REST API (stdlib only)."""
+
 import json
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
@@ -18,13 +19,15 @@ class TavilyHTTPError(RuntimeError):
     ``retry_after`` seconds when the response carried one.
     """
 
-    def __init__(self,
-                 message: str,
-                 *,
-                 status: Optional[int] = None,
-                 code: str = '',
-                 retry_after: Optional[int] = None,
-                 detail: Any = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: Optional[int] = None,
+        code: str = '',
+        retry_after: Optional[int] = None,
+        detail: Any = None,
+    ):
         super().__init__(message)
         self.status = status
         self.code = code
@@ -34,8 +37,7 @@ class TavilyHTTPError(RuntimeError):
     @property
     def is_quota(self) -> bool:
         """Out of quota — retryable later, and fixable now with an API key."""
-        return self.status == 429 or self.code in ('hourly_cap_reached',
-                                                   'rate_limit_exceeded')
+        return self.status == 429 or self.code in ('hourly_cap_reached', 'rate_limit_exceeded')
 
     @property
     def is_auth(self) -> bool:
@@ -53,8 +55,10 @@ def _ssl_context():
     Never disables verification.
     """
     try:
-        import certifi
         import ssl
+
+        import certifi
+
         return ssl.create_default_context(cafile=certifi.where())
     except Exception:
         return None
@@ -147,6 +151,7 @@ def post_json(
             status=e.code,
             code=code,
             retry_after=retry_after,
-            detail=detail) from e
+            detail=detail,
+        ) from e
     except URLError as e:
         raise TavilyHTTPError(f'Tavily network error: {e}') from e

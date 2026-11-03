@@ -8,6 +8,7 @@ The next code will do the following:
 This loop is a simplified version of ModelScope mcp-playground:
 https://modelscope.cn/mcp/playground
 """
+
 import asyncio
 import os
 import sys
@@ -18,8 +19,7 @@ from ms_agent.config import Config
 path = os.path.dirname(os.path.abspath(__file__))
 # ms_agent/agent/agent.yaml
 # The system of the config will help LLM to make a better analysis and plan
-agent_config = os.path.join(path, '..', '..', 'ms_agent', 'agent',
-                            'agent.yaml')
+agent_config = os.path.join(path, '..', '..', 'ms_agent', 'agent', 'agent.yaml')
 # TODO change the mcp.json to a real path:
 # https://www.modelscope.cn/mcp/servers/@amap/amap-maps
 mcp_config = os.path.join(path, 'mcp.json')
@@ -148,7 +148,7 @@ async def run_query(query: str):
     这些咖啡厅都这些咖啡厅都位于西湖附近，可以根据位于西湖附近，可以根据个人喜好和需求个人喜好和需求选择前往。选择前往。
     [INFO:ms_agent] [Agent-default] [usage] prompt_tokens: 4850, completion_tokens: 410
     >>>
-    """ # noqa
+    """  # noqa
     return _content
 
 

@@ -27,12 +27,12 @@ class SkillSource:
     capability: Optional[str] = None
 
 
-_MODELSCOPE_URI_RE = re.compile(
-    r'^modelscope://(?P<repo>[^@#]+)(?:@(?P<rev>[^#]+))?(?:#(?P<sub>.+))?$')
+_MODELSCOPE_URI_RE = re.compile(r'^modelscope://(?P<repo>[^@#]+)(?:@(?P<rev>[^#]+))?(?:#(?P<sub>.+))?$')
 
 _MODELSCOPE_SKILL_URL_RE = re.compile(
     r'^https?://(?:www\.)?modelscope\.(?:cn|ai)/skills/'
-    r'(?P<repo>[^/]+/[^/]+)(?:/.*)?$')
+    r'(?P<repo>[^/]+/[^/]+)(?:/.*)?$'
+)
 
 _OWNER_REPO_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 

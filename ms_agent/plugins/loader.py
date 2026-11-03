@@ -68,10 +68,8 @@ class PluginLoadResult:
 
 
 class PluginLoader:
-
     @staticmethod
-    def load(manifest: PluginManifest,
-             ctx: PluginLoadContext) -> PluginLoadResult:
+    def load(manifest: PluginManifest, ctx: PluginLoadContext) -> PluginLoadResult:
         result = PluginLoadResult()
         data_dir = ctx.plugin_data_root / manifest.plugin_id
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -79,13 +77,11 @@ class PluginLoader:
 
         result.skill_sources.extend(_load_skill_sources(manifest))
         result.command_defs.extend(_load_commands(manifest))
-        result.skill_sources.extend(
-            _command_defs_to_skill_sources(manifest, result.command_defs))
+        result.skill_sources.extend(_command_defs_to_skill_sources(manifest, result.command_defs))
         result.agent_defs.extend(_load_agents(manifest))
 
         if 'hooks' in manifest.capabilities:
-            registry = _load_hook_registry(manifest, ctx, data_dir,
-                                           user_config)
+            registry = _load_hook_registry(manifest, ctx, data_dir, user_config)
             if not registry.is_empty:
                 registry = registry.with_plugin_source(
                     plugin_id=manifest.plugin_id,
@@ -98,13 +94,13 @@ class PluginLoader:
                         registry=registry,
                         plugin_root=manifest.root,
                         plugin_data_dir=data_dir,
-                    ))
+                    )
+                )
 
         result.mcp_servers.update(_load_mcp_servers(manifest, data_dir, ctx))
         result.settings_patch.update(_load_settings(manifest.root))
         result.bin_paths.extend(_load_bin_paths(manifest.root))
-        result.user_config_schema.update((manifest.raw or {}).get('userConfig')
-                                         or {})
+        result.user_config_schema.update((manifest.raw or {}).get('userConfig') or {})
         result.ui_metadata.update(_load_ui_metadata(manifest))
         result.unsupported.extend(_load_unsupported(manifest))
         return result
@@ -119,8 +115,7 @@ class PluginLoader:
             try:
                 result.merge(PluginLoader.load(manifest, ctx))
             except Exception as exc:
-                logger.warning('Failed to load plugin %s: %s',
-                               manifest.plugin_id, exc)
+                logger.warning('Failed to load plugin %s: %s', manifest.plugin_id, exc)
         return result
 
 
@@ -132,7 +127,8 @@ def _load_skill_sources(manifest: PluginManifest) -> list[SkillSource]:
             origin='plugin',
             plugin_id=manifest.plugin_id,
             capability='skills',
-        ) for path in manifest.resolve_paths('skills')
+        )
+        for path in manifest.resolve_paths('skills')
     ]
 
 
@@ -148,7 +144,9 @@ def _command_defs_to_skill_sources(
             origin='plugin',
             plugin_id=manifest.plugin_id,
             capability='commands',
-        ) for cmd in command_defs if cmd.plugin_id == manifest.plugin_id
+        )
+        for cmd in command_defs
+        if cmd.plugin_id == manifest.plugin_id
     ]
 
 
@@ -186,9 +184,9 @@ def _load_commands(manifest: PluginManifest) -> list[CommandDef]:
                     name=frontmatter.get('name') or file_path.stem,
                     path=str(file_path),
                     description=frontmatter.get('description'),
-                    argument_hint=frontmatter.get(
-                        'argument-hint', frontmatter.get('argument_hint')),
-                ))
+                    argument_hint=frontmatter.get('argument-hint', frontmatter.get('argument_hint')),
+                )
+            )
     return defs
 
 
@@ -206,10 +204,9 @@ def _load_agents(manifest: PluginManifest) -> list[AgentDef]:
                     model=frontmatter.get('model'),
                     tools=_as_tuple(frontmatter.get('tools')),
                     skills=_as_tuple(frontmatter.get('skills')),
-                    disallowed_tools=_as_tuple(
-                        frontmatter.get('disallowedTools',
-                                        frontmatter.get('disallowed_tools'))),
-                ))
+                    disallowed_tools=_as_tuple(frontmatter.get('disallowedTools', frontmatter.get('disallowed_tools'))),
+                )
+            )
     return defs
 
 
@@ -232,8 +229,7 @@ def _load_mcp_servers(
 
     servers: dict[str, dict[str, Any]] = {}
     for item in candidates:
-        entries = item.get('mcpServers', item) if isinstance(item,
-                                                             dict) else {}
+        entries = item.get('mcpServers', item) if isinstance(item, dict) else {}
         if not isinstance(entries, dict):
             continue
         for name, server in entries.items():
@@ -277,7 +273,8 @@ def _load_hook_registry(
                     plugin_data_dir=str(data_dir),
                     user_config=user_config,
                     enabled_executors=ctx.enabled_executors,
-                ))
+                )
+            )
         except Exception as exc:
             logger.warning(
                 'Failed to load inline hooks for plugin %s: %s',
@@ -317,8 +314,8 @@ def _load_hook_registry(
             )
 
     for path in (
-            manifest.root / 'hooks' / 'hermes.yaml',
-            manifest.root / 'hooks' / 'config.yaml',
+        manifest.root / 'hooks' / 'hermes.yaml',
+        manifest.root / 'hooks' / 'config.yaml',
     ):
         if path.resolve() in loaded_paths:
             continue
@@ -332,7 +329,8 @@ def _load_hook_registry(
                         plugin_data_dir=str(data_dir),
                         user_config=user_config,
                         enabled_executors=ctx.enabled_executors,
-                    ))
+                    )
+                )
             except Exception as exc:
                 logger.warning(
                     'Failed to load Hermes hooks for plugin %s from %s: %s',
@@ -377,8 +375,7 @@ def _load_bin_paths(root: Path) -> list[Path]:
 def _load_ui_metadata(manifest: PluginManifest) -> dict[str, Any]:
     raw = manifest.raw or {}
     metadata: dict[str, Any] = {}
-    for key in ('author', 'homepage', 'repository', 'license', 'keywords',
-                'displayName', 'interface'):
+    for key in ('author', 'homepage', 'repository', 'license', 'keywords', 'displayName', 'interface'):
         if key in raw:
             metadata[key] = raw[key]
     assets = manifest.root / 'assets'
@@ -396,7 +393,8 @@ def _load_unsupported(manifest: PluginManifest) -> list[UnsupportedCapability]:
                     capability=capability,
                     status=scan.status,
                     hint=scan.hint,
-                ))
+                )
+            )
     return unsupported
 
 
@@ -441,30 +439,22 @@ def _expand_vars(
         user_config = _load_user_config(plugin_data_dir)
     if isinstance(value, str):
         expanded = (
-            value.replace('${MS_AGENT_PLUGIN_ROOT}', str(plugin_root)).replace(
-                '${CLAUDE_PLUGIN_ROOT}',
-                str(plugin_root)).replace('${MS_AGENT_PLUGIN_DATA}',
-                                          str(plugin_data_dir)).replace(
-                                              '${CLAUDE_PLUGIN_DATA}',
-                                              str(plugin_data_dir)).replace(
-                                                  '${MS_AGENT_PROJECT_DIR}',
-                                                  str(project_path)).replace(
-                                                      '${CLAUDE_PROJECT_DIR}',
-                                                      str(project_path)))
+            value.replace('${MS_AGENT_PLUGIN_ROOT}', str(plugin_root))
+            .replace('${CLAUDE_PLUGIN_ROOT}', str(plugin_root))
+            .replace('${MS_AGENT_PLUGIN_DATA}', str(plugin_data_dir))
+            .replace('${CLAUDE_PLUGIN_DATA}', str(plugin_data_dir))
+            .replace('${MS_AGENT_PROJECT_DIR}', str(project_path))
+            .replace('${CLAUDE_PROJECT_DIR}', str(project_path))
+        )
         for key, item in user_config.items():
             expanded = expanded.replace(f'${{user_config.{key}}}', str(item))
-            expanded = expanded.replace(
-                f'${{CLAUDE_PLUGIN_OPTION_{key.upper()}}}', str(item))
+            expanded = expanded.replace(f'${{CLAUDE_PLUGIN_OPTION_{key.upper()}}}', str(item))
         return expanded
     if isinstance(value, list):
-        return [
-            _expand_vars(item, plugin_root, plugin_data_dir, project_path,
-                         user_config) for item in value
-        ]
+        return [_expand_vars(item, plugin_root, plugin_data_dir, project_path, user_config) for item in value]
     if isinstance(value, dict):
         return {
-            key: _expand_vars(item, plugin_root, plugin_data_dir, project_path,
-                              user_config)
+            key: _expand_vars(item, plugin_root, plugin_data_dir, project_path, user_config)
             for key, item in value.items()
         }
     return value

@@ -7,7 +7,6 @@ from ms_agent.config import Config
 
 
 class TestPromptFiles(unittest.TestCase):
-
     def _write(self, path: str, content: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
@@ -32,7 +31,7 @@ prompt:
             # Create prompt file that would match if resolver ran
             self._write(
                 os.path.join(td, 'prompts', 'researcher', 'zh', 'qwen-3.md'),
-                "FILE_SYSTEM",
+                'FILE_SYSTEM',
             )
             config = Config.from_task(td)
             self.assertIn('INLINE_SYSTEM', config.prompt.system)
@@ -52,11 +51,11 @@ prompt:
             )
             self._write(
                 os.path.join(td, 'prompts', 'researcher', 'zh', 'qwen-3.md'),
-                "QWEN3_SYSTEM",
+                'QWEN3_SYSTEM',
             )
             self._write(
                 os.path.join(td, 'prompts', 'researcher', 'zh', 'base.md'),
-                "BASE_SYSTEM",
+                'BASE_SYSTEM',
             )
             config = Config.from_task(td)
             self.assertEqual(config.prompt.system.strip(), 'QWEN3_SYSTEM')
@@ -76,7 +75,7 @@ prompt:
             )
             self._write(
                 os.path.join(td, 'prompts', 'researcher', 'zh', 'base.md'),
-                "BASE_ONLY",
+                'BASE_ONLY',
             )
             config = Config.from_task(td)
             self.assertEqual(config.prompt.system.strip(), 'BASE_ONLY')
@@ -97,7 +96,7 @@ prompt:
             )
             self._write(
                 os.path.join(td, 'my_prompts', 'reporter', 'en', 'claude.md'),
-                "CLAUDE_REPORTER",
+                'CLAUDE_REPORTER',
             )
             config = Config.from_task(td)
             self.assertEqual(config.prompt.system.strip(), 'CLAUDE_REPORTER')
@@ -118,7 +117,7 @@ prompt:
             # en missing, fallback to zh
             self._write(
                 os.path.join(td, 'prompts', 'searcher', 'zh', 'gpt.md'),
-                "GPT_ZH",
+                'GPT_ZH',
             )
             config = Config.from_task(td)
             self.assertEqual(config.prompt.system.strip(), 'GPT_ZH')
@@ -126,4 +125,3 @@ prompt:
 
 if __name__ == '__main__':
     unittest.main()
-

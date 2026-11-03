@@ -14,30 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: 3.12
-      - name: Install pre-commit hook
+      - name: Install ruff
         run: |
-          pip install pre-commit==4.3.0
-      - name: Linting
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          pip install ruff==0.15.11
+      - name: Lint
         run: |
-          if [ "$EVENT_NAME" = workflow_dispatch ]; then
-            pre-commit run --all-files
-          else
-            if [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
-              # A new branch in a fork may have an outdated default branch.
-              # Compare with the SDK mainline instead of reformatting history.
-              git fetch --no-tags https://github.com/modelscope/ms-agent.git main
-              BASE_SHA=$(git merge-base FETCH_HEAD HEAD)
-            elif ! git cat-file -e "$BASE_SHA^{commit}"; then
-              git fetch --no-tags origin "$BASE_SHA"
-            fi
-            pre-commit run --from-ref "$BASE_SHA" --to-ref HEAD
-          fi
+          ruff check --output-format=github .
+      - name: Check formatting
+        run: |
+          ruff format --check --diff .

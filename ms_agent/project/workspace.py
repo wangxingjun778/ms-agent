@@ -35,11 +35,8 @@ class Workspace:
             if item.name.startswith('.'):
                 continue
             if item.is_dir():
-                children = sum(1 for c in item.iterdir()
-                               if not c.name.startswith('.'))
-                entries.append(
-                    FileEntry(
-                        name=item.name, type='dir', children_count=children))
+                children = sum(1 for c in item.iterdir() if not c.name.startswith('.'))
+                entries.append(FileEntry(name=item.name, type='dir', children_count=children))
             else:
                 stat = item.stat()
                 entries.append(
@@ -47,9 +44,9 @@ class Workspace:
                         name=item.name,
                         type='file',
                         size=stat.st_size,
-                        modified=datetime.fromtimestamp(
-                            stat.st_mtime, tz=timezone.utc).isoformat(),
-                    ))
+                        modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                    )
+                )
         return entries
 
     def read_file(self, rel_path: str) -> str:
@@ -113,6 +110,7 @@ class Workspace:
         """Package a workspace file/dir into a zip and return the bytes."""
         import io
         import zipfile
+
         target = self._resolve_safe(rel_path)
         if not target.exists():
             raise FileNotFoundError(f'Path not found: {rel_path}')

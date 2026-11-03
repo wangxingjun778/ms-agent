@@ -1,7 +1,5 @@
-# flake8: noqa
-# isort: skip_file
-# yapf: disable
 import base64
+import json
 import os
 import re
 import shutil
@@ -13,8 +11,8 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 import gradio as gr
-import json
 import markdown
+
 from ms_agent.llm.openai import OpenAIChat
 from ms_agent.utils.logger import get_logger
 from ms_agent.workflow.deep_research.research_workflow import ResearchWorkflow
@@ -39,6 +37,7 @@ class ResearchWorkflowApp:
     """
     Research Workflow Application, this class initializes the research workflow with the necessary model downloads.
     """
+
     def __init__(self, client, workdir: str):
         from modelscope import snapshot_download
         from modelscope.hub.utils.utils import get_cache_dir
@@ -48,7 +47,6 @@ class ResearchWorkflowApp:
 
         target_dir: str = os.path.join(get_cache_dir(), 'models/EasyOCR')
         if not os.path.exists(os.path.join(os.path.expanduser(target_dir), 'craft_mlt_25k.pth')):
-
             os.makedirs(os.path.expanduser(target_dir), exist_ok=True)
             # Download model to specified directory
             snapshot_download(
@@ -62,6 +60,7 @@ class ResearchWorkflowApp:
             logger.info(f'EasyOCR model downloaded to: {os.path.expanduser(target_dir)}')
             # Unzip craft_mlt_25k.zip, latin_g2.zip
             import zipfile
+
             zip_path_craft = os.path.join(os.path.expanduser(target_dir), 'craft_mlt_25k.zip')
             zip_path_latin = os.path.join(os.path.expanduser(target_dir), 'latin_g2.zip')
             if os.path.exists(zip_path_craft):
@@ -136,20 +135,13 @@ class UserStatusManager:
             if user_id in self.active_users:
                 user_info = self.active_users[user_id]
                 elapsed_time = time.time() - user_info['start_time']
-                return {
-                    'status': user_info['status'],
-                    'elapsed_time': elapsed_time,
-                    'is_active': True
-                }
+                return {'status': user_info['status'], 'elapsed_time': elapsed_time, 'is_active': True}
             return {'status': 'idle', 'elapsed_time': 0, 'is_active': False}
 
     def start_user_task(self, user_id: str):
         """Mark user task start"""
         with self.lock:
-            self.active_users[user_id] = {
-                'start_time': time.time(),
-                'status': 'running'
-            }
+            self.active_users[user_id] = {'start_time': time.time(), 'status': 'running'}
             logger.info(f'User task started - User: {user_id[:8]}***, Current active users: {len(self.active_users)}')
 
     def finish_user_task(self, user_id: str):
@@ -157,7 +149,9 @@ class UserStatusManager:
         with self.lock:
             if user_id in self.active_users:
                 del self.active_users[user_id]
-                logger.info(f'User task completed - User: {user_id[:8]}***, Remaining active users: {len(self.active_users)}')
+                logger.info(
+                    f'User task completed - User: {user_id[:8]}***, Remaining active users: {len(self.active_users)}'
+                )
 
     def get_system_status(self) -> dict:
         """Get system status"""
@@ -168,12 +162,9 @@ class UserStatusManager:
             'max_concurrent': GRADIO_DEFAULT_CONCURRENCY_LIMIT,
             'available_slots': GRADIO_DEFAULT_CONCURRENCY_LIMIT - active_count,
             'task_details': {
-                user_id: {
-                    'status': info['status'],
-                    'elapsed_time': time.time() - info['start_time']
-                }
+                user_id: {'status': info['status'], 'elapsed_time': time.time() - info['start_time']}
                 for user_id, info in self.active_users.items()
-            }
+            },
         }
 
     def force_cleanup_user(self, user_id: str) -> bool:
@@ -261,6 +252,7 @@ def process_files(files) -> List[str]:
 def check_port_available(port: int) -> bool:
     """Check if port is available"""
     import socket
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
@@ -272,6 +264,7 @@ def check_port_available(port: int) -> bool:
 
 class ReusableTCPServer(socketserver.TCPServer):
     """TCP server that supports address reuse"""
+
     allow_reuse_address = True
 
 
@@ -300,7 +293,7 @@ def convert_markdown_images_to_base64(markdown_content: str, workdir: str) -> st
                     '.gif': 'image/gif',
                     '.bmp': 'image/bmp',
                     '.webp': 'image/webp',
-                    '.svg': 'image/svg+xml'
+                    '.svg': 'image/svg+xml',
                 }
                 mime_type = mime_types.get(ext, 'image/png')
 
@@ -423,25 +416,17 @@ def convert_markdown_to_html(markdown_content: str) -> str:
             'markdown.extensions.toc',
             'markdown.extensions.tables',
             'markdown.extensions.fenced_code',
-            'markdown.extensions.nl2br'
+            'markdown.extensions.nl2br',
         ]
 
         # Configure extension parameters
         extension_configs = {
-            'markdown.extensions.codehilite': {
-                'css_class': 'highlight',
-                'use_pygments': True
-            },
-            'markdown.extensions.toc': {
-                'permalink': True
-            }
+            'markdown.extensions.codehilite': {'css_class': 'highlight', 'use_pygments': True},
+            'markdown.extensions.toc': {'permalink': True},
         }
 
         # Create markdown instance
-        md = markdown.Markdown(
-            extensions=extensions,
-            extension_configs=extension_configs
-        )
+        md = markdown.Markdown(extensions=extensions, extension_configs=extension_configs)
 
         # Convert to HTML
         html_content = md.convert(protected_content)
@@ -884,11 +869,7 @@ def list_resources_files(workdir: str) -> str:
 
 
 def run_research_workflow_internal(
-        user_prompt: str,
-        uploaded_files,
-        urls_text: str,
-        user_id: str,
-        progress_callback=None
+    user_prompt: str, uploaded_files, urls_text: str, user_id: str, progress_callback=None
 ) -> Tuple[str, str, str, str, str]:
     """Internal research workflow execution function"""
     try:
@@ -918,7 +899,7 @@ def run_research_workflow_internal(
             api_key=os.environ.get('OPENAI_API_KEY'),
             base_url=os.environ.get('OPENAI_BASE_URL'),
             model=os.environ.get('OPENAI_MODEL_ID'),
-            generation_config={'extra_body': {'enable_thinking': True}}
+            generation_config={'extra_body': {'enable_thinking': True}},
         )
 
         if progress_callback:
@@ -962,11 +943,7 @@ def run_research_workflow_internal(
 
 
 def run_research_workflow(
-        user_prompt: str,
-        uploaded_files,
-        urls_text: str,
-        request: gr.Request,
-        progress=gr.Progress()
+    user_prompt: str, uploaded_files, urls_text: str, request: gr.Request, progress=gr.Progress()
 ) -> Tuple[str, str, str, str, str]:
     """Run research workflow (using Gradio built-in queue control)"""
     try:
@@ -997,13 +974,7 @@ def run_research_workflow(
 
         try:
             # Execute task directly, controlled by Gradio queue for concurrency
-            result = run_research_workflow_internal(
-                user_prompt,
-                uploaded_files,
-                urls_text,
-                user_id,
-                progress_callback
-            )
+            result = run_research_workflow_internal(user_prompt, uploaded_files, urls_text, user_id, progress_callback)
 
             progress(1.0, desc='任务完成！')
             return result
@@ -1082,7 +1053,7 @@ def load_session_data(user_id: str):
         'resources': '',
         'user_prompt': '',
         'urls_text': '',
-        'timestamp': ''
+        'timestamp': '',
     }
 
 
@@ -1111,7 +1082,7 @@ def get_system_status_html() -> str:
         status_html += '<strong>活跃任务详情:</strong><br>'
         for user_id, details in system_status['task_details'].items():
             masked_id = user_id[:8] + '***' if len(user_id) > 8 else user_id
-            status_html += f"• {masked_id}: {details['status']} ({details['elapsed_time']:.1f}s)<br>"
+            status_html += f'• {masked_id}: {details["status"]} ({details["elapsed_time"]:.1f}s)<br>'
         status_html += '</div>'
 
     return status_html
@@ -1120,9 +1091,9 @@ def get_system_status_html() -> str:
 # Create Gradio interface
 def create_interface():
     with gr.Blocks(
-            title='研究工作流应用 | Research Workflow App',
-            theme=gr.themes.Soft(),
-            css="""
+        title='研究工作流应用 | Research Workflow App',
+        theme=gr.themes.Soft(),
+        css="""
         /* Responsive container settings */
         .gradio-container {
             max-width: none !important;
@@ -1809,9 +1780,8 @@ def create_interface():
         .gr-markdown::-webkit-scrollbar-thumb:hover {
             background: #94a3b8;
         }
-        """
+        """,
     ) as demo:
-
         # State management - for maintaining data persistence
         current_workdir = gr.State('')
         current_result = gr.State('')
@@ -1845,7 +1815,7 @@ def create_interface():
                     label='用户提示 | User Prompt',
                     placeholder='请输入您的研究问题或任务描述(可为空)...\nPlease enter your research question or task description (Optional)...',
                     lines=4,
-                    max_lines=8
+                    max_lines=8,
                 )
 
                 with gr.Row():
@@ -1856,7 +1826,7 @@ def create_interface():
                             file_count='multiple',
                             file_types=None,
                             interactive=True,
-                            height=120
+                            height=120,
                         )
 
                     with gr.Column():
@@ -1865,36 +1835,24 @@ def create_interface():
                             label='URLs输入 | URLs Input',
                             placeholder='请输入URLs，每行一个...\nEnter URLs, one per line...\n\nhttps://example1.com\nhttps://example2.com',
                             lines=6,
-                            max_lines=10
+                            max_lines=10,
                         )
 
                 # 运行按钮
-                run_btn = gr.Button(
-                    '🚀 开始研究 | Start Research',
-                    variant='primary',
-                    size='lg'
-                )
+                run_btn = gr.Button('🚀 开始研究 | Start Research', variant='primary', size='lg')
 
                 # 清理按钮
-                clear_btn = gr.Button(
-                    '🧹 清理工作空间 | Clear Workspace',
-                    variant='secondary'
-                )
+                clear_btn = gr.Button('🧹 清理工作空间 | Clear Workspace', variant='secondary')
 
                 # 恢复按钮
-                restore_btn = gr.Button(
-                    '🔄 重载最近结果 | Reload Latest Results',
-                    variant='secondary'
-                )
+                restore_btn = gr.Button('🔄 重载最近结果 | Reload Latest Results', variant='secondary')
 
                 # 会话状态指示器
                 session_status = gr.HTML()
 
                 # 刷新系统状态按钮
                 refresh_status_btn = gr.Button(
-                    '🔄 刷新系统状态 | Refresh System Status',
-                    variant='secondary',
-                    size='sm'
+                    '🔄 刷新系统状态 | Refresh System Status', variant='secondary', size='sm'
                 )
 
             with gr.Column(scale=3, elem_classes=['output-column']):
@@ -1908,15 +1866,12 @@ def create_interface():
                             lines=26,
                             max_lines=30,
                             interactive=False,
-                            show_copy_button=True
+                            show_copy_button=True,
                         )
 
                         # 工作目录显示
                         workdir_output = gr.Textbox(
-                            label='工作目录 | Working Directory',
-                            lines=2,
-                            interactive=False,
-                            show_copy_button=True
+                            label='工作目录 | Working Directory', lines=2, interactive=False, show_copy_button=True
                         )
 
                     with gr.TabItem('📄 研究报告 | Research Report'):
@@ -1928,17 +1883,11 @@ def create_interface():
                             with gr.Row():
                                 with gr.Column(scale=10):
                                     # Markdown报告显示
-                                    markdown_output = gr.Markdown(
-                                        label='Markdown报告 | Markdown Report',
-                                        height=750
-                                    )
+                                    markdown_output = gr.Markdown(label='Markdown报告 | Markdown Report', height=750)
                                 with gr.Column(scale=1, min_width=30):
                                     # 全屏按钮
                                     fullscreen_btn = gr.Button(
-                                        '⛶',
-                                        size='sm',
-                                        variant='secondary',
-                                        elem_id='fullscreen-btn'
+                                        '⛶', size='sm', variant='secondary', elem_id='fullscreen-btn'
                                     )
 
                             # 全屏模态框
@@ -1946,16 +1895,8 @@ def create_interface():
                                 with gr.Column():
                                     with gr.Row():
                                         gr.HTML('<h3 style="margin: 0; flex: 1;">📄 研究报告 - 全屏模式</h3>')
-                                        close_btn = gr.Button(
-                                            '✕',
-                                            size='sm',
-                                            variant='secondary',
-                                            elem_id='close-btn'
-                                        )
-                                    fullscreen_markdown = gr.Markdown(
-                                        height=700,
-                                        elem_id='fullscreen-markdown'
-                                    )
+                                        close_btn = gr.Button('✕', size='sm', variant='secondary', elem_id='close-btn')
+                                    fullscreen_markdown = gr.Markdown(height=700, elem_id='fullscreen-markdown')
 
                             # 为本地模式创建空的HTML组件（保持兼容性）
                             html_output = gr.HTML(visible=False)
@@ -1969,15 +1910,12 @@ def create_interface():
                                         label='研究报告 | Research Report',
                                         value='',
                                         elem_id='html-report',
-                                        elem_classes=['scrollable-html-report']
+                                        elem_classes=['scrollable-html-report'],
                                     )
                                 with gr.Column(scale=1, min_width=30):
                                     # 全屏按钮
                                     fullscreen_btn = gr.Button(
-                                        '⛶',
-                                        size='sm',
-                                        variant='secondary',
-                                        elem_id='fullscreen-btn'
+                                        '⛶', size='sm', variant='secondary', elem_id='fullscreen-btn'
                                     )
 
                             # 全屏模态框
@@ -1985,16 +1923,9 @@ def create_interface():
                                 with gr.Column():
                                     with gr.Row():
                                         gr.HTML('<h3 style="margin: 0; flex: 1;">📄 研究报告 - 全屏模式</h3>')
-                                        close_btn = gr.Button(
-                                            '✕',
-                                            size='sm',
-                                            variant='secondary',
-                                            elem_id='close-btn'
-                                        )
+                                        close_btn = gr.Button('✕', size='sm', variant='secondary', elem_id='close-btn')
                                     fullscreen_html = gr.HTML(
-                                        value='',
-                                        elem_id='fullscreen-html',
-                                        elem_classes=['scrollable-html-report']
+                                        value='', elem_id='fullscreen-html', elem_classes=['scrollable-html-report']
                                     )
 
                             # 为非local模式创建空的markdown组件（保持兼容性）
@@ -2008,7 +1939,7 @@ def create_interface():
                             lines=30,
                             max_lines=50,
                             interactive=False,
-                            show_copy_button=True
+                            show_copy_button=True,
                         )
 
         # 使用说明
@@ -2058,11 +1989,22 @@ def create_interface():
                 if not is_authenticated:
                     return (
                         user_status_html,
-                        '', '', '', '', '', '',  # Interface display (6 items)
-                        '', '', '', '', '', '',  # State saving (6 items)
-                        '', '',  # Input state saving (2 items)
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',  # Interface display (6 items)
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',  # State saving (6 items)
+                        '',
+                        '',  # Input state saving (2 items)
                         """<div class="status-indicator status-info">📊 会话状态: 游客模式（请登录后使用）</div>""",  # Session status
-                        get_system_status_html()  # System status
+                        get_system_status_html(),  # System status
                     )
                 user_id = user_id_or_error
 
@@ -2073,16 +2015,20 @@ def create_interface():
             if local_mode:
                 session_status_html = ''  # Local mode doesn't display session status
             else:
-                session_status_html = f"""
+                session_status_html = (
+                    f"""
                 <div class="status-indicator status-info">
                     📊 会话状态: {'已加载历史数据' if any(session_data.values()) else '新会话'}
-                    {f'| 最后更新: {session_data.get("timestamp", "未知")}' if session_data.get("timestamp") else ''}
+                    {f'| 最后更新: {session_data.get("timestamp", "未知")}' if session_data.get('timestamp') else ''}
                 </div>
-                """ if any(session_data.values()) else """
+                """
+                    if any(session_data.values())
+                    else """
                 <div class="status-indicator status-info">
                     📊 会话状态: 新会话
                 </div>
                 """
+                )
 
             return (
                 user_status_html,
@@ -2101,7 +2047,7 @@ def create_interface():
                 session_data.get('user_prompt', ''),
                 session_data.get('urls_text', ''),
                 session_status_html,
-                get_system_status_html()  # System status
+                get_system_status_html(),  # System status
             )
 
         # Fullscreen functionality functions
@@ -2119,10 +2065,17 @@ def create_interface():
 
         # State-saving wrapper function
         def run_research_workflow_with_state(
-                user_prompt_val, uploaded_files_val, urls_text_val,
-                current_workdir_val, current_result_val, current_markdown_val, current_html_val, current_resources_val,
-                current_user_prompt_val, current_urls_text_val,
-                request: gr.Request
+            user_prompt_val,
+            uploaded_files_val,
+            urls_text_val,
+            current_workdir_val,
+            current_result_val,
+            current_markdown_val,
+            current_html_val,
+            current_resources_val,
+            current_user_prompt_val,
+            current_urls_text_val,
+            request: gr.Request,
         ):
             result, workdir, markdown, html, resources = run_research_workflow(
                 user_prompt_val, uploaded_files_val, urls_text_val, request
@@ -2142,12 +2095,21 @@ def create_interface():
                     </div>
                     """
                     return (
-                        result, workdir, markdown, html, resources,
-                        workdir, result, markdown, html, resources,
-                        user_prompt_val, urls_text_val,
+                        result,
+                        workdir,
+                        markdown,
+                        html,
+                        resources,
+                        workdir,
+                        result,
+                        markdown,
+                        html,
+                        resources,
+                        user_prompt_val,
+                        urls_text_val,
                         status_html,
                         get_system_status_html(),
-                        get_user_status_html(request)
+                        get_user_status_html(request),
                     )
                 user_id = user_id_or_error
 
@@ -2160,7 +2122,7 @@ def create_interface():
                 'resources': resources,
                 'user_prompt': user_prompt_val,
                 'urls_text': urls_text_val,
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }
             save_session_data(session_data, user_id)
 
@@ -2175,17 +2137,27 @@ def create_interface():
                 """
 
             return (
-                result, workdir, markdown, html, resources,  # Output display
-                workdir, result, markdown, html, resources,  # State saving
-                user_prompt_val, urls_text_val,  # Input state saving
+                result,
+                workdir,
+                markdown,
+                html,
+                resources,  # Output display
+                workdir,
+                result,
+                markdown,
+                html,
+                resources,  # State saving
+                user_prompt_val,
+                urls_text_val,  # Input state saving
                 status_html,  # Status indicator
                 get_system_status_html(),  # System status
-                get_user_status_html(request)  # User status
+                get_user_status_html(request),  # User status
             )
 
         # Restore state function
-        def restore_latest_results(workdir, result, markdown, html, resources, user_prompt_state, urls_text_state,
-                                   request: gr.Request):
+        def restore_latest_results(
+            workdir, result, markdown, html, resources, user_prompt_state, urls_text_state, request: gr.Request
+        ):
             local_mode = os.environ.get('LOCAL_MODE', 'true').lower() == 'true'
 
             # Determine user ID
@@ -2199,7 +2171,17 @@ def create_interface():
                         🚫 游客模式 - {user_id_or_error}
                     </div>
                     """
-                    return result, workdir, markdown, html, resources, user_prompt_state, urls_text_state, status_html, get_system_status_html()
+                    return (
+                        result,
+                        workdir,
+                        markdown,
+                        html,
+                        resources,
+                        user_prompt_state,
+                        urls_text_state,
+                        status_html,
+                        get_system_status_html(),
+                    )
                 user_id = user_id_or_error
 
             # Reload session data
@@ -2209,15 +2191,19 @@ def create_interface():
             if local_mode:
                 status_html = ''  # Local mode doesn't display status
             else:
-                status_html = f"""
+                status_html = (
+                    f"""
                 <div class="status-indicator status-success">
                     🔄 已恢复会话数据 | 最后更新: {session_data.get('timestamp', '未知')}
                 </div>
-                """ if any(session_data.values()) else """
+                """
+                    if any(session_data.values())
+                    else """
                 <div class="status-indicator status-info">
                     ℹ️ 没有找到可恢复的会话数据
                 </div>
                 """
+                )
 
             return (
                 session_data.get('result', result),
@@ -2228,7 +2214,7 @@ def create_interface():
                 session_data.get('user_prompt', user_prompt_state),
                 session_data.get('urls_text', urls_text_state),
                 status_html,
-                get_system_status_html()
+                get_system_status_html(),
             )
 
         # Cleanup function
@@ -2246,8 +2232,26 @@ def create_interface():
                         🚫 游客模式 - {user_id_or_error}
                     </div>
                     """
-                    return '', None, '', '', '', '', '', '', '', '', '', '', '', '', '', status_html, get_system_status_html(), get_user_status_html(
-                        request)
+                    return (
+                        '',
+                        None,
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        status_html,
+                        get_system_status_html(),
+                        get_user_status_html(request),
+                    )
                 user_id = user_id_or_error
 
             # Force cleanup user task
@@ -2270,12 +2274,36 @@ def create_interface():
                 </div>
                 """
 
-            return '', None, '', '', '', '', '', '', '', '', '', '', '', '', '', status_html, get_system_status_html(), get_user_status_html(
-                request)
+            return (
+                '',
+                None,
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                status_html,
+                get_system_status_html(),
+                get_user_status_html(request),
+            )
 
         # Clear workspace and keep state
-        def clear_workspace_keep_state(current_workdir_val, current_result_val, current_markdown_val, current_html_val,
-                                       current_resources_val, request: gr.Request):
+        def clear_workspace_keep_state(
+            current_workdir_val,
+            current_result_val,
+            current_markdown_val,
+            current_html_val,
+            current_resources_val,
+            request: gr.Request,
+        ):
             clear_result, clear_markdown, clear_resources = clear_workspace(request)
 
             local_mode = os.environ.get('LOCAL_MODE', 'true').lower() == 'true'
@@ -2289,7 +2317,18 @@ def create_interface():
                 </div>
                 """
 
-            return clear_result, clear_markdown, clear_resources, current_workdir_val, current_result_val, current_markdown_val, current_html_val, current_resources_val, status_html, get_system_status_html()
+            return (
+                clear_result,
+                clear_markdown,
+                clear_resources,
+                current_workdir_val,
+                current_result_val,
+                current_markdown_val,
+                current_html_val,
+                current_resources_val,
+                status_html,
+                get_system_status_html(),
+            )
 
         # Refresh system status function
         def refresh_system_status():
@@ -2300,12 +2339,23 @@ def create_interface():
             fn=initialize_page,
             outputs=[
                 user_status,
-                user_prompt, urls_text,
-                result_output, workdir_output, markdown_output, html_output if not local_mode else markdown_output,
+                user_prompt,
+                urls_text,
+                result_output,
+                workdir_output,
+                markdown_output,
+                html_output if not local_mode else markdown_output,
                 resources_output,
-                current_workdir, current_result, current_markdown, current_html, current_resources,
-                current_user_prompt, current_urls_text, session_status, system_status
-            ]
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                current_user_prompt,
+                current_urls_text,
+                session_status,
+                system_status,
+            ],
         )
 
         # Periodic status display refresh
@@ -2315,69 +2365,117 @@ def create_interface():
 
         # Use timer component to implement periodic status updates
         status_timer = gr.Timer(10)  # Trigger every 10 seconds
-        status_timer.tick(
-            fn=periodic_status_update,
-            outputs=[user_status, system_status]
-        )
+        status_timer.tick(fn=periodic_status_update, outputs=[user_status, system_status])
 
         # Fullscreen functionality event binding
         fullscreen_btn.click(
             fn=toggle_fullscreen,
             inputs=[current_markdown, current_html],
-            outputs=[fullscreen_modal, fullscreen_markdown, fullscreen_html]
+            outputs=[fullscreen_modal, fullscreen_markdown, fullscreen_html],
         )
 
-        close_btn.click(
-            fn=close_fullscreen,
-            outputs=[fullscreen_modal, fullscreen_markdown, fullscreen_html]
-        )
+        close_btn.click(fn=close_fullscreen, outputs=[fullscreen_modal, fullscreen_markdown, fullscreen_html])
 
         # Event binding
         run_btn.click(
             fn=run_research_workflow_with_state,
             inputs=[
-                user_prompt, uploaded_files, urls_text,
-                current_workdir, current_result, current_markdown, current_html, current_resources,
-                current_user_prompt, current_urls_text
+                user_prompt,
+                uploaded_files,
+                urls_text,
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                current_user_prompt,
+                current_urls_text,
             ],
             outputs=[
-                result_output, workdir_output, markdown_output, html_output if not local_mode else markdown_output,
+                result_output,
+                workdir_output,
+                markdown_output,
+                html_output if not local_mode else markdown_output,
                 resources_output,
-                current_workdir, current_result, current_markdown, current_html, current_resources,
-                current_user_prompt, current_urls_text, session_status, system_status, user_status
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                current_user_prompt,
+                current_urls_text,
+                session_status,
+                system_status,
+                user_status,
             ],
-            show_progress=True
+            show_progress=True,
         )
 
         # Restore recent results
         restore_btn.click(
             fn=restore_latest_results,
-            inputs=[current_workdir, current_result, current_markdown, current_html, current_resources,
-                    current_user_prompt, current_urls_text],
-            outputs=[result_output, workdir_output, markdown_output, html_output if not local_mode else markdown_output,
-                     resources_output, user_prompt, urls_text, session_status, system_status]
+            inputs=[
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                current_user_prompt,
+                current_urls_text,
+            ],
+            outputs=[
+                result_output,
+                workdir_output,
+                markdown_output,
+                html_output if not local_mode else markdown_output,
+                resources_output,
+                user_prompt,
+                urls_text,
+                session_status,
+                system_status,
+            ],
         )
 
         # Refresh system status
-        refresh_status_btn.click(
-            fn=refresh_system_status,
-            outputs=[system_status]
-        )
+        refresh_status_btn.click(fn=refresh_system_status, outputs=[system_status])
 
         clear_btn.click(
             fn=clear_workspace_keep_state,
             inputs=[current_workdir, current_result, current_markdown, current_html, current_resources],
-            outputs=[result_output, markdown_output, resources_output, current_workdir, current_result,
-                     current_markdown, current_html, current_resources, session_status, system_status]
+            outputs=[
+                result_output,
+                markdown_output,
+                resources_output,
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                session_status,
+                system_status,
+            ],
         ).then(
             fn=clear_all_inputs_and_state,
             outputs=[
-                user_prompt, uploaded_files, urls_text,
-                result_output, workdir_output, markdown_output, html_output if not local_mode else markdown_output,
+                user_prompt,
+                uploaded_files,
+                urls_text,
+                result_output,
+                workdir_output,
+                markdown_output,
+                html_output if not local_mode else markdown_output,
                 resources_output,
-                current_workdir, current_result, current_markdown, current_html, current_resources,
-                current_user_prompt, current_urls_text, session_status, system_status, user_status
-            ]
+                current_workdir,
+                current_result,
+                current_markdown,
+                current_html,
+                current_resources,
+                current_user_prompt,
+                current_urls_text,
+                session_status,
+                system_status,
+                user_status,
+            ],
         )
 
         # Example data
@@ -2386,33 +2484,33 @@ def create_interface():
                 [
                     '深入分析和总结下列文档',
                     None,
-                    'https://modelscope.cn/models/ms-agent/ms_agent_resources/resolve/master/numina_dataset.pdf'
+                    'https://modelscope.cn/models/ms-agent/ms_agent_resources/resolve/master/numina_dataset.pdf',
                 ],
                 [
                     'Qwen3跟Qwen2.5对比，有哪些优化？',
                     None,
-                    'https://arxiv.org/abs/2505.09388\nhttps://arxiv.org/abs/2412.15115'
+                    'https://arxiv.org/abs/2505.09388\nhttps://arxiv.org/abs/2412.15115',
                 ],
                 [
                     'Analyze and summarize the following documents. You must use English to answer.',
                     None,
-                    'https://arxiv.org/abs/1706.03762'
-                ]
+                    'https://arxiv.org/abs/1706.03762',
+                ],
             ],
             inputs=[user_prompt, uploaded_files, urls_text],
-            label='示例 | Examples'
+            label='示例 | Examples',
         )
 
     return demo
 
 
 def launch_server(
-        server_name: Optional[str] = '0.0.0.0',
-        server_port: Optional[int] = 7860,
-        share: Optional[bool] = False,
-        debug: Optional[bool] = False,
-        show_error: Optional[bool] = False,
-        gradio_default_concurrency_limit: Optional[int] = GRADIO_DEFAULT_CONCURRENCY_LIMIT,
+    server_name: Optional[str] = '0.0.0.0',
+    server_port: Optional[int] = 7860,
+    share: Optional[bool] = False,
+    debug: Optional[bool] = False,
+    show_error: Optional[bool] = False,
+    gradio_default_concurrency_limit: Optional[int] = GRADIO_DEFAULT_CONCURRENCY_LIMIT,
 ) -> None:
 
     # Create interface

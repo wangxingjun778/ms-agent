@@ -1,11 +1,21 @@
 import json
 import uuid
-from acp import (plan_entry, start_edit_tool_call, start_read_tool_call,
-                 start_tool_call, text_block, tool_content, tool_diff_content,
-                 update_agent_message_text, update_agent_thought_text,
-                 update_plan, update_tool_call)
-from acp.schema import AgentPlanUpdate, ToolCallLocation
 from typing import Any, Dict, List, Optional
+
+from acp import (
+    plan_entry,
+    start_edit_tool_call,
+    start_read_tool_call,
+    start_tool_call,
+    text_block,
+    tool_content,
+    tool_diff_content,
+    update_agent_message_text,
+    update_agent_thought_text,
+    update_plan,
+    update_tool_call,
+)
+from acp.schema import AgentPlanUpdate, ToolCallLocation
 
 from ms_agent.llm.utils import Message
 from ms_agent.utils.logger import get_logger
@@ -31,33 +41,39 @@ _TOOL_KIND_MAP: Dict[str, str] = {
     'mcp_client': 'other',
 }
 
-_FILE_EDIT_METHODS = frozenset({
-    'write_file',
-    'replace_file_contents',
-    'file_operation',
-    'create_file',
-    'edit_file',
-    'patch_file',
-    'insert_lines',
-    'delete_lines',
-})
+_FILE_EDIT_METHODS = frozenset(
+    {
+        'write_file',
+        'replace_file_contents',
+        'file_operation',
+        'create_file',
+        'edit_file',
+        'patch_file',
+        'insert_lines',
+        'delete_lines',
+    }
+)
 
-_FILE_READ_METHODS = frozenset({
-    'read_file',
-    'list_files',
-    'file_operation',
-    'list_directory',
-    'read_directory',
-})
+_FILE_READ_METHODS = frozenset(
+    {
+        'read_file',
+        'list_files',
+        'file_operation',
+        'list_directory',
+        'read_directory',
+    }
+)
 
-_EXEC_METHODS = frozenset({
-    'execute_code',
-    'run_code',
-    'execute',
-    'run_command',
-    'shell',
-    'bash',
-})
+_EXEC_METHODS = frozenset(
+    {
+        'execute_code',
+        'run_code',
+        'execute',
+        'run_command',
+        'shell',
+        'bash',
+    }
+)
 
 
 def _parse_tool_args(arguments: str) -> dict:
@@ -84,38 +100,28 @@ def _infer_kind_from_args(tool_name: str, args: dict) -> str:
         return kind
 
     lower = tool_name.lower()
-    if any(
-            kw in lower
-            for kw in ('write', 'edit', 'create', 'patch', 'replace')):
+    if any(kw in lower for kw in ('write', 'edit', 'create', 'patch', 'replace')):
         return 'edit'
     if any(kw in lower for kw in ('read', 'list', 'get', 'show', 'cat')):
         return 'read'
     if any(kw in lower for kw in ('search', 'find', 'grep', 'query')):
         return 'search'
-    if any(
-            kw in lower
-            for kw in ('exec', 'run', 'shell', 'code', 'bash', 'command')):
+    if any(kw in lower for kw in ('exec', 'run', 'shell', 'code', 'bash', 'command')):
         return 'execute'
     if any(kw in lower for kw in ('delete', 'remove', 'rm')):
         return 'delete'
     if any(kw in lower for kw in ('move', 'rename', 'mv')):
         return 'move'
-    if any(
-            kw in lower
-            for kw in ('fetch', 'download', 'browse', 'http', 'url')):
+    if any(kw in lower for kw in ('fetch', 'download', 'browse', 'http', 'url')):
         return 'fetch'
-    if any(
-            kw in lower
-            for kw in ('think', 'plan', 'reason', 'todo', 'evidence')):
+    if any(kw in lower for kw in ('think', 'plan', 'reason', 'todo', 'evidence')):
         return 'think'
     return 'other'
 
 
 def _build_title(tool_name: str, args: dict, kind: str) -> str:
     """Build a human-readable title for the IDE's tool call UI."""
-    path = (
-        args.get('path') or args.get('file_path') or args.get('filename')
-        or '')
+    path = args.get('path') or args.get('file_path') or args.get('filename') or ''
     method = args.get('method') or args.get('operation') or ''
 
     if kind == 'edit':
@@ -160,9 +166,7 @@ def _build_title(tool_name: str, args: dict, kind: str) -> str:
 
 def _extract_locations(args: dict) -> list[ToolCallLocation] | None:
     """Extract file locations from tool arguments for IDE follow-along."""
-    path = (
-        args.get('path') or args.get('file_path') or args.get('filename')
-        or '')
+    path = args.get('path') or args.get('file_path') or args.get('filename') or ''
     if not path:
         return None
     line = args.get('line') or args.get('line_number')
@@ -176,8 +180,7 @@ def _extract_locations(args: dict) -> list[ToolCallLocation] | None:
 
 def _extract_file_path(args: dict) -> str:
     """Extract file path from tool arguments."""
-    return (args.get('path') or args.get('file_path') or args.get('filename')
-            or '')
+    return args.get('path') or args.get('file_path') or args.get('filename') or ''
 
 
 def _try_parse_diff_from_result(
@@ -264,11 +267,9 @@ class ACPTranslator:
             elif block_type == 'resource':
                 res = block.resource
                 if hasattr(res, 'text'):
-                    parts.append(
-                        f'[Resource: {getattr(res, "uri", "")}]\n{res.text}')
+                    parts.append(f'[Resource: {getattr(res, "uri", "")}]\n{res.text}')
                 elif hasattr(res, 'blob'):
-                    parts.append(
-                        f'[Binary resource: {getattr(res, "uri", "")}]')
+                    parts.append(f'[Binary resource: {getattr(res, "uri", "")}]')
             elif block_type == 'resource_link':
                 uri = getattr(block, 'uri', '')
                 parts.append(f'[Resource link: {uri}]')
@@ -323,16 +324,16 @@ class ACPTranslator:
         reasoning = msg.reasoning_content or ''
 
         if reasoning and len(reasoning) > self._last_reasoning_len:
-            delta = reasoning[self._last_reasoning_len:]
+            delta = reasoning[self._last_reasoning_len :]
             self._last_reasoning_len = len(reasoning)
             updates.append(update_agent_thought_text(delta))
 
         if content and len(content) > self._last_content_len:
-            delta = content[self._last_content_len:]
+            delta = content[self._last_content_len :]
             self._last_content_len = len(content)
             updates.append(update_agent_message_text(delta))
 
-        for tc in (msg.tool_calls or []):
+        for tc in msg.tool_calls or []:
             tc_id = tc.get('id', '') or f'tc_{uuid.uuid4().hex[:8]}'
             if tc_id in self._emitted_tool_ids:
                 continue
@@ -357,14 +358,16 @@ class ACPTranslator:
                         title=title,
                         path=path,
                         content=content_preview,
-                    ))
+                    )
+                )
             elif kind == 'read' and path:
                 updates.append(
                     start_read_tool_call(
                         tool_call_id=tc_id,
                         title=title,
                         path=path,
-                    ))
+                    )
+                )
             else:
                 updates.append(
                     start_tool_call(
@@ -374,7 +377,8 @@ class ACPTranslator:
                         status='in_progress',
                         locations=locations,
                         raw_input=raw_args if raw_args else None,
-                    ))
+                    )
+                )
 
         return updates
 
@@ -385,8 +389,7 @@ class ACPTranslator:
             return updates
         self._completed_tool_ids.add(tc_id)
 
-        result_text = (
-            msg.content if isinstance(msg.content, str) else str(msg.content))
+        result_text = msg.content if isinstance(msg.content, str) else str(msg.content)
         tool_name = self._tool_name_cache.get(tc_id, msg.name or '')
         args = self._tool_args_cache.get(tc_id, {})
         kind = _infer_kind_from_args(tool_name, args)
@@ -402,7 +405,8 @@ class ACPTranslator:
                         path=diff['path'],
                         new_text=diff['new_text'],
                         old_text=diff.get('old_text'),
-                    ))
+                    )
+                )
             if result_text:
                 content_items.append(tool_content(text_block(result_text)))
         elif result_text:
@@ -416,7 +420,8 @@ class ACPTranslator:
                 status=status,
                 content=content_items if content_items else None,
                 raw_output=result_text or None,
-            ))
+            )
+        )
         return updates
 
     @staticmethod
@@ -424,8 +429,7 @@ class ACPTranslator:
         if not text:
             return False
         lower = text.lower()[:200]
-        error_markers = ('error:', 'failed', 'exception', 'traceback',
-                         '"success": false', "'success': false")
+        error_markers = ('error:', 'failed', 'exception', 'traceback', '"success": false', "'success': false")
         return any(m in lower for m in error_markers)
 
     @staticmethod
@@ -440,7 +444,8 @@ class ACPTranslator:
                 content=s.get('description', ''),
                 status=s.get('status', 'pending'),
                 priority=s.get('priority', 'medium'),
-            ) for s in steps
+            )
+            for s in steps
         ]
         return update_plan(entries)
 
@@ -458,8 +463,7 @@ class ACPTranslator:
         if rt is None:
             return 'end_turn'
 
-        max_rounds = getattr(agent, 'max_chat_round',
-                             getattr(agent, 'DEFAULT_MAX_CHAT_ROUND', 20))
+        max_rounds = getattr(agent, 'max_chat_round', getattr(agent, 'DEFAULT_MAX_CHAT_ROUND', 20))
         if rt.round >= max_rounds + 1:
             return 'max_turn_requests'
 

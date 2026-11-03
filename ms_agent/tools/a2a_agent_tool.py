@@ -24,6 +24,7 @@ class A2AAgentTool(ToolBase):
         super().__init__(config)
         self._a2a_config: dict = a2a_agents_config or {}
         from ms_agent.a2a.client import A2AClientManager
+
         self._client_manager = A2AClientManager(self._a2a_config)
 
     @classmethod
@@ -32,6 +33,7 @@ class A2AAgentTool(ToolBase):
         if not hasattr(config, 'a2a_agents'):
             return None
         from omegaconf import OmegaConf
+
         raw = OmegaConf.to_container(config.a2a_agents, resolve=True)
         if not raw:
             return None
@@ -48,19 +50,14 @@ class A2AAgentTool(ToolBase):
         for agent_name, agent_cfg in self._a2a_config.items():
             server_name = f'{A2A_TOOL_PREFIX}_{agent_name}'
             tool_entry: Tool = {
-                'tool_name':
-                agent_name,
-                'description':
-                agent_cfg.get('description',
-                              f'A2A remote agent: {agent_name}'),
+                'tool_name': agent_name,
+                'description': agent_cfg.get('description', f'A2A remote agent: {agent_name}'),
                 'parameters': {
                     'type': 'object',
                     'properties': {
                         'query': {
-                            'type':
-                            'string',
-                            'description':
-                            'The task or query to send to this remote agent',
+                            'type': 'string',
+                            'description': 'The task or query to send to this remote agent',
                         },
                     },
                     'required': ['query'],
@@ -69,12 +66,10 @@ class A2AAgentTool(ToolBase):
             tools[server_name] = [tool_entry]
         return tools
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         agent_name = server_name.replace(f'{A2A_TOOL_PREFIX}_', '', 1)
         query = tool_args.get('query', '')
         if not query:
             return 'Error: "query" parameter is required'
-        logger.info('Calling A2A agent %s with query: %s', agent_name,
-                    query[:200])
+        logger.info('Calling A2A agent %s with query: %s', agent_name, query[:200])
         return await self._client_manager.call_agent(agent_name, query)

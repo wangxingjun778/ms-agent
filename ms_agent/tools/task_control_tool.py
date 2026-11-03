@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
-from omegaconf import DictConfig
 from typing import Any, Dict, Optional
+
+from omegaconf import DictConfig
 
 from ms_agent.llm.utils import Tool
 from ms_agent.tools.base import ToolBase
@@ -45,10 +46,10 @@ class TaskControlTool(ToolBase):
                 Tool(
                     tool_name='list_tasks',
                     server_name=_SERVER,
-                    description=
-                    ('List all background tasks and their current status. '
-                     'Returns task_id, tool_name, description, status, and duration.'
-                     ),
+                    description=(
+                        'List all background tasks and their current status. '
+                        'Returns task_id, tool_name, description, status, and duration.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {},
@@ -59,16 +60,13 @@ class TaskControlTool(ToolBase):
                 Tool(
                     tool_name='cancel_task',
                     server_name=_SERVER,
-                    description=
-                    'Cancel a running background task by its task_id.',
+                    description='Cancel a running background task by its task_id.',
                     parameters={
                         'type': 'object',
                         'properties': {
                             'task_id': {
-                                'type':
-                                'string',
-                                'description':
-                                'The task_id returned by the async_launched response.',
+                                'type': 'string',
+                                'description': 'The task_id returned by the async_launched response.',
                             }
                         },
                         'required': ['task_id'],
@@ -78,8 +76,7 @@ class TaskControlTool(ToolBase):
             ]
         }
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         if self._task_manager is None:
             return 'TaskManager not available.'
 
@@ -94,14 +91,17 @@ class TaskControlTool(ToolBase):
                     duration = f'{t.ended_at - t.started_at:.1f}s'
                 elif t.status == 'running':
                     import time
+
                     duration = f'{time.monotonic() - t.started_at:.1f}s (running)'
-                rows.append({
-                    'task_id': t.task_id,
-                    'tool_name': t.tool_name,
-                    'description': t.description,
-                    'status': t.status,
-                    'duration': duration,
-                })
+                rows.append(
+                    {
+                        'task_id': t.task_id,
+                        'tool_name': t.tool_name,
+                        'description': t.description,
+                        'status': t.status,
+                        'duration': duration,
+                    }
+                )
             return json.dumps(rows, ensure_ascii=False, indent=2)
 
         if tool_name == 'cancel_task':

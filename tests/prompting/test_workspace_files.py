@@ -1,11 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Workspace prompt files: strip pipeline, ensure/sidecar, regions, rebuild."""
+
 import json
 import os
 
 import pytest
 
-from ms_agent.prompting import builtin, workspace_files as wf
+from ms_agent.prompting import builtin
+from ms_agent.prompting import workspace_files as wf
 
 
 @pytest.fixture()
@@ -48,8 +50,7 @@ def test_ensure_materializes_and_is_idempotent(home):
     assert sidecar['pristine'] is True
     assert sidecar['template_version'] == builtin.TEMPLATE_VERSION
 
-    mtimes = {n: (home / n).stat().st_mtime_ns
-              for n in ('SOUL.md', 'AGENTS.md', 'PROFILE.md')}
+    mtimes = {n: (home / n).stat().st_mtime_ns for n in ('SOUL.md', 'AGENTS.md', 'PROFILE.md')}
     wf.reset_cache()
     wf.ensure_home_files()
     for n, t in mtimes.items():
@@ -171,9 +172,11 @@ def test_call_me_roundtrip_on_template():
 
 
 def test_regions_reconstruct_exactly():
-    for text in (builtin.PROFILE_TEMPLATE,
-                 wf.set_call_me(builtin.PROFILE_TEMPLATE, 'X'),
-                 'plain legacy text\nwith two lines\n'):
+    for text in (
+        builtin.PROFILE_TEMPLATE,
+        wf.set_call_me(builtin.PROFILE_TEMPLATE, 'X'),
+        'plain legacy text\nwith two lines\n',
+    ):
         r0, r1, r2 = wf.split_profile_regions(text)
         assert r0 + r1 + r2 == text
 

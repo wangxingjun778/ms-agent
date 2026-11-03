@@ -5,6 +5,7 @@ Supports:
   - WebhookHook: HTTP POST to external URL
   - LogHook: simple logging notification
 """
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,7 @@ class NotifyHook(ABC):
     """Abstract base for notification hooks."""
 
     @abstractmethod
-    async def notify(self, job: CronJobSpec, result: ExecutionResult) -> None:
-        ...
+    async def notify(self, job: CronJobSpec, result: ExecutionResult) -> None: ...
 
 
 class CallbackHook(NotifyHook):
@@ -56,23 +56,22 @@ class WebhookHook(NotifyHook):
         }
         try:
             import aiohttp
+
             async with aiohttp.ClientSession() as session:
                 headers = {'Content-Type': 'application/json'}
                 headers.update(self._headers)
                 async with session.post(
-                        self._url,
-                        data=json.dumps(payload, ensure_ascii=False),
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=10),
+                    self._url,
+                    data=json.dumps(payload, ensure_ascii=False),
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status >= 400:
-                        logger.warning(
-                            f'Webhook to {self._url} returned status {resp.status}'
-                        )
+                        logger.warning(f'Webhook to {self._url} returned status {resp.status}')
         except ImportError:
             logger.warning(
-                'aiohttp not installed; webhook notifications unavailable. '
-                'Install with: pip install aiohttp')
+                'aiohttp not installed; webhook notifications unavailable. Install with: pip install aiohttp'
+            )
         except Exception as e:
             logger.warning(f'Webhook notification failed: {e}')
 

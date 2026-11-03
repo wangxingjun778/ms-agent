@@ -3,19 +3,34 @@ from __future__ import annotations
 import logging
 import os
 import sys
-import yaml
-from acp import (PROTOCOL_VERSION, Agent, InitializeResponse,
-                 NewSessionResponse, PromptResponse, run_agent,
-                 spawn_agent_process)
-from acp.interfaces import Client
-from acp.schema import (AgentCapabilities, ClientCapabilities, Implementation,
-                        PromptCapabilities, SessionCapabilities,
-                        SessionConfigOptionSelect, SessionConfigSelect,
-                        SessionConfigSelectOption, SessionListCapabilities)
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import yaml
+from acp import (
+    PROTOCOL_VERSION,
+    Agent,
+    InitializeResponse,
+    NewSessionResponse,
+    PromptResponse,
+    run_agent,
+    spawn_agent_process,
+)
+from acp.interfaces import Client
+from acp.schema import (
+    AgentCapabilities,
+    ClientCapabilities,
+    Implementation,
+    PromptCapabilities,
+    SessionCapabilities,
+    SessionConfigOptionSelect,
+    SessionConfigSelect,
+    SessionConfigSelectOption,
+    SessionListCapabilities,
+)
+
 from ms_agent.utils.logger import get_logger
+
 from .errors import ConfigError, wrap_agent_error
 from .proxy_session import ProxySessionStore
 
@@ -27,6 +42,7 @@ _VERSION = '0.1.0'
 @dataclass
 class BackendConfig:
     """Parsed configuration for a single backend agent."""
+
     name: str
     command: str
     args: list = field(default_factory=list)
@@ -37,6 +53,7 @@ class BackendConfig:
 @dataclass
 class ProxyConfig:
     """Top-level proxy configuration parsed from YAML."""
+
     max_sessions: int = 8
     session_timeout: int = 3600
     default_backend: str = ''
@@ -92,12 +109,10 @@ class _RelayClient(Client):
         self._conn = proxy_connection
         self._proxy_sid = proxy_session_id
 
-    async def session_update(self, session_id: str, update: Any,
-                             **kwargs: Any) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         await self._conn.session_update(self._proxy_sid, update)
 
-    async def request_permission(self, options: list, session_id: str,
-                                 tool_call: Any, **kwargs: Any) -> Any:
+    async def request_permission(self, options: list, session_id: str, tool_call: Any, **kwargs: Any) -> Any:
         return await self._conn.request_permission(
             session_id=self._proxy_sid,
             tool_call=tool_call,
@@ -145,7 +160,8 @@ class MSAgentACPProxy(Agent):
                     embedded_context=True,
                 ),
                 session_capabilities=SessionCapabilities(
-                    list=SessionListCapabilities(), ),
+                    list=SessionListCapabilities(),
+                ),
             ),
             agent_info=Implementation(
                 name='ms-agent-proxy',
@@ -212,12 +228,14 @@ class MSAgentACPProxy(Agent):
         **kwargs: Any,
     ):
         from acp.schema import ListSessionsResponse, SessionInfo
+
         entries = self.session_store.list_sessions()
         items = [
             SessionInfo(
                 session_id=e['session_id'],
                 cwd=e.get('cwd'),
-            ) for e in entries
+            )
+            for e in entries
         ]
         return ListSessionsResponse(sessions=items)
 
@@ -245,8 +263,7 @@ class MSAgentACPProxy(Agent):
             new_entry.id = session_id
 
             config_options = self._build_config_options(new_backend)
-            return SetSessionConfigOptionResponse(
-                config_options=config_options or [])
+            return SetSessionConfigOptionResponse(config_options=config_options or [])
 
         entry = self.session_store.get(session_id)
         try:
@@ -326,7 +343,8 @@ class MSAgentACPProxy(Agent):
             SessionConfigSelectOption(
                 value=name,
                 name=f'{name}: {bcfg.description}',
-            ) for name, bcfg in self.config.backends.items()
+            )
+            for name, bcfg in self.config.backends.items()
         ]
         return [
             SessionConfigOptionSelect(
@@ -348,8 +366,7 @@ def configure_proxy_logging(log_file: str | None = None) -> None:
     else:
         handler = logging.StreamHandler(sys.stderr)
 
-    fmt = logging.Formatter(
-        '%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+    fmt = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
     handler.setFormatter(fmt)
 
     root = logging.getLogger()
@@ -376,6 +393,7 @@ def serve_proxy(
     proxy = MSAgentACPProxy(config)
 
     import asyncio
+
     asyncio.run(_run_proxy(proxy))
 
 

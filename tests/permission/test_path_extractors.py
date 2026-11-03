@@ -37,6 +37,7 @@ class TestFilterOutFlags:
 class TestExtractCd:
     def test_no_args(self):
         import os
+
         assert extract_cd([]) == [os.path.expanduser('~')]
 
     def test_single_dir(self):
@@ -66,15 +67,32 @@ class TestExtractFind:
 
 class TestFindExecExtraction:
     def test_exec_rm(self):
-        cmds = extract_find_exec_commands([
-            '.', '-name', '*.log', '-exec', 'rm', '-rf', '/etc/important', '{}', ';',
-        ])
+        cmds = extract_find_exec_commands(
+            [
+                '.',
+                '-name',
+                '*.log',
+                '-exec',
+                'rm',
+                '-rf',
+                '/etc/important',
+                '{}',
+                ';',
+            ]
+        )
         assert cmds == ['rm -rf /etc/important']
 
     def test_execdir(self):
-        cmds = extract_find_exec_commands([
-            '/tmp', '-execdir', 'chmod', '777', '{}', '+',
-        ])
+        cmds = extract_find_exec_commands(
+            [
+                '/tmp',
+                '-execdir',
+                'chmod',
+                '777',
+                '{}',
+                '+',
+            ]
+        )
         assert cmds == ['chmod 777']
 
     def test_delete_flag(self):

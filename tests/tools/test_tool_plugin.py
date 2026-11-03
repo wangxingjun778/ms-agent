@@ -3,15 +3,14 @@ import asyncio
 import os
 import unittest
 
+from modelscope.utils.test_utils import test_level
+
 from ms_agent.config import Config
 from ms_agent.tools import ToolManager
 from ms_agent.tools.mcp_client import MCPClient
 
-from modelscope.utils.test_utils import test_level
-
 
 class TestToolPlugin(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_tool_plugin(self):
 

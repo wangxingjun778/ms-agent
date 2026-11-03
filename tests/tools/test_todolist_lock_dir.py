@@ -1,4 +1,5 @@
 """TodoListTool lock-dir placement: canonical internal dir by default."""
+
 import json
 import os
 
@@ -59,8 +60,11 @@ async def test_session_plan_locations_match_tool_contract(tmp_path, auto_render)
     original = tmp_path / 'plan.json'
     original.write_text('{"todos": []}')
     tool = _make(
-        tmp_path, plan_filename=str(session / 'plan.json'),
-        plan_md_filename=str(session / 'plan.md'), auto_render_md=auto_render)
+        tmp_path,
+        plan_filename=str(session / 'plan.json'),
+        plan_md_filename=str(session / 'plan.md'),
+        auto_render_md=auto_render,
+    )
     schemas = {t['tool_name']: t for t in (await tool.get_tools())['todo_list']}
     for schema in schemas.values():
         assert str(session / 'plan.json') in schema['description']

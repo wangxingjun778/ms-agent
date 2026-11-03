@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Base abstractions for the pluggable retriever framework."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -8,6 +9,7 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class SearchResult:
     """A single search result returned by a retriever."""
+
     doc_id: str
     text: str
     score: float
@@ -23,9 +25,7 @@ class BaseRetriever(ABC):
     """
 
     @abstractmethod
-    def index(self,
-              documents: List[str],
-              doc_ids: Optional[List[str]] = None) -> None:
+    def index(self, documents: List[str], doc_ids: Optional[List[str]] = None) -> None:
         """Build search index from *documents*.
 
         Args:
@@ -46,6 +46,5 @@ class FusionStrategy(ABC):
     """Merge multiple ranked result lists into one."""
 
     @abstractmethod
-    def fuse(self,
-             result_lists: List[List[SearchResult]]) -> List[SearchResult]:
+    def fuse(self, result_lists: List[List[SearchResult]]) -> List[SearchResult]:
         """Merge *result_lists* (one per retriever) into a single ranked list."""

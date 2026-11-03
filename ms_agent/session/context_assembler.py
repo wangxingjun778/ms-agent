@@ -21,13 +21,14 @@ Usage::
     assembler = ContextAssembler(session_log, [ToolOutputPruner(), SummaryCompactor(llm)])
     messages = assembler.assemble()   # -> List[Message]
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import (Any, Callable, Dict, List, Optional, Protocol, Tuple,
-                    runtime_checkable)
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 from ms_agent.llm.utils import Message
+
 from .session_log import SessionLog
 
 # ------------------------------------------------------------------
@@ -59,8 +60,7 @@ class ViewStrategy(Protocol):
         visible: List[Dict[str, Any]],
         all_msgs: List[Dict[str, Any]],
         config: Dict[str, Any],
-    ) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        ...
+    ) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]: ...
 
 
 # ------------------------------------------------------------------
@@ -109,8 +109,7 @@ class ContextAssembler:
         visible = _slice_visible(all_msgs, lc_seq)
 
         for strategy in self.strategies:
-            window_last_seq = (
-                visible[-1].get('seq', 0) if visible else lc_seq)
+            window_last_seq = visible[-1].get('seq', 0) if visible else lc_seq
 
             visible, meta = strategy.apply(visible, all_msgs, self.config)
 
@@ -120,10 +119,7 @@ class ContextAssembler:
 
                 if self._memory_flush_callback is not None:
                     try:
-                        discarded = [
-                            m for m in all_msgs if boundary_before <= m.get(
-                                'seq', 0) <= boundary_after
-                        ]
+                        discarded = [m for m in all_msgs if boundary_before <= m.get('seq', 0) <= boundary_after]
                         self._memory_flush_callback(discarded)
                     except Exception:
                         pass
@@ -153,8 +149,7 @@ class ContextAssembler:
 # ------------------------------------------------------------------
 
 
-def _slice_visible(all_msgs: List[Dict[str, Any]],
-                   lc_seq: int) -> List[Dict[str, Any]]:
+def _slice_visible(all_msgs: List[Dict[str, Any]], lc_seq: int) -> List[Dict[str, Any]]:
     """Return a deep-copied visible window (seq >= *lc_seq*)."""
     for i, m in enumerate(all_msgs):
         if m.get('seq', 0) >= lc_seq:
@@ -202,7 +197,8 @@ def _dicts_to_messages(dicts: List[Dict[str, Any]]) -> List[Message]:
                     # omitting them here would make images visible on the turn
                     # they were sent and invisible from the next round on.
                     attachments=d.get('attachments') or [],
-                ))
+                )
+            )
         else:
             result.append(Message(role='user', content=str(d)))
     return result

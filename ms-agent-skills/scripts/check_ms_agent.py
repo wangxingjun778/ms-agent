@@ -8,6 +8,7 @@ def check_import() -> dict:
     """Check that ms_agent is importable."""
     try:
         import ms_agent  # noqa: F401
+
         # ms_agent does not expose a top-level ``__version__``; the canonical
         # version lives in ``ms_agent.version.__version__``. Fall back to the
         # top-level attribute (if a future release adds one) and finally to
@@ -21,6 +22,7 @@ def check_import() -> dict:
         if not version:
             try:
                 from importlib.metadata import version as _pkg_version
+
                 version = _pkg_version('ms-agent')
             except Exception:
                 version = 'unknown'
@@ -37,29 +39,28 @@ def check_capabilities() -> dict:
     """
     try:
         from ms_agent.capabilities import create_registry
+
         registry = create_registry()
         caps = registry.list_all()
         return {
-            'registry_ok':
-            True,
-            'count':
-            len(caps),
-            'capabilities': [{
-                'name': c.name,
-                'granularity': c.granularity,
-                'summary': c.summary,
-                'tags': c.tags,
-            } for c in caps],
+            'registry_ok': True,
+            'count': len(caps),
+            'capabilities': [
+                {
+                    'name': c.name,
+                    'granularity': c.granularity,
+                    'summary': c.summary,
+                    'tags': c.tags,
+                }
+                for c in caps
+            ],
         }
     except ImportError:
         # ms_agent may not be on sys.path (e.g. dev mode without pip install).
         # Fall back to subprocess check which uses ``-m`` resolution.
         try:
             result = subprocess.run(
-                [
-                    sys.executable, '-m', 'ms_agent.capabilities.mcp_server',
-                    '--check'
-                ],
+                [sys.executable, '-m', 'ms_agent.capabilities.mcp_server', '--check'],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -70,15 +71,11 @@ def check_capabilities() -> dict:
                     'registry_ok': True,
                     'count': len(data.get('capabilities', [])),
                     'capabilities': data.get('capabilities', []),
-                    'note':
-                    'verified via subprocess (package not on sys.path)',
+                    'note': 'verified via subprocess (package not on sys.path)',
                 }
         except Exception:
             pass
-        return {
-            'registry_ok': False,
-            'error': 'ms_agent.capabilities not importable'
-        }
+        return {'registry_ok': False, 'error': 'ms_agent.capabilities not importable'}
     except Exception as e:
         return {'registry_ok': False, 'error': str(e)}
 
@@ -87,10 +84,7 @@ def check_mcp_server() -> dict:
     """Check that the MCP server can start in --check mode."""
     try:
         result = subprocess.run(
-            [
-                sys.executable, '-m', 'ms_agent.capabilities.mcp_server',
-                '--check'
-            ],
+            [sys.executable, '-m', 'ms_agent.capabilities.mcp_server', '--check'],
             capture_output=True,
             text=True,
             timeout=30,
@@ -101,10 +95,7 @@ def check_mcp_server() -> dict:
         else:
             return {'mcp_server_ok': False, 'error': result.stderr.strip()}
     except subprocess.TimeoutExpired:
-        return {
-            'mcp_server_ok': False,
-            'error': 'MCP server --check timed out'
-        }
+        return {'mcp_server_ok': False, 'error': 'MCP server --check timed out'}
     except Exception as e:
         return {'mcp_server_ok': False, 'error': str(e)}
 
@@ -113,6 +104,7 @@ def check_mcp_package() -> dict:
     """Check that the mcp Python package is installed."""
     try:
         import mcp  # noqa: F401
+
         version = getattr(mcp, '__version__', 'unknown')
         return {'installed': True, 'version': version}
     except ImportError:
@@ -133,7 +125,8 @@ def main() -> None:
     all_ok = (
         report['ms_agent'].get('importable', False)
         and report['capabilities'].get('registry_ok', False)
-        and report['mcp_server'].get('mcp_server_ok', False))
+        and report['mcp_server'].get('mcp_server_ok', False)
+    )
     report['overall_status'] = 'ok' if all_ok else 'issues_found'
 
     print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -141,21 +134,13 @@ def main() -> None:
     if not all_ok:
         print('\n--- Issues ---', file=sys.stderr)
         if not report['ms_agent'].get('importable'):
-            print(
-                '  ms-agent is not installed. Run: pip install ms-agent',
-                file=sys.stderr)
+            print('  ms-agent is not installed. Run: pip install ms-agent', file=sys.stderr)
         if not report['mcp_package'].get('installed'):
-            print(
-                '  mcp package is not installed. Run: pip install mcp',
-                file=sys.stderr)
+            print('  mcp package is not installed. Run: pip install mcp', file=sys.stderr)
         if not report['capabilities'].get('registry_ok'):
-            print(
-                f"  Registry error: {report['capabilities'].get('error')}",
-                file=sys.stderr)
+            print(f'  Registry error: {report["capabilities"].get("error")}', file=sys.stderr)
         if not report['mcp_server'].get('mcp_server_ok'):
-            print(
-                f"  MCP server error: {report['mcp_server'].get('error')}",
-                file=sys.stderr)
+            print(f'  MCP server error: {report["mcp_server"].get("error")}', file=sys.stderr)
         sys.exit(1)
 
 

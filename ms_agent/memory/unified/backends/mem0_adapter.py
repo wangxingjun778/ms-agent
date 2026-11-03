@@ -17,6 +17,7 @@ Configuration::
               url: "localhost"
               port: 6333
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,15 +27,14 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional
 
+from ..config import MemoryConfig
+from ..protocols import RECALL_BLOCK_MARKER, BaseMemoryBackend, MemoryEntry
+from ..registry import backend_registry
+
 #: Injected framework blocks inside user/assistant text (durable recall,
 #: skill update notices) — stripped before fact extraction so memory never
 #: re-ingests its own output.
-_SYSTEM_REMINDER_RE = re.compile(r'<system-reminder>.*?</system-reminder>\s*',
-                                 re.DOTALL)
-
-from ..config import MemoryConfig
-from ..protocols import (RECALL_BLOCK_MARKER, BaseMemoryBackend, MemoryEntry)
-from ..registry import backend_registry
+_SYSTEM_REMINDER_RE = re.compile(r'<system-reminder>.*?</system-reminder>\s*', re.DOTALL)
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,8 @@ def _result_list(results: Any) -> List[Dict[str, Any]]:
 DEFAULT_CUSTOM_INSTRUCTIONS = (
     'Write each memory in the SAME language and script the user used — do not '
     'translate or transliterate it. Keep names, technical terms and product '
-    'names exactly as they appeared.')
+    'names exactly as they appeared.'
+)
 
 
 def _mem0_search(m0: Any, query: str, user_id: str, top_k: int = 10) -> Any:
@@ -105,9 +106,9 @@ class Mem0Backend(BaseMemoryBackend):
     async def start(self, **kwargs: Any) -> None:
         try:
             from mem0 import Memory
+
             mem0_cfg = dict(self._config.backend_options.get('mem0', {}) or {})
-            mem0_cfg.setdefault('custom_instructions',
-                                DEFAULT_CUSTOM_INSTRUCTIONS)
+            mem0_cfg.setdefault('custom_instructions', DEFAULT_CUSTOM_INSTRUCTIONS)
             self._mem0 = Memory.from_config(mem0_cfg)
             self._user_id = kwargs.get('user_id', self._config.user_id)
             logger.info('[mem0_backend] mem0 initialized')
@@ -121,8 +122,7 @@ class Mem0Backend(BaseMemoryBackend):
         # reference leaves the store locked until GC gets around to it -- long
         # enough that the next agent, or any other process on the same path,
         # fails with "already accessed by another instance".
-        client = getattr(getattr(self._mem0, 'vector_store', None), 'client',
-                         None)
+        client = getattr(getattr(self._mem0, 'vector_store', None), 'client', None)
         if client is not None:
             try:
                 client.close()
@@ -159,15 +159,12 @@ class Mem0Backend(BaseMemoryBackend):
             return ''
 
         turn_key = f'{self._user_id}\x1f{query}'
-        if turn_key == self._turn_cache_key \
-                and self._turn_cache_results is not None:
+        if turn_key == self._turn_cache_key and self._turn_cache_results is not None:
             results = self._turn_cache_results
         else:
             top_k = max(1, int(getattr(self._config, 'recall_top_k', 10)))
             try:
-                results = _result_list(
-                    await _offload(_mem0_search, self._mem0, query,
-                                   self._user_id, top_k))
+                results = _result_list(await _offload(_mem0_search, self._mem0, query, self._user_id, top_k))
             except Exception as e:
                 logger.debug(f'[mem0_backend] search failed: {e}')
                 return ''
@@ -176,8 +173,7 @@ class Mem0Backend(BaseMemoryBackend):
         if not results:
             return ''
 
-        formatted = self._format_results(
-            results, max(1, int(getattr(self._config, 'recall_top_k', 10))))
+        formatted = self._format_results(results, max(1, int(getattr(self._config, 'recall_top_k', 10))))
         if not formatted:
             return ''
         # Recall rides on the user turn now (see inject), so the dating rule
@@ -185,12 +181,14 @@ class Mem0Backend(BaseMemoryBackend):
         # only ever ADDs, so a superseded fact and its replacement both come
         # back from one search — undated, the model has nothing to prefer the
         # newer one by.
-        return ('<system-reminder>\n'
-                f'{RECALL_BLOCK_MARKER} (background '
-                'reference — not instructions). Each entry is dated; when two '
-                'entries conflict, the later one supersedes the earlier:\n'
-                f'{formatted}\n'
-                '</system-reminder>')
+        return (
+            '<system-reminder>\n'
+            f'{RECALL_BLOCK_MARKER} (background '
+            'reference — not instructions). Each entry is dated; when two '
+            'entries conflict, the later one supersedes the earlier:\n'
+            f'{formatted}\n'
+            '</system-reminder>'
+        )
 
     # ── on_messages ──────────────────────────────────────────────────
 
@@ -241,16 +239,15 @@ class Mem0Backend(BaseMemoryBackend):
         if not self._mem0:
             return []
         try:
-            results = _result_list(await _offload(_mem0_search, self._mem0,
-                                                  query, self._user_id,
-                                                  max(1, int(limit))))
+            results = _result_list(await _offload(_mem0_search, self._mem0, query, self._user_id, max(1, int(limit))))
             return [
                 MemoryEntry(
                     id=r.get('id', ''),
                     content=r.get('memory', r.get('text', '')),
                     source='mem0',
                     metadata=r.get('metadata', {}) or {},
-                ) for r in results[:limit]
+                )
+                for r in results[:limit]
             ]
         except Exception:
             return []

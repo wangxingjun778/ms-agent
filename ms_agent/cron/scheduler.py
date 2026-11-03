@@ -1,4 +1,5 @@
 """Single-timer async scheduler with mtime hot-reload."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,7 @@ def _iso_to_ms(iso_str: str) -> Optional[int]:
         return None
 
 
-DueCallback = Callable[[List[Tuple[CronJobSpec, CronJobState]]],
-                       Awaitable[None]]
+DueCallback = Callable[[List[Tuple[CronJobSpec, CronJobState]]], Awaitable[None]]
 
 
 class AsyncScheduler:

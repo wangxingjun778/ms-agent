@@ -4,6 +4,7 @@ Import each adapter module so its ``backend_registry.register()`` call runs
 at module load time.  Import errors are silenced for optional backends
 so that missing dependencies don't crash the framework.
 """
+
 from . import file_based  # noqa: F401 — always available
 
 # Optional backends — swallow ImportError for missing packages

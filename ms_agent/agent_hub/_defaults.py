@@ -27,7 +27,8 @@ def get_defaults(framework: str) -> Dict[str, str]:
         raise RuntimeError(
             f'agent_hub default templates directory is missing: {_DEFAULTS_DIR}. '
             f'Ensure ms_agent/agent_hub/default_configs is packaged '
-            f'(setup.py package_data / MANIFEST.in).')
+            f'(setup.py package_data / MANIFEST.in).'
+        )
     framework_dir = _DEFAULTS_DIR / framework
     result: Dict[str, str] = {}
     if framework_dir.is_dir():
@@ -55,5 +56,6 @@ def _code_defined_defaults(framework: str) -> Dict[str, str]:
     """
     if framework == 'ms-agent':
         from ms_agent.prompting.builtin import HOME_FILE_TEMPLATES
+
         return dict(HOME_FILE_TEMPLATES)
     return {}

@@ -9,14 +9,18 @@ from __future__ import annotations
 import asyncio
 import io
 import sys
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ms_agent.llm.utils import Message
 
 _SKIP_REASON = None
 try:
+    from a2a.server.agent_execution import AgentExecutor, RequestContext
+    from a2a.server.events import EventQueue
+    from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
     from a2a.types import (
         AgentCapabilities,
         AgentCard,
@@ -25,26 +29,23 @@ try:
         TaskState,
         TextPart,
     )
-    from a2a.server.agent_execution import AgentExecutor, RequestContext
-    from a2a.server.events import EventQueue
-    from a2a.server.tasks import TaskUpdater, InMemoryTaskStore
     from a2a.utils import new_agent_text_message, new_task
 except ImportError:
     _SKIP_REASON = 'a2a-sdk not installed'
 
 
-pytestmark = pytest.mark.skipif(
-    _SKIP_REASON is not None, reason=_SKIP_REASON or '')
+pytestmark = pytest.mark.skipif(_SKIP_REASON is not None, reason=_SKIP_REASON or '')
 
 
 # ======================================================================
 # Agent Card tests
 # ======================================================================
 
-class TestAgentCard:
 
+class TestAgentCard:
     def test_build_agent_card_defaults(self):
         from ms_agent.a2a.agent_card import build_agent_card
+
         card = build_agent_card()
         assert card.name == 'ms-agent'
         assert card.url == 'http://localhost:5000/'
@@ -53,24 +54,27 @@ class TestAgentCard:
 
     def test_build_agent_card_custom_host_port(self):
         from ms_agent.a2a.agent_card import build_agent_card
+
         card = build_agent_card(host='myhost', port=8080)
         assert card.url == 'http://myhost:8080/'
 
     def test_build_agent_card_with_skills(self):
         from ms_agent.a2a.agent_card import build_agent_card
+
         skills = [
-            {'id': 'research', 'name': 'Deep Research',
-             'description': 'Research topics'},
+            {'id': 'research', 'name': 'Deep Research', 'description': 'Research topics'},
         ]
         card = build_agent_card(skills=skills)
         assert len(card.skills) == 1
         assert card.skills[0].id == 'research'
 
     def test_generate_agent_card_json(self, tmp_path):
-        from ms_agent.a2a.agent_card import generate_agent_card_json
         import json
+
+        from ms_agent.a2a.agent_card import generate_agent_card_json
+
         out = tmp_path / 'card.json'
-        card_dict = generate_agent_card_json(output_path=str(out))
+        generate_agent_card_json(output_path=str(out))
         assert out.exists()
         with open(out) as f:
             data = json.load(f)
@@ -82,11 +86,12 @@ class TestAgentCard:
 # Executor tests with mock agent
 # ======================================================================
 
-class TestExecutor:
 
+class TestExecutor:
     @pytest.mark.asyncio
     async def test_executor_cancel_unknown_task(self):
         from ms_agent.a2a.executor import MSAgentA2AExecutor
+
         executor = MSAgentA2AExecutor(
             config_path='/tmp/nonexistent.yaml',
             max_tasks=2,
@@ -102,6 +107,7 @@ class TestExecutor:
     @pytest.mark.asyncio
     async def test_executor_cleanup(self):
         from ms_agent.a2a.executor import MSAgentA2AExecutor
+
         executor = MSAgentA2AExecutor(
             config_path='/tmp/nonexistent.yaml',
         )
@@ -112,7 +118,6 @@ class TestExecutor:
         from ms_agent.a2a.executor import MSAgentA2AExecutor
 
         class FakeAgent:
-
             async def run(self, messages, **kwargs):
 
                 async def chunks():
@@ -124,15 +129,13 @@ class TestExecutor:
                 return chunks()
 
         entries = {
-            'task_1':
-            SimpleNamespace(
+            'task_1': SimpleNamespace(
                 agent=FakeAgent(),
                 messages=[],
                 cancelled=False,
                 is_running=False,
             ),
-            'task_2':
-            SimpleNamespace(
+            'task_2': SimpleNamespace(
                 agent=FakeAgent(),
                 messages=[],
                 cancelled=False,
@@ -172,8 +175,8 @@ class TestExecutor:
 # TaskUpdater integration tests
 # ======================================================================
 
-class TestTaskUpdater:
 
+class TestTaskUpdater:
     @staticmethod
     async def _drain_queue(event_queue: EventQueue) -> list:
         """Drain all events from the queue without blocking."""
@@ -211,8 +214,7 @@ class TestTaskUpdater:
 
         await updater.submit()
         await updater.start_work()
-        await updater.failed(
-            new_agent_text_message('something broke', 'ctx_2', 'task_2'))
+        await updater.failed(new_agent_text_message('something broke', 'ctx_2', 'task_2'))
 
         events = await self._drain_queue(event_queue)
         assert len(events) >= 3
@@ -233,8 +235,8 @@ class TestTaskUpdater:
 # InMemoryTaskStore tests
 # ======================================================================
 
-class TestTaskStore:
 
+class TestTaskStore:
     @pytest.mark.asyncio
     async def test_in_memory_task_store_get_none(self):
         store = InMemoryTaskStore()

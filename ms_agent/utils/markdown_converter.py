@@ -1,6 +1,3 @@
-# flake8: noqa
-# isort: skip_file
-# yapf: disable
 import os
 import re
 import shutil
@@ -10,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import markdown
+
 from ms_agent.utils.logger import get_logger
 from ms_agent.utils.utils import install_package, is_package_installed
 
@@ -31,42 +29,33 @@ def _install_playwright() -> bool:
 
         # Install playwright package
         result1 = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', 'playwright'],
-            capture_output=True,
-            text=True,
-            timeout=300)
+            [sys.executable, '-m', 'pip', 'install', 'playwright'], capture_output=True, text=True, timeout=300
+        )
 
         if result1.returncode != 0:
-            logger.error(
-                f'Playwright package installation failed: {result1.stderr}')
+            logger.error(f'Playwright package installation failed: {result1.stderr}')
             return False
 
         # Install Chromium browser
-        result2 = subprocess.run(['playwright', 'install', 'chromium'],
-                                 capture_output=True,
-                                 text=True,
-                                 timeout=600)
+        result2 = subprocess.run(['playwright', 'install', 'chromium'], capture_output=True, text=True, timeout=600)
 
         if result2.returncode != 0:
-            logger.error(
-                f'Chromium browser installation failed: {result2.stderr}')
+            logger.error(f'Chromium browser installation failed: {result2.stderr}')
             # Try using python -m playwright install chromium
             logger.info('🔄 Trying alternative installation method...')
             result2_alt = subprocess.run(
-                [sys.executable, '-m', 'playwright', 'install', 'chromium'],
-                capture_output=True,
-                text=True,
-                timeout=600)
+                [sys.executable, '-m', 'playwright', 'install', 'chromium'], capture_output=True, text=True, timeout=600
+            )
 
             if result2_alt.returncode != 0:
-                logger.error(
-                    f'Alternative method also failed: {result2_alt.stderr}')
+                logger.error(f'Alternative method also failed: {result2_alt.stderr}')
                 return False
 
         # Verify installation
         logger.info('Verifying Playwright installation...')
         try:
             from playwright.sync_api import sync_playwright
+
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 browser.close()
@@ -77,8 +66,7 @@ def _install_playwright() -> bool:
             return False
 
     except subprocess.TimeoutExpired:
-        logger.error(
-            'Installation timeout, please install Playwright manually')
+        logger.error('Installation timeout, please install Playwright manually')
         return False
     except Exception as e:
         logger.error(f'Error during installation process: {e}')
@@ -109,9 +97,7 @@ class MarkdownConverter:
         return [(match[1], match[0]) for match in matches]
 
     @staticmethod
-    def _copy_and_process_images(
-            images: List[Tuple[str, str]],
-            output_dir: Path, folder_path: Path) -> Dict[str, str]:
+    def _copy_and_process_images(images: List[Tuple[str, str]], output_dir: Path, folder_path: Path) -> Dict[str, str]:
         """
         Copy and process image files
 
@@ -147,14 +133,12 @@ class MarkdownConverter:
                         with Image.open(source_path) as img:
                             # Compress if image is too large
                             if img.width > 1200 or img.height > 1200:
-                                img.thumbnail((1200, 1200),
-                                              Image.Resampling.LANCZOS)
+                                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
                             img.save(new_path, optimize=True, quality=85)
                     else:
                         shutil.copy2(source_path, new_path)
 
-                    image_mapping[img_path] = str(
-                        new_path.relative_to(output_dir))
+                    image_mapping[img_path] = str(new_path.relative_to(output_dir))
                 except (IOError, OSError) as e:
                     logger.warning(f'Error processing image {img_path}: {e}')
                     image_mapping[img_path] = img_path
@@ -165,8 +149,7 @@ class MarkdownConverter:
         return image_mapping
 
     @staticmethod
-    def _update_markdown_image_paths(markdown_content: str,
-                                     image_mapping: Dict[str, str]) -> str:
+    def _update_markdown_image_paths(markdown_content: str, image_mapping: Dict[str, str]) -> str:
         """
         Update image paths in Markdown content
         """
@@ -197,11 +180,10 @@ class MarkdownConverter:
         last_end = 0
 
         # Find all formatting matches
-        for match in re.finditer(
-                f'({bold_pattern})|({italic_pattern})|({code_pattern})', text):
+        for match in re.finditer(f'({bold_pattern})|({italic_pattern})|({code_pattern})', text):
             # Add text before match
             if match.start() > last_end:
-                parts.append(('text', text[last_end:match.start()]))
+                parts.append(('text', text[last_end : match.start()]))
 
             # Determine match type and content
             if match.group(2) or match.group(3):  # Bold
@@ -268,6 +250,7 @@ class MarkdownConverter:
         Process HTML table element and create DOCX table
         """
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+
         try:
             # Extract table data from HTML
             rows = []
@@ -349,8 +332,7 @@ class MarkdownConverter:
 
                 # Check if this is a separator line (contains only -, :, |, and spaces)
                 is_separator = all(
-                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell)
-                    for cell in cells if cell.strip()
+                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell) for cell in cells if cell.strip()
                 )
 
                 if is_separator:
@@ -481,8 +463,7 @@ class MarkdownConverter:
             # Find all .md files in the markdown folder
             markdown_files = list(markdown_folder.glob('*.md'))
             if not markdown_files:
-                raise FileNotFoundError(
-                    f'No .md files found in {markdown_folder}')
+                raise FileNotFoundError(f'No .md files found in {markdown_folder}')
 
         logger.info(f'Found {len(markdown_files)} Markdown files to convert to html:')
         for md_file in markdown_files:
@@ -497,16 +478,12 @@ class MarkdownConverter:
                     markdown_content = f.read()
 
                 # Extract and process images for this file
-                images = MarkdownConverter._extract_images_from_markdown(
-                    markdown_content)
-                image_mapping = MarkdownConverter._copy_and_process_images(
-                    images, html_folder, markdown_folder)
-                updated_markdown = MarkdownConverter._update_markdown_image_paths(
-                    markdown_content, image_mapping)
+                images = MarkdownConverter._extract_images_from_markdown(markdown_content)
+                image_mapping = MarkdownConverter._copy_and_process_images(images, html_folder, markdown_folder)
+                updated_markdown = MarkdownConverter._update_markdown_image_paths(markdown_content, image_mapping)
 
                 # Convert to HTML
-                md = markdown.Markdown(
-                    extensions=['extra', 'codehilite', 'toc'])
+                md = markdown.Markdown(extensions=['extra', 'codehilite', 'toc'])
                 html_content = md.convert(updated_markdown)
 
                 # Get the title from the first H1 heading or use filename
@@ -587,9 +564,7 @@ class MarkdownConverter:
             except Exception as e:
                 logger.info(f'✗ Failed to convert {markdown_file.name}: {e}')
 
-        logger.info(
-            f'\nConversion completed! Generated {len(converted_files)} HTML files.'
-        )
+        logger.info(f'\nConversion completed! Generated {len(converted_files)} HTML files.')
         if single_file_output:
             return str(single_file_output.absolute())
         else:
@@ -615,7 +590,8 @@ class MarkdownConverter:
             logger.error(
                 'Playwright is not installed. Please install it using:\n'
                 '   pip install playwright\n'
-                '   playwright install chromium')
+                '   playwright install chromium'
+            )
             return ''
 
         import tempfile
@@ -648,8 +624,7 @@ class MarkdownConverter:
             # Find all .md files in the markdown folder
             markdown_files = list(markdown_folder.glob('*.md'))
             if not markdown_files:
-                raise FileNotFoundError(
-                    f'No .md files found in {markdown_folder}')
+                raise FileNotFoundError(f'No .md files found in {markdown_folder}')
 
         logger.info(f'Found {len(markdown_files)} Markdown files to convert to pdf:')
         for md_file in markdown_files:
@@ -675,9 +650,7 @@ class MarkdownConverter:
                         output_pdf_file = pdf_folder / f'{markdown_file.stem}.pdf'
 
                     try:
-                        logger.info(
-                            f'Converting {markdown_file.name} to PDF using Playwright...'
-                        )
+                        logger.info(f'Converting {markdown_file.name} to PDF using Playwright...')
 
                         with sync_playwright() as p:
                             # Launch browser (prefer Chromium for best PDF support)
@@ -688,28 +661,16 @@ class MarkdownConverter:
                             pdf_options = {
                                 'path': str(output_pdf_file),
                                 'format': 'A4',
-                                'margin': {
-                                    'top': '2cm',
-                                    'right': '2cm',
-                                    'bottom': '2cm',
-                                    'left': '2cm'
-                                },
-                                'print_background':
-                                    True,
-                                'prefer_css_page_size':
-                                    True,
-                                'display_header_footer':
-                                    True,
-                                'header_template':
-                                    '<div style="font-size:10px; text-align:center; width:100%;"></div>',
-                                'footer_template':
-                                    '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>'
+                                'margin': {'top': '2cm', 'right': '2cm', 'bottom': '2cm', 'left': '2cm'},
+                                'print_background': True,
+                                'prefer_css_page_size': True,
+                                'display_header_footer': True,
+                                'header_template': '<div style="font-size:10px; text-align:center; width:100%;"></div>',
+                                'footer_template': '<div style="font-size:10px; text-align:center; width:100%; margin-top:10px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
                             }
 
                             # Navigate to HTML file and wait for full load
-                            page.goto(
-                                f'file://{temp_html.absolute()}',
-                                wait_until='networkidle')
+                            page.goto(f'file://{temp_html.absolute()}', wait_until='networkidle')
 
                             # Wait a bit more for any dynamic content
                             page.wait_for_timeout(1000)
@@ -719,22 +680,16 @@ class MarkdownConverter:
 
                             browser.close()
 
-                        logger.info(
-                            f'PDF file generated using Playwright: {output_pdf_file}'
-                        )
+                        logger.info(f'PDF file generated using Playwright: {output_pdf_file}')
                         converted_files.append(output_pdf_file)
 
                     except Exception as e:
-                        logger.error(
-                            f'Playwright conversion failed for {markdown_file.name}: {e}'
-                        )
+                        logger.error(f'Playwright conversion failed for {markdown_file.name}: {e}')
 
             except Exception as e:
                 logger.error(f'✗ Failed to convert {markdown_file.name}: {e}')
 
-        logger.info(
-            f'\nConversion completed! Generated {len(converted_files)} PDF files.'
-        )
+        logger.info(f'\nConversion completed! Generated {len(converted_files)} PDF files.')
         if single_file_output:
             return str(single_file_output.absolute())
         else:
@@ -787,8 +742,7 @@ class MarkdownConverter:
             # Find all .md files in the markdown folder
             markdown_files = list(markdown_folder.glob('*.md'))
             if not markdown_files:
-                raise FileNotFoundError(
-                    f'No .md files found in {markdown_folder}')
+                raise FileNotFoundError(f'No .md files found in {markdown_folder}')
 
         logger.info(f'Found {len(markdown_files)} Markdown files to convert to docx:')
         for md_file in markdown_files:
@@ -808,14 +762,16 @@ class MarkdownConverter:
                 doc = Document()
 
                 # Use proper Markdown parsing with enhanced extensions
-                md = markdown.Markdown(extensions=[
-                    'extra',  # Includes tables, fenced_code, footnotes, attr_list, def_list, abbr
-                    'codehilite',  # Code highlighting
-                    'toc',  # Table of contents
-                    'tables',  # Explicit table support
-                    'fenced_code',  # Fenced code blocks
-                    'attr_list'  # Attribute lists
-                ])
+                md = markdown.Markdown(
+                    extensions=[
+                        'extra',  # Includes tables, fenced_code, footnotes, attr_list, def_list, abbr
+                        'codehilite',  # Code highlighting
+                        'toc',  # Table of contents
+                        'tables',  # Explicit table support
+                        'fenced_code',  # Fenced code blocks
+                        'attr_list',  # Attribute lists
+                    ]
+                )
                 html_content = md.convert(markdown_content)
 
                 # Parse the HTML using BeautifulSoup for structured processing
@@ -839,7 +795,8 @@ class MarkdownConverter:
 
                 # Process each HTML element and convert to DOCX
                 for element in soup.find_all(
-                        ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'blockquote', 'pre', 'table', 'img']):
+                    ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'blockquote', 'pre', 'table', 'img']
+                ):
                     try:
                         if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                             # Headings
@@ -897,9 +854,9 @@ class MarkdownConverter:
                             img_src = element.get('src', '')
                             img_alt = element.get('alt', '')
                             if img_src:  # Only process if src exists
-                                MarkdownConverter._process_docx_image(doc, img_src, img_alt, resources_dir,
-                                                                      markdown_folder)
-
+                                MarkdownConverter._process_docx_image(
+                                    doc, img_src, img_alt, resources_dir, markdown_folder
+                                )
 
                     except Exception as e:
                         logger.warning(f'Error processing element {element.name}: {e}')
@@ -959,9 +916,7 @@ class MarkdownConverter:
             except Exception as e:
                 logger.info(f'✗ Failed to convert {markdown_file.name}: {e}')
 
-        logger.info(
-            f'\nConversion completed! Generated {len(converted_files)} DOCX files.'
-        )
+        logger.info(f'\nConversion completed! Generated {len(converted_files)} DOCX files.')
         if single_file_output:
             return str(single_file_output.absolute())
         else:
@@ -983,8 +938,8 @@ class MarkdownConverter:
         install_package(package_name='python-pptx', import_name='pptx')
 
         from pptx import Presentation
-        from pptx.util import Inches as PptxInches
         from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches as PptxInches
 
         markdown_input = Path(markdown_path)
 
@@ -1014,8 +969,7 @@ class MarkdownConverter:
             # Find all .md files in the markdown folder
             markdown_files = list(markdown_folder.glob('*.md'))
             if not markdown_files:
-                raise FileNotFoundError(
-                    f'No .md files found in {markdown_folder}')
+                raise FileNotFoundError(f'No .md files found in {markdown_folder}')
 
         logger.info(f'Found {len(markdown_files)} Markdown files to convert to ppt:')
         for md_file in markdown_files:
@@ -1051,9 +1005,7 @@ class MarkdownConverter:
                             slides_content.append(current_slide)
                         elif current_slide['title'] and not current_slide['content']:
                             # Previous slide has title but no content, skip it
-                            logger.info(
-                                f"Skipping empty slide: {current_slide['title']}"
-                            )
+                            logger.info(f'Skipping empty slide: {current_slide["title"]}')
                         current_slide = {'title': line[2:], 'content': []}
                     elif line.startswith('## '):
                         # Level 2 heading as content
@@ -1063,12 +1015,10 @@ class MarkdownConverter:
                         img_match = re.match(r'!\[([^\]]*)\]\(([^)]+)\)', line)
                         if img_match:
                             alt_text, img_path = img_match.groups()
-                            current_slide['content'].append(
-                                ('image', img_path, alt_text))
+                            current_slide['content'].append(('image', img_path, alt_text))
                     elif '|' in line:
                         # Table detection - collect all consecutive table lines
                         table_lines = []
-                        table_start = i
 
                         # Collect all consecutive table lines
                         while i < len(lines):
@@ -1086,10 +1036,7 @@ class MarkdownConverter:
 
                             for table_line in table_lines:
                                 # Clean up the line and split by |
-                                cells = [
-                                    cell.strip()
-                                    for cell in table_line.split('|')
-                                ]
+                                cells = [cell.strip() for cell in table_line.split('|')]
 
                                 # Remove empty cells at start/end (from leading/trailing |)
                                 while cells and not cells[0]:
@@ -1103,7 +1050,10 @@ class MarkdownConverter:
 
                                 # Check if this is a separator line (contains only -, :, |, and spaces)
                                 is_separator = all(
-                                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell) for cell in cells if cell.strip())
+                                    re.match(r'^[-:\s|]*$', cell) and ('-' in cell or ':' in cell)
+                                    for cell in cells
+                                    if cell.strip()
+                                )
 
                                 if is_separator:
                                     # This is a separator line, skip it
@@ -1115,8 +1065,7 @@ class MarkdownConverter:
 
                             # Add table to slide content if we have data
                             if table_data:
-                                current_slide['content'].append(
-                                    ('table', table_data))
+                                current_slide['content'].append(('table', table_data))
 
                         # Continue from where we left off (i is already incremented)
                         continue
@@ -1134,8 +1083,7 @@ class MarkdownConverter:
                     slides_content.append(current_slide)
                 elif current_slide['title'] and not current_slide['content']:
                     # Last slide has title but no content, skip it
-                    logger.info(
-                        f"Skipping empty slide: {current_slide['title']}")
+                    logger.info(f'Skipping empty slide: {current_slide["title"]}')
 
                 # Create slides with intelligent pagination
                 for slide_data in slides_content:
@@ -1145,9 +1093,7 @@ class MarkdownConverter:
 
                     # Skip slides with only title but no content
                     if slide_data['title'] and not slide_data['content']:
-                        logger.info(
-                            f"Skipping slide with title only: {slide_data['title']}"
-                        )
+                        logger.info(f'Skipping slide with title only: {slide_data["title"]}')
                         continue
 
                     # Get slide dimensions for calculations
@@ -1155,23 +1101,18 @@ class MarkdownConverter:
                     slide_height = prs.slide_height
 
                     # Calculate adaptive font sizes based on slide dimensions
-                    base_font_size = max(PptxInches(0.15), slide_width
-                                         / 50)  # Adaptive base font
+                    base_font_size = max(PptxInches(0.15), slide_width / 50)  # Adaptive base font
                     heading_font_size = base_font_size * 1.3  # 30% larger for headings
                     bullet_font_size = base_font_size * 0.9  # 10% smaller for bullets
 
                     # Calculate available content area (excluding title)
-                    title_height = PptxInches(
-                        1.5) if slide_data['title'] else PptxInches(0.5)
-                    available_height = slide_height - title_height - PptxInches(
-                        0.5)  # Bottom margin
+                    title_height = PptxInches(1.5) if slide_data['title'] else PptxInches(0.5)
+                    available_height = slide_height - title_height - PptxInches(0.5)  # Bottom margin
 
                     # Estimate lines per slide based on font size and available height
                     line_height = base_font_size * 1.4  # Line spacing factor
-                    max_lines_per_slide = int(
-                        available_height / line_height) - 2  # Safety margin
-                    max_lines_per_slide = max(
-                        5, max_lines_per_slide)  # Minimum 5 lines per slide
+                    max_lines_per_slide = int(available_height / line_height) - 2  # Safety margin
+                    max_lines_per_slide = max(5, max_lines_per_slide)  # Minimum 5 lines per slide
 
                     # Group content into pages with advanced sparse page filtering
                     content_pages = []
@@ -1182,8 +1123,7 @@ class MarkdownConverter:
                     # Enhanced pagination parameters
                     min_content_per_page = 4  # Increased minimum content items per page
                     min_content_weight = 8  # Minimum content weight (text length + items)
-                    optimal_lines_per_slide = max(
-                        10, max_lines_per_slide // 2)  # More content per slide
+                    optimal_lines_per_slide = max(10, max_lines_per_slide // 2)  # More content per slide
 
                     # Process content and estimate line usage with content weight
                     for content_type, *content_data in slide_data['content']:
@@ -1193,9 +1133,7 @@ class MarkdownConverter:
                         if content_type in ['text', 'bullet', 'heading']:
                             text_content = content_data[0]
                             # More conservative line estimation
-                            chars_per_line = int(
-                                slide_width /
-                                (base_font_size * 0.4))  # Even more generous
+                            chars_per_line = int(slide_width / (base_font_size * 0.4))  # Even more generous
                             estimated_lines = max(1, len(text_content) // chars_per_line + 1)  # noqa
 
                             # Calculate content weight based on text length and type
@@ -1217,8 +1155,7 @@ class MarkdownConverter:
                                 current_line_count = 0
                                 current_content_weight = 0
                             # Add table as separate page
-                            content_pages.append([(content_type, *content_data)
-                                                  ])
+                            content_pages.append([(content_type, *content_data)])
                             continue
 
                         elif content_type == 'image':
@@ -1229,8 +1166,7 @@ class MarkdownConverter:
                                 current_line_count = 0
                                 current_content_weight = 0
                             # Add image as separate page
-                            content_pages.append([(content_type, *content_data)
-                                                  ])
+                            content_pages.append([(content_type, *content_data)])
                             continue
 
                         # Enhanced page breaking logic with content weight consideration
@@ -1240,20 +1176,19 @@ class MarkdownConverter:
                         # 1. Sufficient content items and weight
                         # 2. Would exceed optimal line limit
                         # 3. Current page has substantial content
-                        if (current_line_count + estimated_lines >
-                                optimal_lines_per_slide
-                                and len(current_page) >= min_content_per_page
-                                and
-                                current_content_weight >= min_content_weight
-                                and
-                                current_line_count >= optimal_lines_per_slide
-                                // 3):  # More lenient threshold
+                        if (
+                            current_line_count + estimated_lines > optimal_lines_per_slide
+                            and len(current_page) >= min_content_per_page
+                            and current_content_weight >= min_content_weight
+                            and current_line_count >= optimal_lines_per_slide // 3
+                        ):  # More lenient threshold
                             should_break_page = True
 
                         # Force break only if we're significantly over the limit
-                        elif (current_line_count + estimated_lines >
-                              max_lines_per_slide * 1.2 or
-                              current_content_weight > min_content_weight * 2):
+                        elif (
+                            current_line_count + estimated_lines > max_lines_per_slide * 1.2
+                            or current_content_weight > min_content_weight * 2
+                        ):
                             should_break_page = True
 
                         if should_break_page and current_page:
@@ -1279,8 +1214,7 @@ class MarkdownConverter:
                         current_page = content_pages[i]
 
                         # Skip special content pages (tables/images) - they're always valid
-                        if (len(current_page) == 1
-                                and current_page[0][0] in ['table', 'image']):
+                        if len(current_page) == 1 and current_page[0][0] in ['table', 'image']:
                             filtered_pages.append(current_page)
                             i += 1
                             continue
@@ -1292,8 +1226,7 @@ class MarkdownConverter:
                             if content_type in ['text', 'bullet', 'heading']:
                                 text_content = content_data[0]
                                 page_text_length += len(text_content)
-                                page_content_weight += len(
-                                    text_content) // 20 + 1
+                                page_content_weight += len(text_content) // 20 + 1
                                 if content_type == 'heading':
                                     page_content_weight += 2
                                 elif content_type == 'bullet':
@@ -1301,9 +1234,9 @@ class MarkdownConverter:
 
                         # Determine if page is too sparse
                         is_sparse = (
-                                len(current_page) < min_content_per_page
-                                or page_content_weight < min_content_weight
-                                or page_text_length < 100
+                            len(current_page) < min_content_per_page
+                            or page_content_weight < min_content_weight
+                            or page_text_length < 100
                         )  # Less than 100 characters total
 
                         # Try to merge sparse pages with adjacent pages
@@ -1311,11 +1244,9 @@ class MarkdownConverter:
                             next_page = content_pages[i + 1]
 
                             # Don't merge with special content pages
-                            if (len(next_page) == 1
-                                    and next_page[0][0] in ['table', 'image']):
+                            if len(next_page) == 1 and next_page[0][0] in ['table', 'image']:
                                 # Can't merge with special content, check if current page is acceptable
-                                if len(current_page
-                                       ) >= 2 or page_text_length >= 50:
+                                if len(current_page) >= 2 or page_text_length >= 50:
                                     filtered_pages.append(current_page)
                                 else:
                                     logger.info(
@@ -1332,33 +1263,28 @@ class MarkdownConverter:
                                 if content_type in ['text', 'bullet', 'heading']:
                                     text_content = content_data[0]
                                     next_page_text_length += len(text_content)
-                                    next_page_weight += len(
-                                        text_content) // 20 + 1
+                                    next_page_weight += len(text_content) // 20 + 1
 
                             combined_weight = page_content_weight + next_page_weight
                             combined_length = page_text_length + next_page_text_length
                             combined_items = len(current_page) + len(next_page)
 
                             # Merge if combined page would be reasonable
-                            if (combined_items <= min_content_per_page * 2 and
-                                    combined_weight <= min_content_weight * 2
-                                    and combined_length <=
-                                    800):  # Not too long when combined
-
+                            if (
+                                combined_items <= min_content_per_page * 2
+                                and combined_weight <= min_content_weight * 2
+                                and combined_length <= 800
+                            ):  # Not too long when combined
                                 merged_page = current_page + next_page
                                 filtered_pages.append(merged_page)
-                                logger.info(
-                                    f'Merged sparse pages: {len(current_page)} + {len(next_page)} items'
-                                )
+                                logger.info(f'Merged sparse pages: {len(current_page)} + {len(next_page)} items')
                                 i += 2  # Skip next page as it's been merged
                                 continue
 
                         # If page is still too sparse and can't be merged, filter it out
-                        if is_sparse and (len(current_page) < 2
-                                          or page_text_length < 50):
+                        if is_sparse and (len(current_page) < 2 or page_text_length < 50):
                             logger.info(
-                                f'Filtering out sparse page with '
-                                f'{len(current_page)} items, {page_text_length} chars'
+                                f'Filtering out sparse page with {len(current_page)} items, {page_text_length} chars'
                             )
                             i += 1
                             continue
@@ -1376,8 +1302,7 @@ class MarkdownConverter:
                     # Create slides for each content page
                     for page_idx, page_content in enumerate(content_pages):
                         # Add slide
-                        slide_layout = prs.slide_layouts[
-                            1]  # Title and content layout
+                        slide_layout = prs.slide_layouts[1]  # Title and content layout
                         slide = prs.slides.add_slide(slide_layout)
 
                         # Set title with adaptive font size (add page number if multiple pages)
@@ -1389,8 +1314,7 @@ class MarkdownConverter:
                             title.text = title_text
 
                             # Adaptive title font size based on slide dimensions
-                            title_font_size = max(
-                                PptxInches(0.35), slide_width / 25)
+                            title_font_size = max(PptxInches(0.35), slide_width / 25)
 
                             for paragraph in title.text_frame.paragraphs:
                                 paragraph.font.size = int(title_font_size)
@@ -1400,14 +1324,8 @@ class MarkdownConverter:
                         # Add content for this page
                         if page_content:
                             # Check if this page contains special content (table/image)
-                            special_content = [
-                                item for item in page_content
-                                if item[0] in ['table', 'image']
-                            ]
-                            text_content = [
-                                item for item in page_content
-                                if item[0] not in ['table', 'image']
-                            ]
+                            special_content = [item for item in page_content if item[0] in ['table', 'image']]
+                            text_content = [item for item in page_content if item[0] not in ['table', 'image']]
 
                             # Handle text content
                             if text_content:
@@ -1415,8 +1333,7 @@ class MarkdownConverter:
                                 text_frame = content_shape.text_frame
                                 text_frame.clear()
 
-                                for i, (content_type, *content_data
-                                        ) in enumerate(text_content):
+                                for i, (content_type, *content_data) in enumerate(text_content):
                                     if content_type == 'text':
                                         p = text_frame.paragraphs[0] if i == 0 else text_frame.add_paragraph()
                                         p.text = content_data[0]
@@ -1442,10 +1359,8 @@ class MarkdownConverter:
                                     table_data = content_data[0]
                                     if table_data:
                                         # Create a new slide for the table
-                                        table_slide_layout = prs.slide_layouts[
-                                            5]  # Blank layout for better control
-                                        table_slide = prs.slides.add_slide(
-                                            table_slide_layout)
+                                        table_slide_layout = prs.slide_layouts[5]  # Blank layout for better control
+                                        table_slide = prs.slides.add_slide(table_slide_layout)
 
                                         # Get slide dimensions for adaptive sizing
                                         slide_width = prs.slide_width
@@ -1457,72 +1372,63 @@ class MarkdownConverter:
                                                 PptxInches(0.5),
                                                 PptxInches(0.2),
                                                 slide_width - PptxInches(1),
-                                                PptxInches(1))
+                                                PptxInches(1),
+                                            )
                                             title_frame = title_shape.text_frame
-                                            title_frame.margin_top = PptxInches(
-                                                0.1)
-                                            title_frame.margin_bottom = PptxInches(
-                                                0.1)
-                                            title_para = title_frame.paragraphs[
-                                                0]
-                                            title_para.text = f"{slide_data['title']} - Table"
+                                            title_frame.margin_top = PptxInches(0.1)
+                                            title_frame.margin_bottom = PptxInches(0.1)
+                                            title_para = title_frame.paragraphs[0]
+                                            title_para.text = f'{slide_data["title"]} - Table'
                                             title_para.alignment = PP_ALIGN.CENTER
                                             # Adaptive title font size based on slide width
-                                            title_font_size = max(
-                                                PptxInches(0.3),
-                                                slide_width / 30)
-                                            title_para.font.size = int(
-                                                title_font_size)
+                                            title_font_size = max(PptxInches(0.3), slide_width / 30)
+                                            title_para.font.size = int(title_font_size)
                                             title_para.font.bold = True
 
                                         # Calculate table dimensions
-                                        max_cols = max(
-                                            len(row) for row in
-                                            table_data) if table_data else 0
+                                        max_cols = max(len(row) for row in table_data) if table_data else 0
                                         num_rows = len(table_data)
 
                                         if max_cols > 0 and num_rows > 0:
                                             # Adaptive table positioning and sizing
                                             margin_left = slide_width * 0.05  # 5% margin
-                                            margin_top = PptxInches(
-                                                1.8
-                                            ) if slide_data[
-                                                'title'] else slide_height * 0.1
+                                            margin_top = PptxInches(1.8) if slide_data['title'] else slide_height * 0.1
 
-                                            table_width = slide_width - (
-                                                    margin_left * 2)
-                                            table_height = slide_height - margin_top - (
-                                                    slide_height * 0.1)
+                                            table_width = slide_width - (margin_left * 2)
+                                            table_height = slide_height - margin_top - (slide_height * 0.1)
 
                                             # Ensure minimum table size
-                                            table_width = max(
-                                                table_width, PptxInches(4))
-                                            table_height = max(
-                                                table_height, PptxInches(2))
+                                            table_width = max(table_width, PptxInches(4))
+                                            table_height = max(table_height, PptxInches(2))
 
                                             # Add table to slide with adaptive dimensions
                                             try:
                                                 table = table_slide.shapes.add_table(
-                                                    num_rows, max_cols,
-                                                    margin_left, margin_top,
+                                                    num_rows,
+                                                    max_cols,
+                                                    margin_left,
+                                                    margin_top,
                                                     table_width,
-                                                    table_height).table
+                                                    table_height,
+                                                ).table
 
                                                 # Calculate adaptive font size based on table size and content
                                                 # Base font size on table dimensions and number of cells
                                                 cell_area = (table_width * table_height) / (num_rows * max_cols)
-                                                base_font_size = max(PptxInches(0.12), min(PptxInches(0.25), cell_area / PptxInches(2)))
+                                                base_font_size = max(
+                                                    PptxInches(0.12), min(PptxInches(0.25), cell_area / PptxInches(2))
+                                                )
 
                                                 # Fill table data with adaptive formatting
-                                                for row_idx, row_data in enumerate(
-                                                        table_data):
-                                                    for col_idx in range(
-                                                            max_cols):
+                                                for row_idx, row_data in enumerate(table_data):
+                                                    for col_idx in range(max_cols):
                                                         try:
                                                             cell = table.cell(row_idx, col_idx)
 
                                                             # Get cell data or empty string if not enough columns
-                                                            cell_data = str(row_data[col_idx] if col_idx < len(row_data) else '')
+                                                            cell_data = str(
+                                                                row_data[col_idx] if col_idx < len(row_data) else ''
+                                                            )
 
                                                             # Clear existing content first
                                                             cell.text = ''
@@ -1545,9 +1451,7 @@ class MarkdownConverter:
                                                                         paragraph.font.bold = True
                                                                         paragraph.font.size = int(base_font_size * 1.1)
                                                                 except Exception as e:
-                                                                    logger.warning(
-                                                                        f'Error setting font size: {e}'
-                                                                    )
+                                                                    logger.warning(f'Error setting font size: {e}')
 
                                                             # Set cell margins safely
                                                             try:
@@ -1556,9 +1460,7 @@ class MarkdownConverter:
                                                                 cell.margin_top = PptxInches(0.05)  # noqa
                                                                 cell.margin_bottom = PptxInches(0.05)  # noqa
                                                             except Exception as e:
-                                                                logger.warning(
-                                                                    f'Error setting cell margins: {e}'
-                                                                )
+                                                                logger.warning(f'Error setting cell margins: {e}')
 
                                                         except Exception as cell_error:
                                                             logger.warning(
@@ -1568,19 +1470,20 @@ class MarkdownConverter:
                                                             continue
 
                                             except Exception as table_error:
-                                                logger.warning(
-                                                    f'Error creating table: {table_error}'
-                                                )
+                                                logger.warning(f'Error creating table: {table_error}')
                                                 # Fallback: create text-based table representation
                                                 fallback_shape = table_slide.shapes.add_textbox(
-                                                    margin_left, margin_top,
-                                                    table_width, table_height)
+                                                    margin_left, margin_top, table_width, table_height
+                                                )
                                                 fallback_frame = fallback_shape.text_frame
                                                 fallback_para = fallback_frame.paragraphs[0]
                                                 fallback_text = '\n'.join([' | '.join(row) for row in table_data])
                                                 fallback_para.text = f'Table Content:\n{fallback_text}'
                                 elif content_type == 'image':
-                                    img_path, alt_text = content_data[0], content_data[1] if len(content_data) > 1 else ''
+                                    img_path, alt_text = (
+                                        content_data[0],
+                                        content_data[1] if len(content_data) > 1 else '',
+                                    )
 
                                     # Handle image path
                                     if not os.path.isabs(img_path):
@@ -1625,10 +1528,8 @@ class MarkdownConverter:
                                             if title_text:
                                                 try:
                                                     title_shape = img_slide.shapes.add_textbox(
-                                                        margin_left,
-                                                        PptxInches(0.2),
-                                                        available_width,
-                                                        PptxInches(1))
+                                                        margin_left, PptxInches(0.2), available_width, PptxInches(1)
+                                                    )
                                                     title_frame = title_shape.text_frame
                                                     title_frame.margin_top = PptxInches(0.1)
                                                     title_frame.margin_bottom = PptxInches(0.1)
@@ -1639,28 +1540,25 @@ class MarkdownConverter:
                                                         title_para.font.size = int(PptxInches(0.25))
                                                         title_para.font.bold = True
                                                     except Exception as e:
-                                                        logger.warning(
-                                                            f'Error setting title font: {e}'
-                                                        )
+                                                        logger.warning(f'Error setting title font: {e}')
                                                         pass  # Skip font formatting if it fails
                                                     # Adjust margin for title
                                                     margin_top = PptxInches(1.5)
                                                 except Exception as title_error:
-                                                    logger.warning(
-                                                        f'Error adding image title: {title_error}'
-                                                    )
+                                                    logger.warning(f'Error adding image title: {title_error}')
 
                                             # Get original image dimensions to calculate aspect ratio
                                             try:
                                                 from PIL import Image as PILImage
+
                                                 with PILImage.open(actual_img_path) as pil_img:
                                                     orig_width, orig_height = pil_img.size
-                                                    aspect_ratio = orig_width / orig_height if orig_height > 0 else 4 / 3  # noqa
+                                                    aspect_ratio = (
+                                                        orig_width / orig_height if orig_height > 0 else 4 / 3
+                                                    )  # noqa
                                             except Exception as e:
                                                 # Fallback aspect ratio if PIL is not available
-                                                logger.warning(
-                                                    f'Error loading image for aspect ratio: {e}'
-                                                )
+                                                logger.warning(f'Error loading image for aspect ratio: {e}')
                                                 aspect_ratio = 4 / 3
 
                                             # Recalculate available space after title
@@ -1687,24 +1585,21 @@ class MarkdownConverter:
                                                     img_left,
                                                     img_top,
                                                     width=img_width,
-                                                    height=img_height)
-                                            except Exception as img_error:
-                                                logger.warning(
-                                                    f'Error adding image to slide: {img_error}'
+                                                    height=img_height,
                                                 )
+                                            except Exception as img_error:
+                                                logger.warning(f'Error adding image to slide: {img_error}')
                                                 # Add error text instead
                                                 error_shape = img_slide.shapes.add_textbox(
-                                                    img_left, img_top,
-                                                    img_width, img_height)
+                                                    img_left, img_top, img_width, img_height
+                                                )
                                                 error_frame = error_shape.text_frame
                                                 error_para = error_frame.paragraphs[0]
                                                 error_para.text = f'Image loading failed: {img_path}'
                                                 error_para.alignment = PP_ALIGN.CENTER
 
                                         except Exception as e:
-                                            logger.warning(
-                                                f'Failed to add image slide: {e}'
-                                            )
+                                            logger.warning(f'Failed to add image slide: {e}')
                                             # Create simple error slide
                                             try:
                                                 error_slide_layout = prs.slide_layouts[1]  # Title and content layout
@@ -1718,13 +1613,9 @@ class MarkdownConverter:
                                                         p.text = f'Unable to load image: {img_path}'
                                             except Exception as e:
                                                 # Skip error slide creation if it also fails
-                                                logger.warning(
-                                                    f'Also failed to create error slide: {e}'
-                                                )
+                                                logger.warning(f'Also failed to create error slide: {e}')
                                     else:
-                                        logger.warning(
-                                            f'Image file not found: {actual_img_path}'
-                                        )
+                                        logger.warning(f'Image file not found: {actual_img_path}')
 
                 # If no meaningful content slides, create a summary slide
                 if not slides_content:
@@ -1742,9 +1633,7 @@ class MarkdownConverter:
                                     f'\nPlease check the content structure of the original Markdown file.'
                                 )
                     except Exception as default_slide_error:
-                        logger.info(
-                            f'Error creating default slide: {default_slide_error}'
-                        )
+                        logger.info(f'Error creating default slide: {default_slide_error}')
 
                 # Generate output PPT file path
                 if single_file_output:
@@ -1760,9 +1649,7 @@ class MarkdownConverter:
             except Exception as e:
                 logger.error(f'✗ Failed to convert {markdown_file.name}: {e}')
 
-        logger.info(
-            f'\nConversion completed! Generated {len(converted_files)} PPT files.'
-        )
+        logger.info(f'\nConversion completed! Generated {len(converted_files)} PPT files.')
         if single_file_output:
             return str(single_file_output.absolute())
         else:

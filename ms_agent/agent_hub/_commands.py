@@ -5,23 +5,24 @@ This module contains the business logic for agent upload, download, convert,
 watch, stop, and recover operations.  The CLI adapter (``ms_agent.cli.agent``)
 calls these functions to perform the actual work.
 """
+
 from __future__ import annotations
 
 import getpass
 import os
 import sys
 import zipfile
-from modelscope_hub.agent import (AgentApi, agent_last_modified,
-                                  agent_visibility_label)
-from modelscope_hub.errors import APIError
 from pathlib import Path
 
+from modelscope_hub.agent import AgentApi, agent_last_modified, agent_visibility_label
+from modelscope_hub.errors import APIError
+
 from ms_agent.utils.logger import get_logger
+
 from . import _display as display
 from ._defaults import get_defaults
 from ._merge import merge_resources, merged_away_pairs
-from ._workspace import (ALL_AGENT_NAME, DEFAULT_AGENT_NAME,
-                         FRAMEWORK_REGISTRY, GLOBAL_AGENT_NAME, WorkspaceSpec)
+from ._workspace import ALL_AGENT_NAME, DEFAULT_AGENT_NAME, FRAMEWORK_REGISTRY, GLOBAL_AGENT_NAME, WorkspaceSpec
 
 logger = get_logger()
 
@@ -40,10 +41,10 @@ def _print_openhuman_next_steps(root) -> None:
     requirement.
     """
     agents_dir = f'{root}/agents'
-    doc = ('https://github.com/tinyhumansai/openhuman/blob/main/'
-           'gitbooks/developing/architecture/agent-harness.md')
-    example = ('https://github.com/tinyhumansai/openhuman/blob/main/'
-               'src/openhuman/agent/registry/agents/researcher/agent.toml')
+    doc = 'https://github.com/tinyhumansai/openhuman/blob/main/gitbooks/developing/architecture/agent-harness.md'
+    example = (
+        'https://github.com/tinyhumansai/openhuman/blob/main/src/openhuman/agent/registry/agents/researcher/agent.toml'
+    )
     logger.info(
         '转换/下载已完成，但当前还不能直接使用（若尚未注册）。OpenHuman 只通过 '
         'workspace/agents/<agent-id>.toml 注册表发现智能体，本次仅写入了 persona/skill 文件。\n'
@@ -54,7 +55,8 @@ def _print_openhuman_next_steps(root) -> None:
         'system_prompt.inline（粘贴 SOUL.md 内容）/ model.exact="inherit"；id 仅限字母、数字、"_"、"-"。\n'
         '  2) UI「设置 → 智能体 → 新建智能体」，id / model / 工具白名单与 TOML 保持一致。\n'
         '  3) UI「设置 → 智能体配置 → 新建配置」，base agent id 填同一个 id。\n'
-        '  4) 新建一个对话即可使用。')
+        '  4) 新建一个对话即可使用。'
+    )
     logger.info(
         'Conversion/download finished, but the agent is NOT usable yet '
         '(if you have not registered it). OpenHuman discovers agents only via the '
@@ -67,7 +69,8 @@ def _print_openhuman_next_steps(root) -> None:
         'id may contain only letters, digits, "_", "-".\n'
         '  2) UI "Settings → Agents → New Agent": keep id / model / tool allowlist consistent with the TOML.\n'
         '  3) UI "Settings → Agent Config → New Config": set base agent id to the same id.\n'
-        '  4) Start a new conversation.')
+        '  4) Start a new conversation.'
+    )
 
 
 def _fail(message: str) -> int:
@@ -79,19 +82,15 @@ def _fail(message: str) -> int:
 def api_error_message(e: APIError, action: str = 'request') -> str:
     """Return a user-friendly message based on the HTTP status code."""
     status = e.status_code or 0
-    rid = f' (request_id={e.request_id})' if getattr(e, 'request_id',
-                                                     None) else ''
+    rid = f' (request_id={e.request_id})' if getattr(e, 'request_id', None) else ''
     if status == 401:
         return 'authentication failed. Please login again.' + rid
     if status == 403:
-        return ('permission denied. You do not have access to this resource.'
-                + rid)
+        return 'permission denied. You do not have access to this resource.' + rid
     if status == 404:
-        return ('resource not found. Check the repository name and try again.'
-                + rid)
+        return 'resource not found. Check the repository name and try again.' + rid
     if status >= 500:
-        return ('server encountered an issue. Please wait a moment and try '
-                'again.' + rid)
+        return 'server encountered an issue. Please wait a moment and try again.' + rid
     return f'{action} failed (HTTP {status}: {e.message}){rid}'
 
 
@@ -170,8 +169,7 @@ def resolve_local_name(name: str | None, framework: str, local_dir=None):
         return real_agents[0], None
     if len(real_agents) == 0:
         return GLOBAL_AGENT_NAME, None
-    return None, (f"multiple sub-agents found: {', '.join(agents)}. "
-                  f'Please specify --name to select one.')
+    return None, (f'multiple sub-agents found: {", ".join(agents)}. Please specify --name to select one.')
 
 
 STABLE_FRAMEWORKS = frozenset(['ms-agent', 'qwenpaw'])
@@ -185,8 +183,7 @@ def _experimental_enabled() -> bool:
     Read on every call (not cached at import time) so tests and callers can
     flip the variable within a live process.
     """
-    return os.environ.get(_TRY_EXP_ENV,
-                          '').strip().lower() in ('1', 'true', 'yes', 'on')
+    return os.environ.get(_TRY_EXP_ENV, '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
 def _enabled_frameworks() -> set[str]:
@@ -212,11 +209,12 @@ def check_framework(framework: str, label: str = 'framework') -> str | None:
     if framework in _enabled_frameworks():
         return None
     if framework in FRAMEWORK_REGISTRY:
-        return (f"{label} '{framework}' is experimental and not enabled. "
-                f'Set {_TRY_EXP_ENV}=True to use it. '
-                f'Enabled: {available_frameworks()}')
-    return (f"unknown {label} '{framework}'. "
-            f'Available: {available_frameworks()}')
+        return (
+            f"{label} '{framework}' is experimental and not enabled. "
+            f'Set {_TRY_EXP_ENV}=True to use it. '
+            f'Enabled: {available_frameworks()}'
+        )
+    return f"unknown {label} '{framework}'. Available: {available_frameworks()}"
 
 
 def build_spec(framework: str, name: str, local_dir=None) -> WorkspaceSpec:
@@ -233,10 +231,7 @@ def _existing_skill_names(paths) -> list[str]:
     convert / download never silently overwrites a skill the target already
     has (BUG-024).
     """
-    return sorted({
-        p.split('/')[1]
-        for p in paths if p.startswith('skills/') and p.count('/') >= 2
-    })
+    return sorted({p.split('/')[1] for p in paths if p.startswith('skills/') and p.count('/') >= 2})
 
 
 def convert_resources(
@@ -279,7 +274,8 @@ def convert_resources(
             src_spec,
             dst_spec,
             fill_missing_defaults=fill_missing_defaults,
-            collect_merges=collect_merges)
+            collect_merges=collect_merges,
+        )
     result = merge_resources(
         incoming=resources,
         source_product=source_fw,
@@ -287,30 +283,18 @@ def convert_resources(
         source_defaults=get_defaults(source_fw),
         target_defaults=get_defaults(target_fw),
         fill_missing_defaults=fill_missing_defaults,
-        overflow_target=(_file_per_agent_identity_path(
-            dst_spec, for_target=True) if dst_spec is not None else None),
-        identity_source=(_file_per_agent_identity_path(
-            src_spec, for_target=False) if src_spec is not None else None),
-        existing_skills=(_existing_skill_names(existing_files)
-                         if existing_files else None),
+        overflow_target=(_file_per_agent_identity_path(dst_spec, for_target=True) if dst_spec is not None else None),
+        identity_source=(_file_per_agent_identity_path(src_spec, for_target=False) if src_spec is not None else None),
+        existing_skills=(_existing_skill_names(existing_files) if existing_files else None),
     )
     if collect_merges is not None:
         collect_merges.extend(merged_away_pairs(result))
     if collect_skips is not None:
-        collect_skips.extend(
-            a.path for a in result.actions
-            if a.action == 'skip' and 'already exists' in a.detail)
+        collect_skips.extend(a.path for a in result.actions if a.action == 'skip' and 'already exists' in a.detail)
     merged = result.merged_files
     if existing_files is not None:
-        default_paths = {
-            a.path
-            for a in result.actions if a.action == 'default'
-        }
-        merged = {
-            k: v
-            for k, v in merged.items()
-            if k not in default_paths or k not in existing_files
-        }
+        default_paths = {a.path for a in result.actions if a.action == 'default'}
+        merged = {k: v for k, v in merged.items() if k not in default_paths or k not in existing_files}
     return merged
 
 
@@ -355,10 +339,12 @@ def _convert_resources_all(
             # Re-prefix both sides with the target's per-agent convention so the
             # hint aligns with the written listing's paths.
             for src, dst in merged_away_pairs(result):
-                collect_merges.append((
-                    dst_spec.join_all_path(agent, src),
-                    dst_spec.join_all_path(agent, dst),
-                ))
+                collect_merges.append(
+                    (
+                        dst_spec.join_all_path(agent, src),
+                        dst_spec.join_all_path(agent, dst),
+                    )
+                )
     return out
 
 
@@ -411,9 +397,7 @@ def cmd_upload(
     resources: dict[str, bytes] = spec.collect_bytes()
     if not resources:
         display_name = local_name if local_name != GLOBAL_AGENT_NAME else 'global'
-        return _fail(
-            f'no files found for {framework}/{display_name} under {root}. '
-            f'Check the path or pass --local_dir.')
+        return _fail(f'no files found for {framework}/{display_name} under {root}. Check the path or pass --local_dir.')
 
     # Strip machine-local secrets (API keys / tokens the user left in a local
     # config file) BEFORE anything leaves the machine, so they are never pushed
@@ -426,11 +410,10 @@ def cmd_upload(
     # boilerplate is never pushed -- keeps upload and convert 1:1-consistent
     # about what "the user's own files" are.
     from ._sync import drop_unchanged_defaults, sanitize_outbound
+
     redacted: list = []
     try:
-        resources = drop_unchanged_defaults(
-            sanitize_outbound(resources, spec, findings=redacted), framework,
-            spec)
+        resources = drop_unchanged_defaults(sanitize_outbound(resources, spec, findings=redacted), framework, spec)
     except ValueError as e:
         # Fail-closed sanitize: a config file that cannot be parsed cannot be
         # verified secret-free -- abort instead of pushing plaintext keys.
@@ -438,11 +421,12 @@ def cmd_upload(
     if not resources:
         display_name = local_name if local_name != GLOBAL_AGENT_NAME else 'global'
         return _fail(
-            f'only default template files under {root} for {framework}/'
-            f'{display_name}; nothing user-created to upload.')
+            f'only default template files under {root} for {framework}/{display_name}; nothing user-created to upload.'
+        )
 
     total_bytes = sum(len(v) for v in resources.values())
     from ._format import format_size
+
     display.header('Upload', f'{framework}/{local_name}')
     display.meta('source', root)
     display.meta('size', format_size(total_bytes))
@@ -456,8 +440,7 @@ def cmd_upload(
         # Before the dry-run return, so --dry-run shows what would be stripped.
         display.table(
             'Secrets redacted',
-            [(f.rel, f.kind, f'line {f.line}' if f.line else 'structural')
-             for f in sorted(redacted)],
+            [(f.rel, f.kind, f'line {f.line}' if f.line else 'structural') for f in sorted(redacted)],
             headers=['FILE', 'KIND', 'WHERE'],
             color=display.COLOR_MERGED,
             note=f'{len(redacted)} secret value(s) replaced with '
@@ -505,8 +488,7 @@ def cmd_upload(
     except Exception as e:
         return _fail(f'upload failed: {e}')
 
-    display.done(
-        f'Synced {len(resources)} file(s) to {group}/{repo_n} (incremental)')
+    display.done(f'Synced {len(resources)} file(s) to {group}/{repo_n} (incremental)')
     return 0
 
 
@@ -562,18 +544,10 @@ def _remote_paths_for_agent(
     if not prefix:
         # Requested agent lives at bare paths in all mode (hermes default):
         # keep bare files, exclude every named-agent prefix.
-        selected = {
-            p: p
-            for p in remote_paths
-            if probe.split_all_path(p)[0] in (requested, None)
-        }
-        return (selected, None) if selected else (
-            None, f"repository has no files for agent '{requested}'.")
+        selected = {p: p for p in remote_paths if probe.split_all_path(p)[0] in (requested, None)}
+        return (selected, None) if selected else (None, f"repository has no files for agent '{requested}'.")
 
-    selected = {
-        p: p[len(prefix):]
-        for p in remote_paths if p.startswith(prefix) and p != prefix
-    }
+    selected = {p: p[len(prefix) :] for p in remote_paths if p.startswith(prefix) and p != prefix}
     if selected:
         return selected, None
 
@@ -595,8 +569,7 @@ def _remote_paths_for_agent(
             other_agents.add(agent)
     if other_agents:
         found = (['default'] if has_bare else []) + sorted(other_agents)
-        return None, (f"repository has no agent named '{requested}' "
-                      f"(agents in repo: {', '.join(found)}).")
+        return None, (f"repository has no agent named '{requested}' (agents in repo: {', '.join(found)}).")
     return identity, None
 
 
@@ -619,8 +592,7 @@ def cmd_download(
     authentication.
     """
     if not repo:
-        return _fail(
-            '--repo is required for download (the remote repository name)')
+        return _fail('--repo is required for download (the remote repository name)')
     err = check_framework(framework)
     if err:
         return _fail(err)
@@ -631,8 +603,9 @@ def cmd_download(
     # Token is optional for download (public repos don't require auth).
     # But if --repo doesn't contain '/', we need username to derive group.
     if '/' not in repo and not token:
-        return _fail(f"--repo '{repo}' requires login to resolve owner. "
-                     f"Use 'owner/name' format or run 'ms login' first.")
+        return _fail(
+            f"--repo '{repo}' requires login to resolve owner. Use 'owner/name' format or run 'ms login' first."
+        )
     if not token:
         token = ''
     if not username:
@@ -661,30 +634,30 @@ def cmd_download(
             return _fail(f'repository {group}/{repo_n} not found.')
         if incremental:
             from ._sync import sha256_content
+
             remote_detail = client.list_repo_files_detail(group, repo_n)
             if not remote_detail:
                 return _fail(f'repository {group}/{repo_n} has no files.')
             # Restrict an all-layout repo to the requested agent's files
             # (prefix stripped); identity mapping for single-agent repos.
             remote_map, map_err = _remote_paths_for_agent(
-                framework, requested, [f.path for f in remote_detail],
-                local_dir)
+                framework, requested, [f.path for f in remote_detail], local_dir
+            )
             if map_err:
                 return _fail(map_err)
-            excluded = sorted({f.path
-                               for f in remote_detail} - set(remote_map))
+            excluded = sorted({f.path for f in remote_detail} - set(remote_map))
             if excluded:
                 display.file_list(
                     'Excluded',
                     excluded,
                     color=display.COLOR_SKIP,
                     marker='[skip]',
-                    note=f"belongs to other agents (requested '{requested}')")
+                    note=f"belongs to other agents (requested '{requested}')",
+                )
             remote_detail = [f for f in remote_detail if f.path in remote_map]
             remote_all_paths = {remote_map[f.path] for f in remote_detail}
             # Local baseline for sha comparison (raw bytes -> sha256).
-            probe_spec = build_spec(framework, name or DEFAULT_AGENT_NAME,
-                                    local_dir)
+            probe_spec = build_spec(framework, name or DEFAULT_AGENT_NAME, local_dir)
             local_bytes = probe_spec.collect_bytes()
             local_sha = {k: sha256_content(v) for k, v in local_bytes.items()}
             # Split remote files into unchanged (skip) and to-download.
@@ -698,23 +671,18 @@ def cmd_download(
                     to_download.append(f)
             if skipped_same:
                 display.file_list(
-                    'Unchanged',
-                    skipped_same,
-                    color=display.COLOR_SKIP,
-                    marker='[skip]',
-                    note='sha256 matches local')
+                    'Unchanged', skipped_same, color=display.COLOR_SKIP, marker='[skip]', note='sha256 matches local'
+                )
             resources = {}
             total = len(to_download)
             for i, f in enumerate(to_download, 1):
                 print(f'  [{i}/{total}] downloading {f.path}', flush=True)
-                resources[remote_map[f.path]] = _download_file(
-                    client, group, repo_n, f.path)
+                resources[remote_map[f.path]] = _download_file(client, group, repo_n, f.path)
         else:
             paths = client.list_repo_files(group, repo_n)
             if not paths:
                 return _fail(f'repository {group}/{repo_n} has no files.')
-            remote_map, map_err = _remote_paths_for_agent(
-                framework, requested, paths, local_dir)
+            remote_map, map_err = _remote_paths_for_agent(framework, requested, paths, local_dir)
             if map_err:
                 return _fail(map_err)
             excluded = sorted(set(paths) - set(remote_map))
@@ -724,14 +692,14 @@ def cmd_download(
                     excluded,
                     color=display.COLOR_SKIP,
                     marker='[skip]',
-                    note=f"belongs to other agents (requested '{requested}')")
+                    note=f"belongs to other agents (requested '{requested}')",
+                )
             paths = [p for p in paths if p in remote_map]
             resources = {}
             total = len(paths)
             for i, pth in enumerate(paths, 1):
                 print(f'  [{i}/{total}] downloading {pth}', flush=True)
-                resources[remote_map[pth]] = _download_file(
-                    client, group, repo_n, pth)
+                resources[remote_map[pth]] = _download_file(client, group, repo_n, pth)
     except APIError as e:
         return _fail(api_error_message(e, 'download'))
     except Exception as e:
@@ -760,7 +728,8 @@ def cmd_download(
                     'cross-framework conversion with --name all is only supported '
                     'between root-per-agent frameworks (e.g. qwenpaw <-> openclaw). '
                     'For other layouts, convert one agent at a time: '
-                    '-n <agent> --target-framework <fw>.')
+                    '-n <agent> --target-framework <fw>.'
+                )
             resources = convert_resources(
                 resources,
                 framework,
@@ -786,7 +755,8 @@ def cmd_download(
                 dst_spec=spec,
                 collect_merges=download_merges,
                 collect_skips=download_skips,
-                fill_missing_defaults=False)
+                fill_missing_defaults=False,
+            )
             display.file_list(
                 'Skipped',
                 download_skips,
@@ -796,10 +766,7 @@ def cmd_download(
             )
 
     patterns = spec.resolved_patterns()
-    filtered = {
-        k: v
-        for k, v in resources.items() if spec.matches(k, patterns)
-    }
+    filtered = {k: v for k, v in resources.items() if spec.matches(k, patterns)}
     dropped = sorted(set(resources.keys()) - set(filtered.keys()))
 
     # In incremental mode an empty ``filtered`` just means every remote file is
@@ -807,8 +774,7 @@ def cmd_download(
     # deletion may still need to run below. In full mode an empty match is a
     # real failure (nothing usable was downloaded).
     if not filtered and remote_all_paths is None:
-        return _fail(
-            'no downloaded files match the local workspace spec patterns.')
+        return _fail('no downloaded files match the local workspace spec patterns.')
 
     if target_fw != framework:
         display.map_table(
@@ -816,8 +782,7 @@ def cmd_download(
             download_merges,
             color=display.COLOR_MERGED,
             headers=('SOURCE', 'FOLDED INTO'),
-            note=
-            f'no {target_fw} equivalent; content preserved in the target file',
+            note=f'no {target_fw} equivalent; content preserved in the target file',
         )
     display.file_list(
         'Dropped',
@@ -826,8 +791,7 @@ def cmd_download(
         marker='[drop]',
         note=f'not part of the {target_fw} workspace spec',
     )
-    display.file_list(
-        'Changed', filtered, color=display.COLOR_WRITTEN, root=root)
+    display.file_list('Changed', filtered, color=display.COLOR_WRITTEN, root=root)
 
     if dry_run:
         print('\n[dry-run] nothing written.')
@@ -841,10 +805,9 @@ def cmd_download(
     # that ``backups -f <fw>`` parses, so this safety copy stays visible under
     # the framework filter.
     from ._sync import backup_local
+
     if spec.collect():
-        backup_label = (
-            target_fw
-            if local_name == ALL_AGENT_NAME else f'{target_fw}_{local_name}')
+        backup_label = target_fw if local_name == ALL_AGENT_NAME else f'{target_fw}_{local_name}'
         display.meta('backup', backup_local(spec, backup_label))
 
     written = spec.apply(filtered)
@@ -861,8 +824,7 @@ def cmd_download(
     return 0
 
 
-def _file_per_agent_identity_path(spec: WorkspaceSpec, *,
-                                  for_target: bool) -> str | None:
+def _file_per_agent_identity_path(spec: WorkspaceSpec, *, for_target: bool) -> str | None:
     """Resolve the per-agent identity file of a file-per-agent layout.
 
     File-per-agent frameworks (e.g. qoder) declare a ``{name}`` placeholder
@@ -902,10 +864,7 @@ def _collect_binary_passthrough(
     frameworks (identical ``skills/`` paths); all-mode re-prefixes per agent.
     Only files valid for the target spec are kept.
     """
-    raw = {
-        k: v
-        for k, v in src_spec.collect_bytes().items() if k not in text_resources
-    }
+    raw = {k: v for k, v in src_spec.collect_bytes().items() if k not in text_resources}
     if not raw:
         return {}
     if source_fw == target_fw:
@@ -951,11 +910,13 @@ def convert_workspace(
     # content only, and no target scaffolding is created for them either.
     if source_fw != target_fw:
         from ._sync import drop_unchanged_defaults
+
         resources = drop_unchanged_defaults(resources, source_fw, src_spec)
         if not resources:
             return _fail(
                 f'no user-modified {source_fw} files under {src_root} '
-                f'(all files match the framework default templates).')
+                f'(all files match the framework default templates).'
+            )
 
     existing = dst_spec.collect()
     existing_paths = set(existing.keys())
@@ -979,7 +940,8 @@ def convert_workspace(
                 'cross-framework conversion with --name all is only supported '
                 'between root-per-agent frameworks (e.g. qwenpaw <-> openclaw). '
                 'For other layouts, convert one agent at a time: '
-                '--from-name <agent> --target-framework <fw>.')
+                '--from-name <agent> --target-framework <fw>.'
+            )
         converted = convert_resources(
             resources,
             source_fw,
@@ -1003,8 +965,7 @@ def convert_workspace(
         # persona file instead of being dropped.
         overflow_target = None
         if any('{name}' in p for p in dst_spec.patterns):
-            overflow_target = _file_per_agent_identity_path(
-                dst_spec, for_target=True)
+            overflow_target = _file_per_agent_identity_path(dst_spec, for_target=True)
         result = merge_resources(
             incoming=resources,
             source_product=source_fw,
@@ -1012,19 +973,13 @@ def convert_workspace(
             source_defaults=get_defaults(source_fw),
             target_defaults=get_defaults(target_fw),
             overflow_target=overflow_target,
-            identity_source=_file_per_agent_identity_path(
-                src_spec, for_target=False),
+            identity_source=_file_per_agent_identity_path(src_spec, for_target=False),
             fill_missing_defaults=False,
             existing_skills=_existing_skill_names(existing_paths),
         )
-        default_paths = {
-            a.path
-            for a in result.actions if a.action == 'default'
-        }
+        default_paths = {a.path for a in result.actions if a.action == 'default'}
         merge_pairs = merged_away_pairs(result)
-        skipped_skills = sorted(
-            a.path for a in result.actions
-            if a.action == 'skip' and 'already exists' in a.detail)
+        skipped_skills = sorted(a.path for a in result.actions if a.action == 'skip' and 'already exists' in a.detail)
         converted = result.merged_files
 
     dst_root = dst_spec.workspace_root
@@ -1036,31 +991,19 @@ def convert_workspace(
     dropped_memory_payloads: list[str] = []
     if source_fw != target_fw:
         dst_patterns = dst_spec.resolved_patterns()
-        dropped = sorted(
-            k for k in converted if not dst_spec.matches(k, dst_patterns))
+        dropped = sorted(k for k in converted if not dst_spec.matches(k, dst_patterns))
         # Non-Markdown memory payloads cannot be hosted by any target's
         # Markdown-only memory: report them separately from generic drops.
         dropped_memory_payloads = [
-            k for k in dropped
-            if k.startswith(('memory/', 'memories/'))
-            and not k.endswith('.md')
+            k for k in dropped if k.startswith(('memory/', 'memories/')) and not k.endswith('.md')
         ]
         dropped = [k for k in dropped if k not in dropped_memory_payloads]
-        converted = {
-            k: v
-            for k, v in converted.items() if dst_spec.matches(k, dst_patterns)
-        }
+        converted = {k: v for k, v in converted.items() if dst_spec.matches(k, dst_patterns)}
     # Non-default files: always write (overwrite if exists).
     # Default files: write only if target does NOT already have them.
-    effective = {
-        k: v
-        for k, v in converted.items()
-        if k not in default_paths or k not in existing_paths
-    }
+    effective = {k: v for k, v in converted.items() if k not in default_paths or k not in existing_paths}
     # Carry binary skill assets the text collect() skipped (verbatim).
-    effective.update(
-        _collect_binary_passthrough(src_spec, source_text_paths, source_fw,
-                                    target_fw, dst_spec))
+    effective.update(_collect_binary_passthrough(src_spec, source_text_paths, source_fw, target_fw, dst_spec))
     skipped_defaults = sorted(default_paths & existing_paths)
     added_defaults = sorted(default_paths - existing_paths)
 
@@ -1072,13 +1015,11 @@ def convert_workspace(
     )
     display.meta('source', src_root)
     display.meta('target', dst_root)
-    counts = [('in', len(resources), 'bold'),
-              ('written', len(effective), display.COLOR_WRITTEN)]
+    counts = [('in', len(resources), 'bold'), ('written', len(effective), display.COLOR_WRITTEN)]
     if merge_pairs:
         counts.append(('merged', len(merge_pairs), display.COLOR_MERGED))
     if dropped or dropped_memory_payloads:
-        counts.append(('dropped', len(dropped) + len(dropped_memory_payloads),
-                       display.COLOR_DROPPED))
+        counts.append(('dropped', len(dropped) + len(dropped_memory_payloads), display.COLOR_DROPPED))
     display.summary(counts)
 
     display.file_list('Written', effective, color=display.COLOR_WRITTEN)
@@ -1101,9 +1042,11 @@ def convert_workspace(
         dropped_memory_payloads,
         color=display.COLOR_DROPPED,
         marker='[drop]',
-        note=(f'non-Markdown memory files; {target_fw} memory is '
-              'Markdown-only, so they cannot travel cross-framework '
-              '(kept on same-framework sync)'),
+        note=(
+            f'non-Markdown memory files; {target_fw} memory is '
+            'Markdown-only, so they cannot travel cross-framework '
+            '(kept on same-framework sync)'
+        ),
     )
     display.file_list(
         'Skipped',
@@ -1113,13 +1056,9 @@ def convert_workspace(
         note='skill already exists on target, not overwritten',
     )
     if skipped_defaults:
-        display.meta(
-            'kept', f'{len(skipped_defaults)} existing default(s): '
-            f"{', '.join(skipped_defaults)}")
+        display.meta('kept', f'{len(skipped_defaults)} existing default(s): {", ".join(skipped_defaults)}')
     if added_defaults:
-        display.meta(
-            'added', f'{len(added_defaults)} default template(s): '
-            f"{', '.join(added_defaults)}")
+        display.meta('added', f'{len(added_defaults)} default template(s): {", ".join(added_defaults)}')
 
     if dry_run:
         print('\n[dry-run] nothing written.')
@@ -1131,9 +1070,9 @@ def convert_workspace(
 
     # Backup existing target files before overwriting
     from ._sync import backup_local
+
     if existing:
-        backup_path = backup_local(dst_spec,
-                                   f'{target_fw}_{dst_spec.agent_name}')
+        backup_path = backup_local(dst_spec, f'{target_fw}_{dst_spec.agent_name}')
         display.meta('backup', backup_path)
 
     written = dst_spec.apply(effective)
@@ -1153,8 +1092,7 @@ def cmd_convert(
     dry_run: bool = False,
 ) -> int:
     """Local-only format conversion: read a workspace, convert, write it out."""
-    for fw, label in ((source_fw, '--from-framework'), (target_fw,
-                                                        '--target-framework')):
+    for fw, label in ((source_fw, '--from-framework'), (target_fw, '--target-framework')):
         err = check_framework(fw, f'framework for {label}')
         if err:
             return _fail(err)
@@ -1165,8 +1103,7 @@ def cmd_convert(
         # An omitted --from-name asks the framework which agent it should
         # convert: frameworks with an "active" sub-agent notion (openhuman's
         # activeProfileId) return it, everything else returns ``default``.
-        src_name = build_spec(source_fw, DEFAULT_AGENT_NAME,
-                              local_dir).resolve_default_agent_name()
+        src_name = build_spec(source_fw, DEFAULT_AGENT_NAME, local_dir).resolve_default_agent_name()
     dst_name = target_name or src_name
     src_spec = build_spec(source_fw, src_name, local_dir)
     dst_spec = build_spec(target_fw, dst_name, out_dir)
@@ -1178,8 +1115,7 @@ def cmd_convert(
     # output landing at the same paths.
     dst_is_file_per_agent = any('{name}' in p for p in dst_spec.patterns)
     dst_is_single_agent = not dst_spec.is_root_per_agent and not dst_is_file_per_agent
-    if (dst_is_single_agent and dst_name
-            not in (DEFAULT_AGENT_NAME, GLOBAL_AGENT_NAME, ALL_AGENT_NAME)):
+    if dst_is_single_agent and dst_name not in (DEFAULT_AGENT_NAME, GLOBAL_AGENT_NAME, ALL_AGENT_NAME):
         print(
             f"Warning: '{target_fw}' is a single-agent framework with no sub-agent "
             f"slots; --target-name '{dst_name}' is ignored and content is written to "
@@ -1187,8 +1123,7 @@ def cmd_convert(
             f'from a previous convert into the same framework.',
             file=sys.stderr,
         )
-    return convert_workspace(
-        src_spec, source_fw, target_fw, dst_spec, dry_run=dry_run)
+    return convert_workspace(src_spec, source_fw, target_fw, dst_spec, dry_run=dry_run)
 
 
 def cmd_watch(
@@ -1225,14 +1160,14 @@ def cmd_watch(
     # Ensure no stale watch processes are running.
     pf = pid_file()
     from ._watcher import stop_daemon
+
     stop_daemon()
 
     spec = build_spec(framework, local_name, local_dir)
     client = AgentApi(endpoint=endpoint, token=token)
 
     # Guard: file-per-agent frameworks with a specific agent name.
-    if (not spec.supports_individual_watch and local_name
-            not in (GLOBAL_AGENT_NAME, ALL_AGENT_NAME, DEFAULT_AGENT_NAME)):
+    if not spec.supports_individual_watch and local_name not in (GLOBAL_AGENT_NAME, ALL_AGENT_NAME, DEFAULT_AGENT_NAME):
         return _fail(
             f"'{framework}' has shared files across sub-agents; "
             f'watch only supports global/default mode to avoid sync conflicts. '
@@ -1264,9 +1199,7 @@ def cmd_watch(
         elif e.status_code == 404:
             pass  # repo not found — first push will create it
         else:
-            return _fail(
-                f'failed to get repository info (HTTP {e.status_code}: {e.message})'
-            )
+            return _fail(f'failed to get repository info (HTTP {e.status_code}: {e.message})')
     except Exception as e:
         return _fail(f'failed to get repository info: {e}')
 
@@ -1276,25 +1209,14 @@ def cmd_watch(
     print(f'  Framework: {framework}')
     print(f'  Root: {spec.workspace_root}')
     if push_only:
-        print(
-            '  Mode: push-only (local -> remote, will NOT pull remote changes)'
-        )
+        print('  Mode: push-only (local -> remote, will NOT pull remote changes)')
     else:
-        print(
-            '  Mode: bidirectional (local <-> remote, WILL pull remote changes)'
-        )
+        print('  Mode: bidirectional (local <-> remote, WILL pull remote changes)')
     print(f'  Stop: ms agent stop')
 
-    daemonize(
-        watch_loop,
-        spec,
-        client,
-        group,
-        repo_n,
-        framework,
-        interval,
-        push_only=push_only)
+    daemonize(watch_loop, spec, client, group, repo_n, framework, interval, push_only=push_only)
     from ._cache import log_file
+
     print(f'  Watch started (PID file: {pf}).')
     print(f'  Log: {log_file()}')
     return 0
@@ -1323,7 +1245,7 @@ def _strip_backup_wrapper(filename: str) -> str:
     ``collect``/``apply`` regardless of which format the zip uses.
     """
     if filename.startswith(_BACKUP_WRAPPER):
-        return filename[len(_BACKUP_WRAPPER):]
+        return filename[len(_BACKUP_WRAPPER) :]
     return filename
 
 
@@ -1346,7 +1268,7 @@ def _parse_backup_meta(stem: str) -> tuple[str, str]:
         if prefix == fw:
             return fw, ''  # all-scope backup: framework only
         if prefix.startswith(fw + '_') or prefix.startswith(fw + '-'):
-            return fw, prefix[len(fw) + 1:]
+            return fw, prefix[len(fw) + 1 :]
     delim = '_' if '_' in prefix else '-'
     fw, _, nm = prefix.partition(delim)
     return fw, nm
@@ -1404,9 +1326,7 @@ def cmd_recover(
 
     # Restore mode
     if not target:
-        return _fail(
-            "specify a target: 'last' or a backup filename. Use --list to see available backups."
-        )
+        return _fail("specify a target: 'last' or a backup filename. Use --list to see available backups.")
 
     backups = _filter_backups(backups, framework, name)
 
@@ -1432,9 +1352,7 @@ def cmd_recover(
     # truncated or mislabeled backup fails cleanly (consistent _fail output,
     # no half-done restore, no raw traceback).
     if not zipfile.is_zipfile(zip_path):
-        return _fail(
-            f"restore failed: '{zip_path.name}' is not a valid backup "
-            f'archive (corrupt or not a zip file).')
+        return _fail(f"restore failed: '{zip_path.name}' is not a valid backup archive (corrupt or not a zip file).")
 
     # Parse (framework, name) from the zip filename once, honoring both the
     # ``-`` (upload) and ``_`` (watch) delimiters, and fill in whatever the
@@ -1445,8 +1363,7 @@ def cmd_recover(
         if parsed_fw in FRAMEWORK_REGISTRY:
             framework = parsed_fw
         else:
-            return _fail(
-                'cannot infer framework. Pass --framework explicitly.')
+            return _fail('cannot infer framework. Pass --framework explicitly.')
 
     # Determine the restore SCOPE (which agent directory the backup belongs to).
     # An all-scope backup is named ``{fw}_{date}_{time}`` (no name segment), so
@@ -1466,11 +1383,10 @@ def cmd_recover(
     # from the filename, so an unprefixed name would make this safety backup
     # invisible under the framework filter (and unusable to undo a restore).
     from ._sync import backup_local
+
     current_resources = spec.collect()
     if current_resources:
-        backup_label = (
-            framework if restore_name == ALL_AGENT_NAME else
-            f'{framework}_{restore_name}')
+        backup_label = framework if restore_name == ALL_AGENT_NAME else f'{framework}_{restore_name}'
         pre_restore_backup = backup_local(spec, backup_label)
         print(f'Pre-restore backup: {pre_restore_backup.name}')
     else:
@@ -1483,14 +1399,8 @@ def cmd_recover(
     # files...) are rejected instead of written verbatim into the workspace.
     spec_patterns = spec.resolved_patterns()
     with zipfile.ZipFile(zip_path, 'r') as zf:
-        all_entries = {
-            _strip_backup_wrapper(info.filename)
-            for info in zf.infolist() if not info.is_dir()
-        }
-    zip_entries = {
-        rel
-        for rel in all_entries if spec.matches(rel, spec_patterns)
-    }
+        all_entries = {_strip_backup_wrapper(info.filename) for info in zf.infolist() if not info.is_dir()}
+    zip_entries = {rel for rel in all_entries if spec.matches(rel, spec_patterns)}
     skipped_spec = sorted(all_entries - zip_entries)
     for rel in skipped_spec:
         print(f'  Skipped (not in {framework} workspace spec): {rel}')
@@ -1523,8 +1433,7 @@ def cmd_recover(
             file_target.parent.mkdir(parents=True, exist_ok=True)
             # Same inbound sanitize download uses: a foreign zip's config may
             # carry plaintext keys -- never write them to disk unscrubbed.
-            file_target.write_bytes(
-                spec.sanitize_inbound_file(rel, zf.read(info.filename)))
+            file_target.write_bytes(spec.sanitize_inbound_file(rel, zf.read(info.filename)))
             print(f'  Restored: {rel}')
             restored += 1
 
@@ -1542,12 +1451,7 @@ def cmd_restore(
     local_dir=None,
 ) -> int:
     """Restore agent files from a backup zip (alias for cmd_recover without list mode)."""
-    return cmd_recover(
-        target=target,
-        framework=framework,
-        name=name,
-        local_dir=local_dir,
-        list_backups=False)
+    return cmd_recover(target=target, framework=framework, name=name, local_dir=local_dir, list_backups=False)
 
 
 def cmd_backups(
@@ -1556,12 +1460,7 @@ def cmd_backups(
     local_dir=None,
 ) -> int:
     """List available backups."""
-    return cmd_recover(
-        target=None,
-        framework=framework,
-        name=name,
-        local_dir=local_dir,
-        list_backups=True)
+    return cmd_recover(target=None, framework=framework, name=name, local_dir=local_dir, list_backups=True)
 
 
 def cmd_list(
@@ -1580,8 +1479,7 @@ def cmd_list(
 
     client = AgentApi(endpoint=endpoint, token=token)
     try:
-        result = client.list_agents(
-            owner=owner, page_number=page_number, page_size=page_size)
+        result = client.list_agents(owner=owner, page_number=page_number, page_size=page_size)
     except APIError as e:
         return _fail(api_error_message(e, 'list'))
     except Exception as e:
@@ -1608,6 +1506,7 @@ def cmd_list(
         rows.append((repo_id, fw, vis, updated))
 
     from ._format import tabulate
+
     print(tabulate(rows, headers))
 
     print(f'\npage {page_number} / total {total} (page_size={page_size})')

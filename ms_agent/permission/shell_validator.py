@@ -17,13 +17,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
-from .path_extractors import (INTERPRETER_COMMANDS, ExtractorEntry,
-                              build_extractor_registry,
-                              extract_find_exec_commands,
-                              extract_interpreter_script, find_uses_delete,
-                              interpreter_runs_inline_code)
-from .path_validator import (PathValidationResult, is_dangerous_removal_path,
-                             validate_path)
+from .path_extractors import (
+    INTERPRETER_COMMANDS,
+    ExtractorEntry,
+    build_extractor_registry,
+    extract_find_exec_commands,
+    extract_interpreter_script,
+    find_uses_delete,
+    interpreter_runs_inline_code,
+)
+from .path_validator import PathValidationResult, is_dangerous_removal_path, validate_path
 from .sed_validator import check_sed_expression_safety, is_sed_read_only
 from .wrapper_strip import strip_safe_wrappers
 
@@ -34,14 +37,16 @@ _MAX_SUBSTITUTION_DEPTH = 16
 
 #: Character devices every shell uses as a sink or a source. They are not
 #: files the workspace policy has anything to say about.
-_REDIRECT_DEVICE_ALLOWLIST = frozenset({
-    '/dev/null',
-    '/dev/stdout',
-    '/dev/stderr',
-    '/dev/stdin',
-    '/dev/tty',
-    '/dev/zero',
-})
+_REDIRECT_DEVICE_ALLOWLIST = frozenset(
+    {
+        '/dev/null',
+        '/dev/stdout',
+        '/dev/stderr',
+        '/dev/stdin',
+        '/dev/tty',
+        '/dev/zero',
+    }
+)
 
 #: Ends a word in shell source. Used to know where a redirect target stops —
 #: notably at the `)` closing a subshell, which is not part of the filename.
@@ -287,8 +292,7 @@ class ShellPathValidator:
         if len(command) > self._config.max_command_chars:
             return SafetyDecision(
                 action='deny',
-                reason=
-                f'Command exceeds max length ({self._config.max_command_chars})',
+                reason=f'Command exceeds max length ({self._config.max_command_chars})',
             )
 
         # Heredoc payloads are data, not commands. Analysing them as commands
@@ -300,21 +304,18 @@ class ShellPathValidator:
         if _PROCESS_OUTPUT_SUB.search(command):
             return SafetyDecision(
                 action='ask',
-                reason=
-                'Command contains output process substitution >(…) — may bypass path validation',
+                reason='Command contains output process substitution >(…) — may bypass path validation',
                 category='process_output_sub',
             )
         if _PROCESS_INPUT_SUB.search(command):
             return SafetyDecision(
                 action='ask',
-                reason=
-                'Command contains input process substitution <(…) — cannot statically analyse',
+                reason='Command contains input process substitution <(…) — cannot statically analyse',
                 category='process_input_sub',
             )
 
         # 2. Command substitution — recursively validate inner commands
-        substitution_result = self._check_command_substitutions(
-            command, _depth=_depth)
+        substitution_result = self._check_command_substitutions(command, _depth=_depth)
         if substitution_result is not None:
             return substitution_result
 
@@ -343,9 +344,8 @@ class ShellPathValidator:
                 tokens = shlex.split(sub_cmd)
             except ValueError:
                 return SafetyDecision(
-                    action='ask',
-                    reason=f'Failed to parse command: {sub_cmd}',
-                    category='parse_failure')
+                    action='ask', reason=f'Failed to parse command: {sub_cmd}', category='parse_failure'
+                )
 
             if not tokens:
                 continue
@@ -374,17 +374,14 @@ class ShellPathValidator:
                         if os.path.isabs(target):
                             _current_cwd = str(Path(target).resolve())
                         else:
-                            _current_cwd = str(
-                                (Path(_current_cwd) / target).resolve())
+                            _current_cwd = str((Path(_current_cwd) / target).resolve())
 
             # 5. Command path extraction and validation
-            result = self._check_command(
-                base_cmd, args, _depth=_depth, cwd=_current_cwd)
+            result = self._check_command(base_cmd, args, _depth=_depth, cwd=_current_cwd)
             if result.action != 'allow':
                 return result
 
-        return SafetyDecision(
-            action='allow', reason='Shell command passed all checks')
+        return SafetyDecision(action='allow', reason='Shell command passed all checks')
 
     def _check_command_substitutions(
         self,
@@ -419,15 +416,13 @@ class ShellPathValidator:
 
         entry = self._extractors.get(base_cmd)
         if entry is None:
-            return SafetyDecision(
-                action='allow', reason=f'Unregistered command: {base_cmd}')
+            return SafetyDecision(action='allow', reason=f'Unregistered command: {base_cmd}')
 
         # Command-level validator (e.g. mv/cp with flags)
         if entry.command_validator is not None and base_cmd != 'find':
             err = entry.command_validator(args)
             if err:
-                return SafetyDecision(
-                    action='ask', reason=err, category='command_validator')
+                return SafetyDecision(action='ask', reason=err, category='command_validator')
 
         # sed special handling
         if base_cmd == 'sed':
@@ -438,16 +433,11 @@ class ShellPathValidator:
 
         paths = entry.extractor(args)
         if not paths:
-            return SafetyDecision(
-                action='allow', reason=f'{base_cmd}: no paths to validate')
+            return SafetyDecision(action='allow', reason=f'{base_cmd}: no paths to validate')
 
         return self._validate_paths(paths, entry.op_type, base_cmd, cwd=cwd)
 
-    def _check_interpreter(self,
-                           base_cmd: str,
-                           args: list[str],
-                           *,
-                           cwd: str | None = None) -> SafetyDecision:
+    def _check_interpreter(self, base_cmd: str, args: list[str], *, cwd: str | None = None) -> SafetyDecision:
         """Judge a command that runs code rather than touching named files.
 
         Pointing an interpreter at a script inside the workspace is the same
@@ -460,8 +450,7 @@ class ShellPathValidator:
         if not interpreter_runs_inline_code(args):
             script = extract_interpreter_script(args)
             if script:
-                result = self._validate_paths(
-                    script, 'read', base_cmd, cwd=cwd)
+                result = self._validate_paths(script, 'read', base_cmd, cwd=cwd)
                 if result.action != 'allow':
                     return result
                 return SafetyDecision(
@@ -471,16 +460,14 @@ class ShellPathValidator:
 
         return SafetyDecision(
             action='ask',
-            reason=(f'`{base_cmd}` runs code given inline or on stdin; what it '
-                    'touches cannot be determined from the command'),
+            reason=(
+                f'`{base_cmd}` runs code given inline or on stdin; what it '
+                'touches cannot be determined from the command'
+            ),
             category='interpreter_exec',
         )
 
-    def _check_sed(self,
-                   args: list[str],
-                   entry: ExtractorEntry,
-                   *,
-                   cwd: str | None = None) -> SafetyDecision:
+    def _check_sed(self, args: list[str], entry: ExtractorEntry, *, cwd: str | None = None) -> SafetyDecision:
         op_type = entry.op_type
         if is_sed_read_only(args):
             op_type = 'read'
@@ -514,14 +501,12 @@ class ShellPathValidator:
         if entry.command_validator is not None:
             err = entry.command_validator(args)
             if err:
-                return SafetyDecision(
-                    action='ask', reason=err, category='command_validator')
+                return SafetyDecision(action='ask', reason=err, category='command_validator')
 
         op_type = 'write' if find_uses_delete(args) else entry.op_type
         paths = entry.extractor(args)
         if not paths:
-            return SafetyDecision(
-                action='allow', reason='find: no paths to validate')
+            return SafetyDecision(action='allow', reason='find: no paths to validate')
 
         return self._validate_paths(paths, op_type, 'find', cwd=cwd)
 
@@ -564,8 +549,7 @@ class ShellPathValidator:
 
         for path in paths:
             # Dangerous removal check for rm/rmdir
-            if cmd_name in ('rm', 'rmdir') and is_dangerous_removal_path(
-                    path, self._config.dangerous_removal_paths):
+            if cmd_name in ('rm', 'rmdir') and is_dangerous_removal_path(path, self._config.dangerous_removal_paths):
                 return SafetyDecision(
                     action='deny',
                     reason=f'Dangerous removal path: {path}',
@@ -577,15 +561,12 @@ class ShellPathValidator:
                 self._allowed_dirs,
                 op_type,
                 read_only_dirs=self._read_only_dirs,
-                sensitive_paths=self._sensitive_read_paths)
+                sensitive_paths=self._sensitive_read_paths,
+            )
             if not result.allowed:
-                return SafetyDecision(
-                    action=result.action,
-                    reason=result.reason,
-                    category=result.category)
+                return SafetyDecision(action=result.action, reason=result.reason, category=result.category)
 
-        return SafetyDecision(
-            action='allow', reason=f'{cmd_name}: all paths validated')
+        return SafetyDecision(action='allow', reason=f'{cmd_name}: all paths validated')
 
     def _check_redirects(self, sub_cmd: str) -> SafetyDecision:
         for target in _extract_redirect_targets(sub_cmd):
@@ -598,8 +579,7 @@ class ShellPathValidator:
             if '$' in target or '%' in target:
                 return SafetyDecision(
                     action='deny',
-                    reason=
-                    f'Redirect target contains variable expansion: {target}',
+                    reason=f'Redirect target contains variable expansion: {target}',
                 )
 
             result = validate_path(
@@ -611,10 +591,7 @@ class ShellPathValidator:
                 sensitive_paths=self._sensitive_read_paths,
             )
             if not result.allowed:
-                return SafetyDecision(
-                    action=result.action,
-                    reason=result.reason,
-                    category=result.category)
+                return SafetyDecision(action=result.action, reason=result.reason, category=result.category)
 
         return SafetyDecision(action='allow', reason='Redirects OK')
 
@@ -652,8 +629,7 @@ def _extract_command_substitutions(command: str) -> list[str]:
             if chars[i + 1] == '{':
                 body, end = _read_brace_expansion(chars, i + 2)
                 if body is None:
-                    raise ValueError(
-                        'Unclosed parameter expansion in command substitution')
+                    raise ValueError('Unclosed parameter expansion in command substitution')
                 bodies.extend(_extract_command_substitutions(body))
                 i = end
                 continue
@@ -661,8 +637,7 @@ def _extract_command_substitutions(command: str) -> list[str]:
                 if i + 2 < len(chars) and chars[i + 2] == '(':
                     body, end = _read_delimited_body(chars, i + 3, '(', ')')
                     if body is None:
-                        raise ValueError(
-                            'Unclosed arithmetic expansion in command')
+                        raise ValueError('Unclosed arithmetic expansion in command')
                     i = end
                     continue
                 body, end = _read_delimited_body(chars, i + 2, '(', ')')

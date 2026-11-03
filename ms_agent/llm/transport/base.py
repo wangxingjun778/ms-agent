@@ -11,6 +11,7 @@ For backward compatibility the transport returns the legacy ``Message`` /
 Structured ``LLMResponse`` output is available to new consumers via
 ``ResponseAdapter``.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -20,7 +21,6 @@ from ms_agent.llm.utils import Message, Tool
 
 
 class Transport(ABC):
-
     @abstractmethod
     def generate(
         self,

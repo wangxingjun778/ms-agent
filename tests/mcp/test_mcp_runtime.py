@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Tests for MCPRuntime and ToolManager integration (design doc §14)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -110,9 +111,7 @@ class _FakeExtraTool:
 
 
 def _resolved(*servers: tuple[str, dict]) -> ResolvedMCPConfig:
-    return ResolvedMCPConfig(
-        mcp_servers={name: dict(cfg, enabled=cfg.get('enabled', True))
-                     for name, cfg in servers})
+    return ResolvedMCPConfig(mcp_servers={name: dict(cfg, enabled=cfg.get('enabled', True)) for name, cfg in servers})
 
 
 @pytest.mark.asyncio
@@ -214,9 +213,7 @@ async def test_reindex_does_not_resurface_degraded_mcp():
     assert any('fetch---' in t['tool_name'] for t in await tm.get_tools())
 
     # Degrade the server; the runtime hides its tools while keeping the session.
-    await runtime.record_failure(
-        'fetch', 'call_tool', 'Connection closed',
-        exc=ConnectionError('Connection closed'))
+    await runtime.record_failure('fetch', 'call_tool', 'Connection closed', exc=ConnectionError('Connection closed'))
     assert runtime.get_server('fetch').status == 'degraded'
     assert client.is_connected('fetch')
     assert not any('fetch---' in t['tool_name'] for t in await tm.get_tools())
@@ -232,10 +229,12 @@ async def test_reindex_does_not_resurface_degraded_mcp():
 @pytest.mark.asyncio
 async def test_connect_skip_policy():
     client = FakeMCPClient()
-    config = ResolvedMCPConfig(mcp_servers={
-        'bad': {'command': 'x'},
-        'good': {'command': 'echo'},
-    })
+    config = ResolvedMCPConfig(
+        mcp_servers={
+            'bad': {'command': 'x'},
+            'good': {'command': 'echo'},
+        }
+    )
     runtime = MCPRuntime(
         mcp_client=client,  # type: ignore[arg-type]
         config=config,
@@ -256,6 +255,7 @@ async def test_runtime_mode_a_no_double_connect():
         owns_client=False,
     )
     await runtime.start()
+
     class _Cfg:
         tools = type('T', (), {})()
 
@@ -283,9 +283,7 @@ async def test_degraded_hidden_from_llm_tools():
     await runtime.start()
     await runtime.sync_tools()
 
-    await runtime.record_failure(
-        'fetch', 'call_tool', 'Connection closed',
-        exc=ConnectionError('Connection closed'))
+    await runtime.record_failure('fetch', 'call_tool', 'Connection closed', exc=ConnectionError('Connection closed'))
     assert runtime.get_server('fetch').status == 'degraded'
     tools = await tm.get_tools()
     assert not any('fetch---' in t['tool_name'] for t in tools)
@@ -307,9 +305,7 @@ async def test_transient_failure_not_immediately_degraded():
     await runtime.sync_tools()
 
     for _ in range(DEGRADED_FAILURE_THRESHOLD - 1):
-        await runtime.record_failure(
-            'fetch', 'call_tool', 'timeout',
-            exc=TimeoutError('timeout'))
+        await runtime.record_failure('fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
 
     assert runtime.get_server('fetch').status == 'connected'
     tools = await tm.get_tools()
@@ -331,9 +327,7 @@ async def test_transient_failure_threshold_degrades():
     await runtime.sync_tools()
 
     for _ in range(DEGRADED_FAILURE_THRESHOLD):
-        await runtime.record_failure(
-            'fetch', 'call_tool', 'timeout',
-            exc=TimeoutError('timeout'))
+        await runtime.record_failure('fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
 
     assert runtime.get_server('fetch').status == 'degraded'
     tools = await tm.get_tools()
@@ -377,10 +371,12 @@ async def test_mcp_failure_handler_on_connection_error():
     await runtime.start()
     await runtime.sync_tools()
 
-    await tm.single_call_tool({
-        'tool_name': 'fetch---demo_tool',
-        'arguments': {},
-    })
+    await tm.single_call_tool(
+        {
+            'tool_name': 'fetch---demo_tool',
+            'arguments': {},
+        }
+    )
     assert runtime.get_server('fetch').status == 'degraded'
 
 
@@ -399,10 +395,14 @@ async def test_sync_mcp_tools_during_parallel_hooks():
     await runtime.sync_tools()
 
     async def call_and_sync():
-        task = asyncio.create_task(tm.single_call_tool({
-            'tool_name': 'fetch---demo_tool',
-            'arguments': {},
-        }))
+        task = asyncio.create_task(
+            tm.single_call_tool(
+                {
+                    'tool_name': 'fetch---demo_tool',
+                    'arguments': {},
+                }
+            )
+        )
         await asyncio.sleep(0)
         await runtime.sync_tools()
         return await task
@@ -420,10 +420,8 @@ async def test_record_success_resets_transient_counter():
         owns_client=False,
     )
     await runtime.start()
-    await runtime.record_failure(
-        'fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
-    await runtime.record_failure(
-        'fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
+    await runtime.record_failure('fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
+    await runtime.record_failure('fetch', 'call_tool', 'timeout', exc=TimeoutError('timeout'))
     assert runtime.get_server('fetch').consecutive_failures == 2
     await runtime.record_success('fetch')
     assert runtime.get_server('fetch').consecutive_failures == 0
@@ -448,10 +446,12 @@ class _DenyHookRuntime:
 
     async def run_pre_tool_use(self, tool_name, tool_args, **kwargs):
         from ms_agent.hooks.events import HookResult
+
         return HookResult(action='deny', reason='blocked by test'), []
 
     async def run_post_tool_use(self, **kwargs):
         from ms_agent.hooks.events import HookResult
+
         return HookResult(action='allow'), []
 
 
@@ -469,10 +469,12 @@ async def test_mcp_tool_pre_tool_use_deny():
     await runtime.start()
     await runtime.sync_tools()
 
-    result = await tm.single_call_tool({
-        'tool_name': 'fetch---demo_tool',
-        'arguments': {},
-    })
+    result = await tm.single_call_tool(
+        {
+            'tool_name': 'fetch---demo_tool',
+            'arguments': {},
+        }
+    )
     assert 'Blocked by hook' in result
     assert client.call_tool_calls == 0
 
@@ -497,10 +499,12 @@ async def test_timeout_triggers_transient_failure():
     await runtime.start()
     await runtime.sync_tools()
 
-    await tm.single_call_tool({
-        'tool_name': 'fetch---demo_tool',
-        'arguments': {'timeout': 1},
-    })
+    await tm.single_call_tool(
+        {
+            'tool_name': 'fetch---demo_tool',
+            'arguments': {'timeout': 1},
+        }
+    )
     state = runtime.get_server('fetch')
     assert state.consecutive_failures == 1
     assert state.status == 'connected'

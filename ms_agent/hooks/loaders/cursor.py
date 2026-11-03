@@ -6,8 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ms_agent.hooks.registry import (HookRegistry, MatcherGroup,
-                                     _parse_hook_handler)
+from ms_agent.hooks.registry import HookRegistry, MatcherGroup, _parse_hook_handler
 from ms_agent.hooks.tool_name_mapper import ToolNameMapper
 from ms_agent.utils import get_logger
 
@@ -26,7 +25,6 @@ _CURSOR_EVENT_MAP = {
 
 
 class CursorHooksLoader:
-
     @staticmethod
     def load_file(
         path: Path | str,
@@ -37,8 +35,7 @@ class CursorHooksLoader:
         with open(path, encoding='utf-8') as f:
             data = json.load(f)
         hooks = data.get('hooks', data)
-        return CursorHooksLoader.parse_hooks(
-            hooks, project_path, enabled_executors=enabled_executors)
+        return CursorHooksLoader.parse_hooks(hooks, project_path, enabled_executors=enabled_executors)
 
     @staticmethod
     def parse_hooks(
@@ -56,20 +53,18 @@ class CursorHooksLoader:
         for event_name, entries in hooks.items():
             canonical = _CURSOR_EVENT_MAP.get(event_name)
             if not canonical or canonical not in HookRegistry.VALID_EVENTS:
-                logger.warning('Skipping unknown Cursor hook event: %s',
-                               event_name)
+                logger.warning('Skipping unknown Cursor hook event: %s', event_name)
                 continue
 
             groups = []
-            for entry in (entries or []):
+            for entry in entries or []:
                 matcher = entry.get('matcher')
                 if event_name == 'beforeShellExecution':
                     matcher = matcher or f'*{ToolNameMapper.TOOL_SPLITER}shell_executor'
                 elif event_name == 'afterFileEdit':
                     matcher = matcher or f'*{ToolNameMapper.TOOL_SPLITER}write_file'
                 elif matcher and canonical in HookRegistry.TOOL_EVENTS:
-                    matcher = mapper.external_matcher_to_native(
-                        matcher, 'cursor')
+                    matcher = mapper.external_matcher_to_native(matcher, 'cursor')
 
                 t = entry.get('type', 'command') or 'command'
                 if t not in enabled_executors:
@@ -90,10 +85,10 @@ class CursorHooksLoader:
                 if parsed:
                     groups.append(
                         MatcherGroup(
-                            matcher=matcher
-                            if canonical in HookRegistry.TOOL_EVENTS else None,
-                            hooks=(parsed, ),
-                        ))
+                            matcher=matcher if canonical in HookRegistry.TOOL_EVENTS else None,
+                            hooks=(parsed,),
+                        )
+                    )
             if groups:
                 existing = index.get(canonical, ())
                 index[canonical] = existing + tuple(groups)

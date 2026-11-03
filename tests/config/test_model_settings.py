@@ -6,8 +6,7 @@ from ms_agent.config.model_settings import ModelSettingsManager
 
 def test_add_list_remove_provider(tmp_path):
     m = ModelSettingsManager(global_dir=str(tmp_path))
-    m.add_provider('acme', name='Acme', protocol='openai',
-                   api_key='k', base_url='https://acme/v1', models=['a-1'])
+    m.add_provider('acme', name='Acme', protocol='openai', api_key='k', base_url='https://acme/v1', models=['a-1'])
     customs = m.list_custom_providers()
     assert customs['acme']['base_url'] == 'https://acme/v1'
     assert 'a-1' in customs['acme']['models']
@@ -54,11 +53,10 @@ def test_preserves_other_sections(tmp_path):
 
 def test_resolver_consumes_default_model():
     from ms_agent.config.resolver import ConfigResolver
-    cfg = ConfigResolver._settings_to_agent_config(
-        {'default_model': 'deepseek/deepseek-chat'})
+
+    cfg = ConfigResolver._settings_to_agent_config({'default_model': 'deepseek/deepseek-chat'})
     assert cfg.llm.service == 'deepseek'
     assert cfg.llm.model == 'deepseek-chat'
     # explicit llm.model wins over default_model
-    cfg2 = ConfigResolver._settings_to_agent_config(
-        {'llm': {'model': 'pinned'}, 'default_model': 'deepseek/x'})
+    cfg2 = ConfigResolver._settings_to_agent_config({'llm': {'model': 'pinned'}, 'default_model': 'deepseek/x'})
     assert cfg2.llm.model == 'pinned'

@@ -5,12 +5,14 @@ The LLM is given the current MEMORY.md content plus the conversation
 fragment and must output a ``memory_update`` string that fully replaces
 the file.
 """
+
 from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.logger import get_logger
+
 from ..config import MemoryConfig
 from ..protocols import MemoryEntry
 
@@ -20,17 +22,17 @@ SAVE_MEMORY_TOOL = {
     'type': 'function',
     'function': {
         'name': 'save_memory',
-        'description': ('Persist the consolidation result. Output the '
-                        'complete long-term memory markdown.'),
+        'description': ('Persist the consolidation result. Output the complete long-term memory markdown.'),
         'parameters': {
             'type': 'object',
             'properties': {
                 'memory_update': {
                     'type': 'string',
-                    'description':
-                    ('The complete long-term memory markdown: all existing '
-                     'facts plus additions. Return it unchanged when nothing '
-                     'changed.'),
+                    'description': (
+                        'The complete long-term memory markdown: all existing '
+                        'facts plus additions. Return it unchanged when nothing '
+                        'changed.'
+                    ),
                 }
             },
             'required': ['memory_update'],
@@ -105,6 +107,7 @@ class ToolBasedExtractor:
         )
 
         from ms_agent.llm.utils import Message
+
         llm_messages = [Message(role='system', content=system_content)]
         for m in messages:
             if isinstance(m, Message):
@@ -114,25 +117,23 @@ class ToolBasedExtractor:
                     Message(
                         role=m.get('role', 'user'),
                         content=m.get('content', ''),
-                    ))
+                    )
+                )
 
         tool_def = SAVE_MEMORY_TOOL['function']
-        tools = [{
-            'tool_name': tool_def['name'],
-            'description': tool_def['description'],
-            'parameters': tool_def['parameters'],
-        }]
+        tools = [
+            {
+                'tool_name': tool_def['name'],
+                'description': tool_def['description'],
+                'parameters': tool_def['parameters'],
+            }
+        ]
 
         try:
             response = self.llm.generate(
                 llm_messages,
                 tools=tools,
-                tool_choice={
-                    'type': 'function',
-                    'function': {
-                        'name': 'save_memory'
-                    }
-                },
+                tool_choice={'type': 'function', 'function': {'name': 'save_memory'}},
             )
             # Handle streaming generator
             if hasattr(response, '__next__'):
@@ -166,8 +167,7 @@ class ToolBasedExtractor:
             return None
         for tc in response.tool_calls:
             if isinstance(tc, dict):
-                name = tc.get('tool_name', '') or tc.get('function', {}).get(
-                    'name', '')
+                name = tc.get('tool_name', '') or tc.get('function', {}).get('name', '')
                 args = tc.get('arguments', '{}')
             else:
                 name = getattr(tc, 'tool_name', '')

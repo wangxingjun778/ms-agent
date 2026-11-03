@@ -4,6 +4,7 @@
 Discovery intentionally reads only ``SKILL.md``.  Full file materialization,
 safety scanning, and registration remain the catalog's responsibility.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

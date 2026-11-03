@@ -15,12 +15,12 @@ project-scoped context files (``.hermes.md``/``AGENTS.md``/``CLAUDE.md``/
 ``.cursorrules``) live beside the user's code, not in HERMES_HOME, so they are
 out of scope for agent-home migration.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from .._workspace import (DEFAULT_AGENT_NAME, WorkspaceSpec,
-                          register_framework, scrub_yaml_secrets)
+from .._workspace import DEFAULT_AGENT_NAME, WorkspaceSpec, register_framework, scrub_yaml_secrets
 from ._bundled_skills import BundledSkillFilterMixin
 
 
@@ -96,7 +96,7 @@ class HermesWorkspace(BundledSkillFilterMixin, WorkspaceSpec):
         # Named agents live under ``profiles/<name>/``; anything else is the
         # default agent living at the root.
         if rel_path.startswith('profiles/'):
-            rest = rel_path[len('profiles/'):]
+            rest = rel_path[len('profiles/') :]
             if '/' in rest:
                 head, bare = rest.split('/', 1)
                 return (head, bare)

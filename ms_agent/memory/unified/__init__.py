@@ -16,12 +16,12 @@ Switch backends via YAML config::
     storage:
       backend: "file"   # or "reme", "mempalace", "mem0", "byterover", "supermemory"
 """
+
 # Import backends so they self-register
 from .backends import file_based as _fb  # noqa: F401
 from .config import MemoryConfig
 from .orchestrator import MemoryOrchestrator
-from .protocols import (BaseMemoryBackend, MemoryBackend, MemoryEntry,
-                        MemoryEvent, MemoryEventBus, MemoryNamespace)
+from .protocols import BaseMemoryBackend, MemoryBackend, MemoryEntry, MemoryEvent, MemoryEventBus, MemoryNamespace
 from .registry import backend_registry
 
 __all__ = [

@@ -3,6 +3,7 @@
 when the provider supports it (``continue_gen_mode`` set). Otherwise a truncated
 response (``finish_reason='length'``) on a strict OpenAI-compatible API would
 send ``partial``/``prefix`` fields + consecutive assistant messages -> 400."""
+
 from unittest.mock import MagicMock, patch
 
 from ms_agent.llm.transport.openai_compat import OpenAICompatTransport
@@ -27,9 +28,10 @@ def test_no_continuation_when_mode_none():
     """continue_gen_mode=None (standard OpenAI/Gemini) -> never continue."""
     t = _transport(None)
     msgs = [Message(role='user', content='hi')]
-    with patch.object(t, '_format_output_message',
-                      return_value=Message(role='assistant', content='x')), \
-            patch.object(t, '_call_llm_for_continue_gen') as cont:
+    with (
+        patch.object(t, '_format_output_message', return_value=Message(role='assistant', content='x')),
+        patch.object(t, '_call_llm_for_continue_gen') as cont,
+    ):
         t._continue_generate(msgs, _length_completion(), tools=None)
     cont.assert_not_called()
 
@@ -40,9 +42,9 @@ def test_continuation_when_mode_set():
     msgs = [Message(role='user', content='hi')]
     stop = MagicMock()
     stop.choices[0].finish_reason = 'stop'  # ends the recursion
-    with patch.object(t, '_format_output_message',
-                      return_value=Message(role='assistant', content='x')), \
-            patch.object(
-                t, '_call_llm_for_continue_gen', return_value=stop) as cont:
+    with (
+        patch.object(t, '_format_output_message', return_value=Message(role='assistant', content='x')),
+        patch.object(t, '_call_llm_for_continue_gen', return_value=stop) as cont,
+    ):
         t._continue_generate(msgs, _length_completion(), tools=None)
     cont.assert_called_once()

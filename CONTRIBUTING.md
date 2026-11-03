@@ -44,18 +44,17 @@ There are several ways you can contribute to MS-Agent:
 
 ## Styles
 
-MS-Agent follow the same styles as the Modelscope project. Please find detail at [here](https://github.com/modelscope/MS-Agent/blob/master/.pre-commit-config.yaml)
-Please make sure follow the following steps to install the pre-commit hooks:
+MS-Agent is formatted and linted with [ruff](https://docs.astral.sh/ruff/).
+The rules live in [ruff.toml](https://github.com/modelscope/MS-Agent/blob/master/ruff.toml) and the
+WebUI is checked by its own workflow. No git hooks are installed, so run the checks yourself before
+committing:
 
 ```shell
-# for the first time please run the following command to install pre-commit hooks
-pip install pre-commit
-pre-commit install
-pre-commit run --all-files
+pip install ruff==0.15.11
 
-# In the rest of the time, you could just run normal git commit to activate lint revised
-git add .
-git commit -m "add new tool"
-# if you want to skip the lint check, you could use the following command
-git commit -m "add new tool" --no-verify
+# check the whole repository (same commands as CI)
+make lint
+
+# apply import sorting and formatting fixes
+make format
 ```

@@ -1,13 +1,12 @@
-from docling_core.types import DoclingDocument
 from typing import Union
+
+from docling_core.types import DoclingDocument
 
 
 class PostProcess:
-
     MIN_PICTURE_SIZE = 200.0 * 200.0  # Minimum size for pictures in pixels
 
-    def __init__(self):
-        ...
+    def __init__(self): ...
 
     @staticmethod
     def filter(doc: DoclingDocument) -> Union[DoclingDocument, None]:

@@ -4,9 +4,11 @@ A hard 400 (bad payload, missing field, content filter) is a verdict on the
 request — resending the identical body five times only adds ~15s of backoff
 before the same failure surfaces. Transient faults must keep retrying.
 """
+
 import asyncio
 
 import pytest
+
 from ms_agent.utils import async_retry, is_retryable_error
 from ms_agent.utils.llm_utils import http_status_of
 
@@ -24,10 +26,14 @@ class _ApiError(Exception):
     'exc, expected',
     [
         # Real strings observed in production, where the status is only in text.
-        (_ApiError('APIError: <400> InternalError.Algo.DataInspectionFailed: '
-                   'Output data may contain inappropriate content.'), 400),
-        (_ApiError("Error code: 400 - {'error': {'message': 'missing field "
-                   "`tool_call_id`'}}"), 400),
+        (
+            _ApiError(
+                'APIError: <400> InternalError.Algo.DataInspectionFailed: '
+                'Output data may contain inappropriate content.'
+            ),
+            400,
+        ),
+        (_ApiError("Error code: 400 - {'error': {'message': 'missing field `tool_call_id`'}}"), 400),
         # Structured SDK errors.
         (_ApiError('boom', 429), 429),
         (_ApiError('boom', 503), 503),
@@ -49,11 +55,7 @@ def test_transient_and_server_errors_stay_retryable(status):
     assert is_retryable_error(_ApiError('boom', status)) is True
 
 
-@pytest.mark.parametrize(
-    'exc',
-    [ConnectionError('reset'),
-     TimeoutError('timed out'),
-     Exception('something odd')])
+@pytest.mark.parametrize('exc', [ConnectionError('reset'), TimeoutError('timed out'), Exception('something odd')])
 def test_unknown_errors_keep_retrying(exc):
     # Conservative default: an unidentifiable failure behaves as before.
     assert is_retryable_error(exc) is True

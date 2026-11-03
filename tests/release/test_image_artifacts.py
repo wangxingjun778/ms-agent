@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Artifact transfer, interrupted publication and runner credential boundaries."""
+
 import base64
 import hashlib
 import io
@@ -21,25 +22,44 @@ import release_artifacts as artifacts
 def release_tree(tmp_path):
     inputs = tmp_path / 'inputs'
     inputs.mkdir()
-    files = {'a.whl': b'wheel', 'a.tar.gz': b'sdist', 'runtime-requirements.txt': b'locked',
-             'shell-requirements.txt': b'locked shell tools'}
+    files = {
+        'a.whl': b'wheel',
+        'a.tar.gz': b'sdist',
+        'runtime-requirements.txt': b'locked',
+        'shell-requirements.txt': b'locked shell tools',
+    }
     for name, data in files.items():
         (inputs / name).write_bytes(data)
-    release = {'version': '1.7.0rc0', 'sdk_commit': 'a' * 40,
-               'files': {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
+    release = {
+        'version': '1.7.0rc0',
+        'sdk_commit': 'a' * 40,
+        'files': {name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
+    }
     (inputs / 'release.json').write_text(json.dumps(release))
     directory = tmp_path / 'image'
     directory.mkdir()
-    image = dict(release, image='old-job:local', image_id='sha256:' + 'b' * 64,
-                 wheel_sha256=release['files']['a.whl'], smoke='passed')
+    image = dict(
+        release,
+        image='old-job:local',
+        image_id='sha256:' + 'b' * 64,
+        wheel_sha256=release['files']['a.whl'],
+        smoke='passed',
+    )
     record = directory / 'image.json'
     record.write_text(json.dumps(image))
     return inputs, directory, release, image, record
 
 
-@pytest.mark.parametrize('key,value', [('version', '1.7.0'), ('sdk_commit', 'c' * 40),
-                                      ('smoke', 'failed'), ('wheel_sha256', 'wrong'),
-                                      ('image_id', 'mutable:tag')])
+@pytest.mark.parametrize(
+    'key,value',
+    [
+        ('version', '1.7.0'),
+        ('sdk_commit', 'c' * 40),
+        ('smoke', 'failed'),
+        ('wheel_sha256', 'wrong'),
+        ('image_id', 'mutable:tag'),
+    ],
+)
 def test_restore_rejects_other_or_unvalidated_image_before_docker(release_tree, monkeypatch, key, value):
     inputs, directory, _, image, record = release_tree
     image[key] = value
@@ -70,9 +90,11 @@ def test_changed_package_cannot_be_used_for_image_restore(release_tree, name):
 def test_loaded_identity_is_required_even_if_old_tag_exists(release_tree, monkeypatch):
     _, _, release, image, record = release_tree
     calls = []
+
     def inspect(command, **kwargs):
         calls.append(command)
         return 'sha256:' + 'c' * 64
+
     monkeypatch.setattr(subprocess, 'check_output', inspect)
     with pytest.raises(ValueError, match='Loaded image differs'):
         publish.checked_image(release, record)
@@ -83,14 +105,17 @@ def test_pypi_retry_after_partial_upload_does_not_repeat_wheel(release_tree, mon
     inputs, _, release, *_ = release_tree
     remote = []
     calls = []
+
     def response(*args, **kwargs):
         return io.BytesIO(json.dumps({'urls': remote}).encode())
+
     def upload(command, **kwargs):
         calls.append(command)
         if len(calls) == 1:
             remote.append({'filename': 'a.whl', 'digests': {'sha256': release['files']['a.whl']}})
             raise subprocess.CalledProcessError(1, command)
         remote.append({'filename': 'a.tar.gz', 'digests': {'sha256': release['files']['a.tar.gz']}})
+
     monkeypatch.setattr(publish.urllib.request, 'urlopen', response)
     monkeypatch.setattr(subprocess, 'run', upload)
     with pytest.raises(subprocess.CalledProcessError):
@@ -105,6 +130,7 @@ def test_acr_retry_after_push_timeout_accepts_exact_remote_image(release_tree, m
     _, _, release, image, record = release_tree
     pushed = False
     pushes = []
+
     def run(command, **kwargs):
         nonlocal pushed
         if command[1] == 'pull':
@@ -114,9 +140,14 @@ def test_acr_retry_after_push_timeout_accepts_exact_remote_image(release_tree, m
             pushed = True
             raise subprocess.CalledProcessError(1, command)
         return subprocess.CompletedProcess(command, 0)
+
     monkeypatch.setattr(subprocess, 'run', run)
     remote_digest = publish.REGISTRY_IMAGE + '@sha256:' + 'd' * 64
-    monkeypatch.setattr(subprocess, 'check_output', lambda command, **k: json.dumps([remote_digest]) if 'RepoDigests' in command[-2] else image['image_id'])
+    monkeypatch.setattr(
+        subprocess,
+        'check_output',
+        lambda command, **k: json.dumps([remote_digest]) if 'RepoDigests' in command[-2] else image['image_id'],
+    )
     with pytest.raises(subprocess.CalledProcessError):
         publish.publish_acr(release, record, '1.7.0rc0', push=True)
     receipt = publish.publish_acr(release, record, '1.7.0rc0', push=True)
@@ -130,9 +161,11 @@ def test_acr_precheck_failure_never_pushes(release_tree, monkeypatch, error):
     _, _, release, image, record = release_tree
     calls = []
     monkeypatch.setattr(subprocess, 'check_output', lambda *a, **k: image['image_id'])
+
     def run(command, **kwargs):
         calls.append(command)
         return subprocess.CompletedProcess(command, 1, '', error)
+
     monkeypatch.setattr(subprocess, 'run', run)
     with pytest.raises(RuntimeError):
         publish.publish_acr(release, record, '1.7.0rc0', push=True)
@@ -177,7 +210,9 @@ def test_artifact_discovery_reuses_original_run(remote, expected, monkeypatch):
     monkeypatch.setenv('GITHUB_REPOSITORY', 'modelscope/ms-agent')
     monkeypatch.setenv('GITHUB_RUN_ID', '123')
     monkeypatch.setenv('GH_TOKEN', 'test-token')
-    monkeypatch.setattr(artifacts.urllib.request, 'urlopen', lambda *a, **k: io.BytesIO(json.dumps({'artifacts': remote}).encode()))
+    monkeypatch.setattr(
+        artifacts.urllib.request, 'urlopen', lambda *a, **k: io.BytesIO(json.dumps({'artifacts': remote}).encode())
+    )
     assert artifacts.find_artifact('original') == expected
 
 
@@ -185,7 +220,11 @@ def test_expired_artifact_is_not_replaced_with_rebuild(monkeypatch):
     monkeypatch.setenv('GITHUB_REPOSITORY', 'modelscope/ms-agent')
     monkeypatch.setenv('GITHUB_RUN_ID', '123')
     monkeypatch.setenv('GH_TOKEN', 'test-token')
-    monkeypatch.setattr(artifacts.urllib.request, 'urlopen', lambda *a, **k: io.BytesIO(b'{"artifacts":[{"id":5,"name":"original","expired":true}]}'))
+    monkeypatch.setattr(
+        artifacts.urllib.request,
+        'urlopen',
+        lambda *a, **k: io.BytesIO(b'{"artifacts":[{"id":5,"name":"original","expired":true}]}'),
+    )
     with pytest.raises(ValueError, match='expired'):
         artifacts.find_artifact('original')
 
@@ -200,7 +239,9 @@ def test_actual_image_archive_recovers_without_any_local_image(release_tree, tmp
     (context / 'Dockerfile').write_text('FROM scratch\nCOPY payload /payload\n')
     try:
         subprocess.run(['docker', 'build', '-t', tag, str(context)], check=True, capture_output=True)
-        image_id = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', tag], text=True).strip()
+        image_id = subprocess.check_output(
+            ['docker', 'image', 'inspect', '--format', '{{.Id}}', tag], text=True
+        ).strip()
         image.update(image=tag, image_id=image_id)
         record.write_text(json.dumps(image))
         artifacts.save_image(directory, inputs)
@@ -220,8 +261,10 @@ def test_artifact_api_failure_does_not_fall_back_to_rebuilding(monkeypatch):
     monkeypatch.setenv('GITHUB_REPOSITORY', 'modelscope/ms-agent')
     monkeypatch.setenv('GITHUB_RUN_ID', '123')
     monkeypatch.setenv('GH_TOKEN', 'test-token')
+
     def unavailable(*args, **kwargs):
         raise TimeoutError('API unavailable')
+
     monkeypatch.setattr(artifacts.urllib.request, 'urlopen', unavailable)
     with pytest.raises(TimeoutError):
         artifacts.find_artifact('original')
@@ -229,9 +272,13 @@ def test_artifact_api_failure_does_not_fall_back_to_rebuilding(monkeypatch):
 
 def test_release_credentials_and_image_jobs_stay_separate():
     import yaml
+
     root = Path(__file__).resolve().parents[2] / '.github/workflows'
+
     # BaseLoader keeps the YAML key "on" a string rather than a YAML 1.1 boolean.
-    load = lambda name: yaml.load((root / name).read_text(), Loader=yaml.BaseLoader)
+    def load(name):
+        return yaml.load((root / name).read_text(), Loader=yaml.BaseLoader)
+
     release = load('publish.yaml')['jobs']
     assert release['publish-pypi']['runs-on'].startswith('ubuntu-')
     assert 'PYPI_API_TOKEN' in json.dumps(release['publish-pypi'])

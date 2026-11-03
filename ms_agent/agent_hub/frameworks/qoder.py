@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Qoder workspace specification (file-per-agent + shared)."""
+
 from __future__ import annotations
 
 from pathlib import Path

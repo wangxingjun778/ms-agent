@@ -6,6 +6,7 @@ hints so the three commands share one consistent, elegant format. Everything
 degrades to plain text when stdout is not a TTY (or ``NO_COLOR`` is set), so
 piped output and tests stay clean.
 """
+
 from __future__ import annotations
 
 from typing import Iterable, Sequence
@@ -28,14 +29,14 @@ def header(action: str, src: str, dst: str | None = None) -> None:
     title = style(action, 'bold', COLOR_TITLE)
     if dst is not None:
         arrow = style(_ARROW, 'dim')
-        print(f"\n{title}  {style(src, 'bold')} {arrow} {style(dst, 'bold')}")
+        print(f'\n{title}  {style(src, "bold")} {arrow} {style(dst, "bold")}')
     else:
-        print(f"\n{title}  {style(src, 'bold')}")
+        print(f'\n{title}  {style(src, "bold")}')
 
 
 def meta(label: str, value: object) -> None:
     """Print an indented ``label  value`` line with a dim label."""
-    print(f"  {style(label, 'dim')}  {value}")
+    print(f'  {style(label, "dim")}  {value}')
 
 
 def summary(items: Sequence[tuple[str, int, str]]) -> None:
@@ -44,10 +45,7 @@ def summary(items: Sequence[tuple[str, int, str]]) -> None:
     *items* is a sequence of ``(label, count, color)``; entries are rendered in
     order and joined with a dim middle dot.
     """
-    parts = [
-        f"{style(str(count), 'bold', color)} {label}"
-        for label, count, color in items
-    ]
+    parts = [f'{style(str(count), "bold", color)} {label}' for label, count, color in items]
     if parts:
         print('  ' + style(' \u00b7 ', 'dim').join(parts))
 
@@ -72,7 +70,7 @@ def file_list(
         return
     head = style(f'{title} ({len(items)})', 'bold', color)
     if root is not None:
-        head += f" {style(_ARROW, 'dim')} {style(str(root), 'dim')}"
+        head += f' {style(_ARROW, "dim")} {style(str(root), "dim")}'
     if note:
         head += style(f'  \u2014 {note}', 'dim')
     print(f'\n{head}')

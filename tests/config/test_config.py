@@ -5,30 +5,19 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ms_agent.config import Config
+from modelscope.utils.test_utils import test_level
 from omegaconf import DictConfig
 
-from modelscope.utils.test_utils import test_level
+from ms_agent.config import Config
 
 
 class TestConfig(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_safe_get_config(self):
-        config = DictConfig(
-            {'tools': {
-                'file_system': {
-                    'system_for_abbreviations': 'test'
-                }
-            }})
-        self.assertEqual(
-            'test',
-            Config.safe_get_config(
-                config, 'tools.file_system.system_for_abbreviations'))
+        config = DictConfig({'tools': {'file_system': {'system_for_abbreviations': 'test'}}})
+        self.assertEqual('test', Config.safe_get_config(config, 'tools.file_system.system_for_abbreviations'))
         delattr(config.tools, 'file_system')
-        self.assertTrue(
-            Config.safe_get_config(
-                config, 'tools.file_system.system_for_abbreviations') is None)
+        self.assertTrue(Config.safe_get_config(config, 'tools.file_system.system_for_abbreviations') is None)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_from_task_does_not_leak_config_dir_patch(self):
@@ -55,13 +44,13 @@ class TestConfig(unittest.TestCase):
         from omegaconf import OmegaConf
 
         from ms_agent.config.resolver import ConfigResolver
+
         with tempfile.TemporaryDirectory() as work:
             patch_dir = os.path.join(work, '.ms_agent')
             os.makedirs(patch_dir)
             with open(os.path.join(patch_dir, 'config.yaml'), 'w') as f:
                 f.write('llm:\n  model: override-model\n')
-            base = OmegaConf.create(
-                {'llm': {'service': 'openai', 'model': 'base-model'}})
+            base = OmegaConf.create({'llm': {'service': 'openai', 'model': 'base-model'}})
             patch_cfg = ConfigResolver()._load_project_patch(work)
             self.assertIsNotNone(patch_cfg)
             merged = OmegaConf.merge(base, patch_cfg)

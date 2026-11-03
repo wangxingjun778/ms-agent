@@ -9,11 +9,13 @@ Resolution order (first hit wins):
 
 This replaces per-provider ``__init__`` credential handling.
 """
+
 from __future__ import annotations
 
 import os
-from omegaconf import DictConfig
 from typing import Optional
+
+from omegaconf import DictConfig
 
 from .spec import ProviderSpec
 
@@ -23,18 +25,15 @@ def _cfg_get(config: DictConfig, field: str) -> Optional[str]:
     if llm is None:
         return None
     try:
-        value = llm.get(field) if hasattr(llm, 'get') else getattr(
-            llm, field, None)
+        value = llm.get(field) if hasattr(llm, 'get') else getattr(llm, field, None)
     except Exception:
         value = None
     return value or None
 
 
 class CredentialResolver:
-
     @staticmethod
-    def resolve_api_key(spec: ProviderSpec,
-                        config: DictConfig) -> Optional[str]:
+    def resolve_api_key(spec: ProviderSpec, config: DictConfig) -> Optional[str]:
         value = _cfg_get(config, f'{spec.name}_api_key')
         if value:
             return value

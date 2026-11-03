@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Shell-only lifecycle and actual foreground/background interpreter selection."""
+
 import asyncio
 import json
 import os
@@ -19,13 +20,17 @@ def config(root, **scope):
     return OmegaConf.create({'output_dir': str(root), 'tools': {'code_executor': scope}})
 
 
-@pytest.mark.parametrize('scope', [
-    {'include': ['shell_executor']},
-    {'exclude': ['notebook_executor', 'python_executor', 'reset_executor']},
-])
+@pytest.mark.parametrize(
+    'scope',
+    [
+        {'include': ['shell_executor']},
+        {'exclude': ['notebook_executor', 'python_executor', 'reset_executor']},
+    ],
+)
 def test_shell_scope_skips_dependency_installation_and_kernel(tmp_path, monkeypatch, scope):
     def unexpected(*args, **kwargs):
         pytest.fail('Shell-only initialization must not install dependencies or start a kernel')
+
     monkeypatch.setattr(LocalCodeExecutionTool, '_check_dependencies', unexpected)
     monkeypatch.setattr(LocalKernelSession, 'start', unexpected)
     monkeypatch.setattr(LocalKernelSession, 'stop', unexpected)
@@ -40,16 +45,20 @@ def test_shell_scope_skips_dependency_installation_and_kernel(tmp_path, monkeypa
         finally:
             await tool.cleanup()
             await tool.cleanup()
+
     asyncio.run(run())
 
 
 def test_notebook_opt_in_retains_kernel_lifecycle(tmp_path, monkeypatch):
     events = []
     monkeypatch.setattr(LocalCodeExecutionTool, '_check_dependencies', lambda self: {})
+
     async def start(self):
         events.append('start')
+
     async def stop(self):
         events.append('stop')
+
     monkeypatch.setattr(LocalKernelSession, 'start', start)
     monkeypatch.setattr(LocalKernelSession, 'stop', stop)
 
@@ -59,6 +68,7 @@ def test_notebook_opt_in_retains_kernel_lifecycle(tmp_path, monkeypatch):
         await tool.connect()
         await tool.cleanup()
         await tool.cleanup()
+
     asyncio.run(run())
     assert events == ['start', 'stop']
 
@@ -92,6 +102,7 @@ def test_real_shell_and_background_use_selected_python(tmp_path, monkeypatch):
             assert json.loads(task.result)['output'].strip() == expected
         finally:
             await tool.cleanup()
+
     asyncio.run(run())
     assert sys.prefix != expected
     assert os.environ.get('PATH') == parent_path

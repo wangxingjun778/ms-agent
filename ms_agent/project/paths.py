@@ -15,6 +15,7 @@ project layer, and a future WebUI/Server all agree:
 Legacy locations (``<work_dir>/sessions``, ``<work_dir>/.ms-agent``,
 ``<work_dir>/.ms_agent_snapshots``) are still *read* for back-compat.
 """
+
 from __future__ import annotations
 
 import os
@@ -129,8 +130,7 @@ def search_index_dir(work_dir: str | Path, name: str = 'search') -> Path:
     return internal_subdir(work_dir, 'search_index', name)
 
 
-def stats_file(work_dir: str | Path,
-               name: str = 'workflow_stats.json') -> Path:
+def stats_file(work_dir: str | Path, name: str = 'workflow_stats.json') -> Path:
     """Token/usage stats (was ``<work_dir>/workflow_stats.json``)."""
     return internal_subdir(work_dir, name)
 

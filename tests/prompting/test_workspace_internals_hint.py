@@ -1,5 +1,6 @@
 """The section that tells the agent which directories under its working
 directory are the framework's own records."""
+
 from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
@@ -45,9 +46,7 @@ def test_external_records_are_named_with_their_real_path(tmp_path):
     records = tmp_path / 'data' / 'projects' / 'p1' / 'sessions' / 'abc123'
     records.mkdir(parents=True)
 
-    section = _agent_for(
-        workspace, session_id='abc123',
-        log_dir=records)._build_workspace_internals_section()
+    section = _agent_for(workspace, session_id='abc123', log_dir=records)._build_workspace_internals_section()
 
     assert str(records) in section
     assert '.ms_agent/' in section
@@ -94,16 +93,18 @@ def test_it_reaches_the_system_prompt(tmp_path):
 
     agent = _agent_for(workspace, session_id='sid')
     # ``system`` reads through the config; set it where it actually comes from.
-    agent.config = OmegaConf.create({
-        'output_dir': str(workspace),
-        'tools': {'todo_list': {
-            'plan_filename': str(workspace / 'sessions/sid/plan.json'),
-            'plan_md_filename': str(workspace / 'sessions/sid/plan.md'),
-        }},
-        'prompt': {
-            'system': 'BASE PROMPT'
-        },
-    })
+    agent.config = OmegaConf.create(
+        {
+            'output_dir': str(workspace),
+            'tools': {
+                'todo_list': {
+                    'plan_filename': str(workspace / 'sessions/sid/plan.json'),
+                    'plan_md_filename': str(workspace / 'sessions/sid/plan.md'),
+                }
+            },
+            'prompt': {'system': 'BASE PROMPT'},
+        }
+    )
     agent._memory_guidance = None
     agent._skill_injector = None
     agent._skill_runtime = None
@@ -117,6 +118,7 @@ def test_it_reaches_the_system_prompt(tmp_path):
     assert 'branched session' not in content
 
     from ms_agent.session import SessionLog
+
     agent.session_log = SessionLog(workspace / 'sessions/sid', 'session_sid')
     agent.session_log.set_metadata_field('fork_after_seq', 6)
     assert 'branched session with an independent plan' in agent._build_system_content()

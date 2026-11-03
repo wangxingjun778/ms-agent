@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """Shared helpers for agent tests."""
+
 import unittest
 
 
@@ -18,12 +19,14 @@ def skip_if_server_rejects(*frameworks):
     on their own once the server accepts more frameworks.
     """
     from ms_agent.agent_hub._commands import STABLE_FRAMEWORKS
+
     rejected = sorted(set(frameworks) - set(STABLE_FRAMEWORKS))
     if rejected:
         raise unittest.SkipTest(
-            f"server only creates agent repos for "
-            f"{', '.join(sorted(STABLE_FRAMEWORKS))}; "
-            f"cannot exercise {', '.join(rejected)} online")
+            f'server only creates agent repos for '
+            f'{", ".join(sorted(STABLE_FRAMEWORKS))}; '
+            f'cannot exercise {", ".join(rejected)} online'
+        )
 
 
 def delete_matching_repos(client, owner, substrings, *, page_size=100, max_pages=50):
@@ -42,17 +45,13 @@ def delete_matching_repos(client, owner, substrings, *, page_size=100, max_pages
         seen: set[str] = set()
         while page <= max_pages:
             resp = client.list_agents(owner=owner, page_number=page, page_size=page_size)
-            items = (resp or {}).get("items") or []
+            items = (resp or {}).get('items') or []
             if not items:
                 break
             for it in items:
                 if not isinstance(it, dict):
                     continue
-                name = (
-                    it.get("name")
-                    or it.get("Name")
-                    or (it.get("id") or it.get("Id") or "").split("/")[-1]
-                )
+                name = it.get('name') or it.get('Name') or (it.get('id') or it.get('Id') or '').split('/')[-1]
                 if not name or name in seen:
                     continue
                 seen.add(name)
@@ -68,4 +67,6 @@ def delete_matching_repos(client, owner, substrings, *, page_size=100, max_pages
             client.delete_repo(owner, name)
         except Exception:
             pass
+
+
 # Copyright (c) Alibaba, Inc. and its affiliates.

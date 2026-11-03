@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Tests for MCP config merge rules (design doc §5.4)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -65,11 +66,13 @@ class TestConfigMergeCases:
         global_root, project_root = tmp_roots
         mgr = MCPConfigManager(global_root, project_root)
         mgr.add('fetch', {'command': 'A'}, scope='global')
-        agent_cfg = OmegaConf.create({
-            'tools': {
-                'fetch': {'mcp': True, 'command': 'B'},
-            },
-        })
+        agent_cfg = OmegaConf.create(
+            {
+                'tools': {
+                    'fetch': {'mcp': True, 'command': 'B'},
+                },
+            }
+        )
         resolver = ConfigResolver(global_root, project_root, agent_config=agent_cfg)
         resolved = resolver.resolve_mcp()
         assert resolved.mcp_servers['fetch']['command'] == 'B'
@@ -97,19 +100,20 @@ class TestConfigMergeCases:
         mgr = MCPConfigManager(global_root, project_root)
         mgr.add('fetch', {'command': 'A', 'enabled': False}, scope='global')
         resolver = ConfigResolver(global_root, project_root)
-        resolved = resolver.resolve_mcp(
-            session_override={'fetch': {'enabled': True}})
+        resolved = resolver.resolve_mcp(session_override={'fetch': {'enabled': True}})
         assert resolved.mcp_servers['fetch']['enabled'] is True
 
     def test_case7_mcp_false_not_in_mcp_servers(self, tmp_roots):
         global_root, project_root = tmp_roots
         mgr = MCPConfigManager(global_root, project_root)
         mgr.add('filesystem', {'command': 'A'}, scope='global')
-        agent_cfg = OmegaConf.create({
-            'tools': {
-                'filesystem': {'mcp': False, 'command': 'B'},
-            },
-        })
+        agent_cfg = OmegaConf.create(
+            {
+                'tools': {
+                    'filesystem': {'mcp': False, 'command': 'B'},
+                },
+            }
+        )
         resolver = ConfigResolver(global_root, project_root, agent_config=agent_cfg)
         resolved = resolver.resolve_mcp()
         assert 'filesystem' not in resolved.mcp_servers
@@ -125,11 +129,13 @@ class TestConfigMergeCases:
         global_root, project_root = tmp_roots
         mgr = MCPConfigManager(global_root, project_root)
         mgr.add('filesystem', {'command': 'A'}, scope='global')
-        agent_cfg = OmegaConf.create({
-            'tools': {
-                'filesystem': {'mcp': False, 'command': 'B'},
-            },
-        })
+        agent_cfg = OmegaConf.create(
+            {
+                'tools': {
+                    'filesystem': {'mcp': False, 'command': 'B'},
+                },
+            }
+        )
         resolver = ConfigResolver(global_root, project_root, agent_config=agent_cfg)
         merged = resolver.resolve_mcp_all_layers()
         assert 'filesystem' not in merged

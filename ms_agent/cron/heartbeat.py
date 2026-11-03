@@ -7,6 +7,7 @@ A heartbeat job is a special cron job that:
 This module provides the data structures and helpers; the actual LLM decision
 logic is deferred to a future implementation.
 """
+
 from __future__ import annotations
 
 import time
@@ -18,8 +19,8 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class HeartbeatStatus:
     """Current heartbeat state written to HEARTBEAT.md."""
-    timestamp: str = field(
-        default_factory=lambda: time.strftime('%Y-%m-%dT%H:%M:%S'))
+
+    timestamp: str = field(default_factory=lambda: time.strftime('%Y-%m-%dT%H:%M:%S'))
     jobs_total: int = 0
     jobs_running: int = 0
     jobs_paused: int = 0
@@ -46,8 +47,7 @@ class HeartbeatStatus:
             '',
         ]
         if self.last_run_job:
-            lines.append(
-                f'**Last Run**: {self.last_run_job} ({self.last_run_status})')
+            lines.append(f'**Last Run**: {self.last_run_job} ({self.last_run_status})')
         return '\n'.join(lines)
 
 

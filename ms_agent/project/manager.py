@@ -6,10 +6,9 @@ import tempfile
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from ms_agent.utils.file_lock import locked
 from ms_agent.project.store import JSONFileStore
-from ms_agent.project.types import (DEFAULT_PROJECT_ID, Project, _new_id,
-                                    _now_iso)
+from ms_agent.project.types import DEFAULT_PROJECT_ID, Project, _new_id, _now_iso
+from ms_agent.utils.file_lock import locked
 
 
 class DefaultProjectMissingError(ValueError):
@@ -36,8 +35,7 @@ class ProjectManager:
             return legacy
         return new
 
-    def __init__(self, base_dir: str = '~/.ms_agent', *,
-                 auto_initialize: bool = True) -> None:
+    def __init__(self, base_dir: str = '~/.ms_agent', *, auto_initialize: bool = True) -> None:
         self._base = Path(base_dir).expanduser().resolve()
         self._projects_root = self._base / self.PROJECTS_DIR
         self._auto_initialize = auto_initialize
@@ -60,7 +58,8 @@ class ProjectManager:
             has_files = default_dir.exists() and any(p.is_file() for p in default_dir.rglob('*'))
             if marker.exists() or has_files:
                 raise DefaultProjectMissingError(
-                    f'Default project metadata is missing: {self._meta_file(DEFAULT_PROJECT_ID)}')
+                    f'Default project metadata is missing: {self._meta_file(DEFAULT_PROJECT_ID)}'
+                )
             self._ensure_default_project()
         if not marker.exists():
             marker.write({'version': 1})
@@ -108,8 +107,8 @@ class ProjectManager:
 
     def session_manager(self, project: Project, *, auto_initialize: bool = True):
         from ms_agent.project.session import SessionManager
-        return SessionManager(project, base_dir=self._base,
-                              auto_initialize=auto_initialize, require_project=True)
+
+        return SessionManager(project, base_dir=self._base, auto_initialize=auto_initialize, require_project=True)
 
     @locked(lambda self, *args, **kwargs: self._projects_root)
     def create(
@@ -207,8 +206,7 @@ class ProjectManager:
                 try:
                     data = store.read()
                     if data:
-                        projects.append(Project(**{k: v for k, v in data.items()
-                                                   if k in Project.__dataclass_fields__}))
+                        projects.append(Project(**{k: v for k, v in data.items() if k in Project.__dataclass_fields__}))
                 except (TypeError, KeyError):
                     pass
         return projects
@@ -261,9 +259,7 @@ class ProjectManager:
         self._init_project_dirs(project, init_workspace=False)
         self._save_meta(project)
 
-    def _init_project_dirs(self,
-                           project: Project,
-                           init_workspace: bool = True) -> None:
+    def _init_project_dirs(self, project: Project, init_workspace: bool = True) -> None:
         project_dir = self._projects_root / project.id
         (project_dir / self.META_DIR).mkdir(parents=True, exist_ok=True)
         # Sessions live at <id>/sessions (flat), matching SessionManager

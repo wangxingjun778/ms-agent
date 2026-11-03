@@ -1,4 +1,5 @@
 """Historical replay, failure recovery, and independent session creation."""
+
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -27,18 +28,23 @@ def test_failed_compaction_recovers_only_committed_context(tmp_path, monkeypatch
     original = context(log)
     if failure == 'message':
         append = log.append
+
         def fail(message):
             if message.get('role') == 'assistant':
                 raise OSError('disk failure')
             return append(message)
+
         monkeypatch.setattr(log, 'append', fail)
     else:
+
         def fail(meta):
             raise OSError('sidecar failure')
+
         monkeypatch.setattr(log, '_write_meta', fail)
     with pytest.raises(OSError):
-        log.commit_compaction([{'role': 'user', 'content': 'summary'},
-                               {'role': 'assistant', 'content': 'answer'}], {'strategy': 'test'})
+        log.commit_compaction(
+            [{'role': 'user', 'content': 'summary'}, {'role': 'assistant', 'content': 'answer'}], {'strategy': 'test'}
+        )
     restored = SessionLog(tmp_path, 'test')
     assert context(restored) == (original if failure == 'message' else ['summary', 'answer'])
     assert context(log) == context(restored)
@@ -63,8 +69,7 @@ def test_multiple_compactions_fork_historical_view(sessions, legacy):
     for i in range(3):
         log.append({'role': 'user', 'content': f'question {i}'})
         if i:
-            rows = [{'role': 'user', 'content': f'summary {i}'},
-                    {'role': 'user', 'content': f'question {i}'}]
+            rows = [{'role': 'user', 'content': f'summary {i}'}, {'role': 'user', 'content': f'question {i}'}]
             if legacy:
                 log.record_compaction({'strategy': 'summary'})
                 seqs = [log.append({**m, '_source': 'compaction'}) for m in rows]
@@ -157,9 +162,10 @@ def test_fork_preserves_tool_results_and_plan(sessions):
 
 def test_manual_compaction_is_durable_and_failure_keeps_live_context(tmp_path, monkeypatch):
     import asyncio
+
+    from ms_agent.agent.llm_agent import LLMAgent
     from ms_agent.command.builtin.context_cmds import cmd_compact
     from ms_agent.command.types import CommandContext
-    from ms_agent.agent.llm_agent import LLMAgent
 
     log = SessionLog(tmp_path, 'manual')
     log.append({'role': 'user', 'content': 'inspect'})
@@ -171,11 +177,16 @@ def test_manual_compaction_is_durable_and_failure_keeps_live_context(tmp_path, m
     live = ContextAssembler(log).assemble()
     agent = object.__new__(LLMAgent)
     agent.session_log = log
-    ctx = CommandContext(raw_input='/compact', command_name='compact',
-                         extra={'messages': live, 'persist_context': agent._persist_manual_compaction})
+    ctx = CommandContext(
+        raw_input='/compact',
+        command_name='compact',
+        extra={'messages': live, 'persist_context': agent._persist_manual_compaction},
+    )
     save = log.commit_compaction
+
     def fail(*args):
         raise OSError('disk full')
+
     monkeypatch.setattr(log, 'commit_compaction', fail)
     with pytest.raises(OSError):
         asyncio.run(cmd_compact(ctx))
@@ -202,6 +213,7 @@ def test_new_format_waits_for_durable_turn_completion(tmp_path):
 @pytest.mark.parametrize('change', ['delete', 'replace', 'append'])
 def test_source_change_during_preparation(sessions, monkeypatch, change):
     import importlib
+
     module = importlib.import_module('ms_agent.project.fork')
     source = sessions.create('Concurrent')
     log = sessions.get_session_log(source)
@@ -232,16 +244,18 @@ def test_concurrent_distinct_requests_have_unique_numbers(sessions):
     source = sessions.create('Topic')
     point = turn(sessions.get_session_log(source))
     with ThreadPoolExecutor(max_workers=4) as pool:
-        children = list(pool.map(
-            lambda i: sessions.fork(source.id, after_seq=point, request_id=str(i)), range(4)))
+        children = list(pool.map(lambda i: sessions.fork(source.id, after_seq=point, request_id=str(i)), range(4)))
     assert {s.name for s in children} == {f'Topic ({i})' for i in range(2, 6)}
 
 
-@pytest.mark.parametrize('rows', [
-    [{'role': 'assistant', 'content': 'No user or summary'}],
-    [{'role': 'user', 'content': 'q'}, {'role': 'tool', 'tool_call_id': 'missing'}],
-    [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'tool_calls': [{'id': 'missing'}]}],
-])
+@pytest.mark.parametrize(
+    'rows',
+    [
+        [{'role': 'assistant', 'content': 'No user or summary'}],
+        [{'role': 'user', 'content': 'q'}, {'role': 'tool', 'tool_call_id': 'missing'}],
+        [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'tool_calls': [{'id': 'missing'}]}],
+    ],
+)
 def test_invalid_saved_compaction_cannot_be_forked(sessions, rows):
     source = sessions.create('Invalid context')
     log = sessions.get_session_log(source)
@@ -255,8 +269,13 @@ def test_invalid_saved_compaction_cannot_be_forked(sessions, rows):
 def test_fork_retains_image_delivery_without_later_messages(sessions):
     source = sessions.create('Picture')
     log = sessions.get_session_log(source)
-    log.append({'role': 'user', 'content': 'Describe', 'attachments': [
-        {'path': '/workspace/picture.png', 'name': 'picture.png', 'type': 'image/png'}]})
+    log.append(
+        {
+            'role': 'user',
+            'content': 'Describe',
+            'attachments': [{'path': '/workspace/picture.png', 'name': 'picture.png', 'type': 'image/png'}],
+        }
+    )
     log.record_image_delivery([{'path': '/workspace/picture.png', 'delivery': 'delivered'}])
     log.append({'role': 'assistant', 'content': 'A picture'})
     log.record_turn_checkpoint(1)
@@ -271,6 +290,7 @@ def test_completion_checkpoint_follows_stop_hook(tmp_path, decision):
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
+
     from ms_agent.agent.llm_agent import LLMAgent
     from ms_agent.agent.runtime import Runtime
     from ms_agent.hooks.events import HookResult
@@ -281,8 +301,9 @@ def test_completion_checkpoint_follows_stop_hook(tmp_path, decision):
     agent = LLMAgent.__new__(LLMAgent)
     agent.session_log = log
     agent.runtime = Runtime(round=1)
-    agent._hook_runtime = SimpleNamespace(is_empty=False, run_stop=AsyncMock(
-        return_value=HookResult(action=decision, reason='Finish checking')))
+    agent._hook_runtime = SimpleNamespace(
+        is_empty=False, run_stop=AsyncMock(return_value=HookResult(action=decision, reason='Finish checking'))
+    )
     agent.loop_callback = AsyncMock()
     asyncio.run(agent.after_tool_call(ContextAssembler(log).assemble()))
     assert bool(fork_points(log.records())) == (decision == 'allow')
@@ -293,7 +314,9 @@ def test_resume_waits_for_new_input_before_compaction_and_execution(tmp_path):
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
+
     from omegaconf import OmegaConf
+
     from ms_agent.agent.llm_agent import LLMAgent
     from ms_agent.agent.runtime import Runtime
     from ms_agent.hooks.events import HookResult
@@ -301,8 +324,9 @@ def test_resume_waits_for_new_input_before_compaction_and_execution(tmp_path):
 
     log = SessionLog(tmp_path, 'resume')
     turn(log)
-    log.commit_compaction([{'role': 'user', 'content': 'saved summary'},
-                           {'role': 'assistant', 'content': 'old answer'}], {})
+    log.commit_compaction(
+        [{'role': 'user', 'content': 'saved summary'}, {'role': 'assistant', 'content': 'old answer'}], {}
+    )
     log.round = 1
     original = log._path.read_bytes()
     agent = LLMAgent.__new__(LLMAgent)
@@ -315,13 +339,27 @@ def test_resume_waits_for_new_input_before_compaction_and_execution(tmp_path):
     agent.memory_tools = []
     agent._resolve_interactive = lambda _: True
     agent._has_restorable_history = lambda: True
-    for method in ('register_callback_from_config', 'prepare_llm', 'prepare_runtime',
-                   '_init_session_log', 'log_output', 'save_history',
-                   '_schedule_add_memory_after_task'):
+    for method in (
+        'register_callback_from_config',
+        'prepare_llm',
+        'prepare_runtime',
+        '_init_session_log',
+        'log_output',
+        'save_history',
+        '_schedule_add_memory_after_task',
+    ):
         setattr(agent, method, Mock())
-    for method in ('prepare_tools', 'prepare_skills', 'load_memory', 'prepare_rag',
-                   'prepare_knowledge_search', '_attach_memory_recall', 'add_memory',
-                   'on_task_end', 'cleanup_tools'):
+    for method in (
+        'prepare_tools',
+        'prepare_skills',
+        'load_memory',
+        'prepare_rag',
+        'prepare_knowledge_search',
+        '_attach_memory_recall',
+        'add_memory',
+        'on_task_end',
+        'cleanup_tools',
+    ):
         setattr(agent, method, AsyncMock())
     agent._attach_prompt_update_notice = lambda _: None
     agent._attach_model_switch_notice = lambda _: None
@@ -329,8 +367,7 @@ def test_resume_waits_for_new_input_before_compaction_and_execution(tmp_path):
     agent.condense_memory = AsyncMock(side_effect=lambda messages: messages)
     agent.context_assembler = ContextAssembler(log)
     agent.context_assembler.assemble = Mock(wraps=agent.context_assembler.assemble)
-    agent._hook_runtime = SimpleNamespace(is_empty=False, run_stop=AsyncMock(
-        return_value=HookResult(action='allow')))
+    agent._hook_runtime = SimpleNamespace(is_empty=False, run_stop=AsyncMock(return_value=HookResult(action='allow')))
     seen = []
 
     async def callback(point, messages):
@@ -348,9 +385,11 @@ def test_resume_waits_for_new_input_before_compaction_and_execution(tmp_path):
         yield messages
 
     agent.loop_callback, agent.step = callback, step
+
     async def run():
         async for _ in agent.run_loop(None):
             pass
+
     asyncio.run(run())
     assert seen == [['saved summary', 'old answer', 'new question']]
     assert agent._hook_runtime.run_stop.await_count == 1

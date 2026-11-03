@@ -28,6 +28,7 @@ registered, so nothing changes for anyone who has not opted in)::
 
 Modelled on hermes-agent's ``vision_analyze``.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,7 +48,8 @@ DEFAULT_PROMPT = (
     'Describe this image for another AI model that cannot see it. Start with '
     'every piece of text in the image, transcribed verbatim. Then describe the '
     'layout, the objects, their colours and any relationships that matter. Be '
-    'specific and factual; do not speculate about intent.')
+    'specific and factual; do not speculate about intent.'
+)
 
 
 def _fail(error: str) -> str:
@@ -92,8 +94,8 @@ class ImageReaderTool(ToolBase):
     async def connect(self) -> None:
         if not self._aux:
             logger.warning(
-                '[image_reader] no llm.vision.auxiliary.model configured; the '
-                'tool will report that it is unavailable')
+                '[image_reader] no llm.vision.auxiliary.model configured; the tool will report that it is unavailable'
+            )
 
     async def cleanup(self) -> None:
         self._llm = None
@@ -104,38 +106,36 @@ class ImageReaderTool(ToolBase):
                 Tool(
                     tool_name='image_reader',
                     server_name='image_reader',
-                    description=
-                    ('Look at an image file and get a text description of it, '
-                     'produced by a vision model.\n\n'
-                     'Use this ONLY when you cannot see an image yourself. '
-                     'Images the user attached to the conversation are shown '
-                     'to you directly when this model supports it — asking '
-                     'this tool about them instead would give you a lossy '
-                     'second-hand description.\n\n'
-                     'Typical use: the user attached an image but you cannot '
-                     'see it, or you need to inspect an image file in the '
-                     'workspace that was never attached.'),
+                    description=(
+                        'Look at an image file and get a text description of it, '
+                        'produced by a vision model.\n\n'
+                        'Use this ONLY when you cannot see an image yourself. '
+                        'Images the user attached to the conversation are shown '
+                        'to you directly when this model supports it — asking '
+                        'this tool about them instead would give you a lossy '
+                        'second-hand description.\n\n'
+                        'Typical use: the user attached an image but you cannot '
+                        'see it, or you need to inspect an image file in the '
+                        'workspace that was never attached.'
+                    ),
                     parameters={
                         'type': 'object',
                         'properties': {
                             'path': {
-                                'type':
-                                'string',
-                                'description':
-                                ('Workspace-relative path of the image '
-                                 '(png/jpg/jpeg/gif/webp).'),
+                                'type': 'string',
+                                'description': ('Workspace-relative path of the image (png/jpg/jpeg/gif/webp).'),
                             },
                             'question': {
-                                'type':
-                                'string',
-                                'description':
-                                ('What you need to know about the image. Omit '
-                                 'for a full general description.'),
+                                'type': 'string',
+                                'description': (
+                                    'What you need to know about the image. Omit for a full general description.'
+                                ),
                             },
                         },
                         'required': ['path'],
                         'additionalProperties': False,
-                    })
+                    },
+                )
             ]
         }
 
@@ -163,26 +163,23 @@ class ImageReaderTool(ToolBase):
             llm_cfg[f'{service}_api_key'] = aux['api_key']
         if aux.get('base_url'):
             llm_cfg[f'{service}_base_url'] = aux['base_url']
-        cfg = OmegaConf.create({
-            'llm': llm_cfg,
-            'generation_config': {
-                'stream': False
-            },
-            # So the attachment's relative path resolves against the same
-            # workspace the caller is talking about.
-            'output_dir': self.output_dir,
-        })
+        cfg = OmegaConf.create(
+            {
+                'llm': llm_cfg,
+                'generation_config': {'stream': False},
+                # So the attachment's relative path resolves against the same
+                # workspace the caller is talking about.
+                'output_dir': self.output_dir,
+            }
+        )
         self._llm = LLM.from_config(cfg)
         return self._llm
 
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         # Same dispatch shape as FileSystemTool: the tool name IS the method.
         return await getattr(self, tool_name)(**(tool_args or {}))
 
-    async def image_reader(self,
-                           path: str = '',
-                           question: Optional[str] = None) -> str:
+    async def image_reader(self, path: str = '', question: Optional[str] = None) -> str:
         """Describe the image at ``path`` using the auxiliary vision model."""
         if not self._aux:
             return _fail(
@@ -190,19 +187,18 @@ class ImageReaderTool(ToolBase):
                 '(llm.vision.auxiliary.model), so this image cannot be '
                 'described. Tell the user to configure one, enable image '
                 'understanding for the current model, or switch to a model '
-                'that supports images.')
+                'that supports images.'
+            )
         if not path:
             return _fail('path is required')
 
         from ms_agent.llm import multimodal
         from ms_agent.llm.utils import Message, collect_response
 
-        opts = multimodal.VisionOptions.from_config(
-            self.config, workspace_root=self.output_dir)
+        opts = multimodal.VisionOptions.from_config(self.config, workspace_root=self.output_dir)
         refs = multimodal.image_refs([{'type': 'image', 'path': path}], opts)
         if not refs:
-            return _fail(f'{path!r} is not a readable image type (expected '
-                         'png/jpg/jpeg/gif/webp).')
+            return _fail(f'{path!r} is not a readable image type (expected png/jpg/jpeg/gif/webp).')
         # Resolve to bytes here rather than trusting the path to exist later, so
         # a missing file is one clear error instead of a provider-side failure.
         if multimodal.load_image(refs[0], opts) is None:
@@ -217,15 +213,10 @@ class ImageReaderTool(ToolBase):
         }
         try:
             llm = self._build_llm()
-            response = collect_response(
-                llm.generate([
-                    Message(
-                        role='user', content=prompt, attachments=[attachment])
-                ]))
+            response = collect_response(llm.generate([Message(role='user', content=prompt, attachments=[attachment])]))
             description = (getattr(response, 'content', '') or '').strip()
         except Exception as exc:
-            logger.warning('[image_reader] %s failed: %s',
-                           self._aux.get('model'), exc)
+            logger.warning('[image_reader] %s failed: %s', self._aux.get('model'), exc)
             return _fail(f'{type(exc).__name__}: {exc}')
 
         if not description:
@@ -240,4 +231,5 @@ class ImageReaderTool(ToolBase):
                 'description_from_vision_model': description,
             },
             ensure_ascii=False,
-            indent=2)
+            indent=2,
+        )

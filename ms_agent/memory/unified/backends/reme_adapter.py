@@ -18,6 +18,7 @@ Configuration::
 
 Dependencies: ``pip install reme-ai``
 """
+
 from __future__ import annotations
 
 import json
@@ -100,8 +101,7 @@ class ReMeBackend(BaseMemoryBackend):
         query = self._extract_query(messages)
         if query and self._reme:
             try:
-                result = await self._reme.memory_search(
-                    query=query, max_results=5, min_score=0.1)
+                result = await self._reme.memory_search(query=query, max_results=5, min_score=0.1)
                 context = self._format_search_result(result)
                 if context:
                     messages = self._inject_context(messages, context)
@@ -133,37 +133,38 @@ class ReMeBackend(BaseMemoryBackend):
             as_msgs = self._to_agentscope_msgs(messages)
             await self._reme.summary_memory(messages=as_msgs)
             self._snapshot_dirty = True
-            logger.info(
-                '[reme_backend] summary_memory completed (pre-compress)')
+            logger.info('[reme_backend] summary_memory completed (pre-compress)')
         except Exception as e:
             logger.warning(f'[reme_backend] summary_memory failed: {e}')
 
     # ── Tools ────────────────────────────────────────────────────────
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [{
-            'tool_name':
-            'memory_search',
-            'description':
-            ('Search MEMORY.md and memory/*.md files semantically. '
-             'Use before answering questions about prior work, '
-             'decisions, dates, people, preferences, or todos.'),
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    'query': {
-                        'type': 'string',
-                        'description': 'The semantic search query.',
+        return [
+            {
+                'tool_name': 'memory_search',
+                'description': (
+                    'Search MEMORY.md and memory/*.md files semantically. '
+                    'Use before answering questions about prior work, '
+                    'decisions, dates, people, preferences, or todos.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'query': {
+                            'type': 'string',
+                            'description': 'The semantic search query.',
+                        },
+                        'max_results': {
+                            'type': 'integer',
+                            'description': 'Maximum results to return.',
+                            'default': 5,
+                        },
                     },
-                    'max_results': {
-                        'type': 'integer',
-                        'description': 'Maximum results to return.',
-                        'default': 5,
-                    },
+                    'required': ['query'],
                 },
-                'required': ['query'],
-            },
-        }]
+            }
+        ]
 
     async def handle_tool_call(
         self,
@@ -175,8 +176,7 @@ class ReMeBackend(BaseMemoryBackend):
 
         query = arguments.get('query', '')
         max_results = arguments.get('max_results', 5)
-        result = await self._reme.memory_search(
-            query=query, max_results=max_results, min_score=0.1)
+        result = await self._reme.memory_search(query=query, max_results=max_results, min_score=0.1)
         return json.dumps({'results': str(result)}, ensure_ascii=False)
 
     # ── Search ───────────────────────────────────────────────────────
@@ -188,8 +188,7 @@ class ReMeBackend(BaseMemoryBackend):
     ) -> List[MemoryEntry]:
         if not self._reme:
             return []
-        result = await self._reme.memory_search(
-            query=query, max_results=limit, min_score=0.1)
+        result = await self._reme.memory_search(query=query, max_results=limit, min_score=0.1)
         return [MemoryEntry(content=str(result), source='reme')]
 
     # ── Cache ────────────────────────────────────────────────────────
@@ -205,6 +204,7 @@ class ReMeBackend(BaseMemoryBackend):
             return self._snapshot
         try:
             from pathlib import Path
+
             md_path = Path(self._config.base_dir) / 'MEMORY.md'
             if md_path.exists():
                 self._snapshot = md_path.read_text(encoding='utf-8').strip()
@@ -240,9 +240,7 @@ class ReMeBackend(BaseMemoryBackend):
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get('role') == 'user':
                 user_copy = {**messages[i]}
-                user_copy['content'] = (
-                    f"{user_copy['content']}\n\n"
-                    f'<memory-context>\n{context}\n</memory-context>')
+                user_copy['content'] = f'{user_copy["content"]}\n\n<memory-context>\n{context}\n</memory-context>'
                 messages[i] = user_copy
                 break
         return messages
@@ -252,14 +250,14 @@ class ReMeBackend(BaseMemoryBackend):
         """Convert ms-agent dicts to agentscope Msg objects."""
         try:
             from agentscope.message import Msg, TextBlock
+
             result = []
             for m in messages:
                 content = m.get('content', '')
                 msg = Msg(
                     name=m.get('role', 'user'),
                     role=m.get('role', 'user'),
-                    content=[TextBlock(type='text', text=content)]
-                    if isinstance(content, str) else content,
+                    content=[TextBlock(type='text', text=content)] if isinstance(content, str) else content,
                 )
                 result.append(msg)
             return result

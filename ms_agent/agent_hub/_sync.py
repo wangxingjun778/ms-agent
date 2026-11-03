@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Core sync logic: backup, zip, bidirectional sync helpers."""
+
 from __future__ import annotations
 
 import base64
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ms_agent.utils.logger import get_logger
+
 from ._cache import cache_dir
 from ._defaults import get_defaults
 from ._secrets import redact_outbound
@@ -33,8 +35,7 @@ __all__ = [
 logger = get_logger()
 
 
-def zip_resources(resources: dict[str, str | bytes],
-                  wrapper: str = '') -> bytes:
+def zip_resources(resources: dict[str, str | bytes], wrapper: str = '') -> bytes:
     """Pack resources into a deterministic in-memory zip for local backup.
 
     Entries are stored with workspace-relative paths (no wrapper directory) so
@@ -76,9 +77,7 @@ def backup_local(spec, name: str) -> Path:
     return zip_path
 
 
-def sanitize_outbound(resources: dict,
-                      spec,
-                      findings: list | None = None) -> dict:
+def sanitize_outbound(resources: dict, spec, findings: list | None = None) -> dict:
     """Strip machine-local secrets from local files before they are pushed.
 
     Two layers, both applied to EVERY collected file: the framework's own
@@ -98,8 +97,7 @@ def sanitize_outbound(resources: dict,
     """
     out: dict = {}
     for rel, content in resources.items():
-        raw = content if isinstance(content,
-                                    bytes) else content.encode('utf-8')
+        raw = content if isinstance(content, bytes) else content.encode('utf-8')
         cleaned = spec.sanitize_outbound_file(rel, raw)
         cleaned, hits = redact_outbound(rel, cleaned)
         if findings is not None:
@@ -130,8 +128,7 @@ def drop_unchanged_defaults(resources: dict, framework: str, spec) -> dict:
         bare = spec.split_all_path(path)[1] if is_all else path
         default = defaults.get(bare)
         if default is not None:
-            default_val = default.encode('utf-8') if isinstance(
-                content, bytes) else default
+            default_val = default.encode('utf-8') if isinstance(content, bytes) else default
             if content == default_val:
                 continue
         out[path] = content
@@ -178,6 +175,7 @@ def _retry_on_master_missing(fn, *, retries: int = 6, delay: float = 1.0):
     every first-push path gets the same protection.
     """
     import time
+
     from modelscope_hub.errors import APIError
 
     for attempt in range(retries):
@@ -185,8 +183,7 @@ def _retry_on_master_missing(fn, *, retries: int = 6, delay: float = 1.0):
             return fn()
         except APIError as e:
             msg = (getattr(e, 'message', '') or str(e)).lower()
-            branch_missing = e.status_code == 400 and ('branch' in msg
-                                                       or 'revision' in msg)
+            branch_missing = e.status_code == 400 and ('branch' in msg or 'revision' in msg)
             if branch_missing and attempt < retries - 1:
                 # Exponential backoff (1, 2, 4, 8, 16s capped -> ~31s total) to
                 # outlast slow server-side master-branch initialization on a
@@ -196,8 +193,7 @@ def _retry_on_master_missing(fn, *, retries: int = 6, delay: float = 1.0):
             raise
 
 
-def _verify_visibility_or_abort(client: 'AgentApi', username: str,
-                                name: str, requested: str) -> None:
+def _verify_visibility_or_abort(client: 'AgentApi', username: str, name: str, requested: str) -> None:
     """Read back a freshly created repo's visibility; abort on a leak.
 
     The visibility flag is set at creation time (not subject to the file-tree
@@ -214,23 +210,21 @@ def _verify_visibility_or_abort(client: 'AgentApi', username: str,
     if requested != 'private':
         return
     from modelscope_hub.agent import agent_visibility_label
+
     try:
         info = client.repo_info(username, name)
     except Exception as exc:
-        logger.warning(
-            'Could not verify visibility for %s/%s (%s); proceeding.',
-            username, name, exc)
+        logger.warning('Could not verify visibility for %s/%s (%s); proceeding.', username, name, exc)
         return
     if not info:
-        logger.warning(
-            'Could not read back visibility for %s/%s; proceeding.', username,
-            name)
+        logger.warning('Could not read back visibility for %s/%s; proceeding.', username, name)
         return
     if agent_visibility_label(info) == 'public':
         raise RuntimeError(
             f'requested private but {username}/{name} was created PUBLIC on '
             f'the server; aborting before upload to avoid leaking content. '
-            f'Delete the repo and retry, or check server-side permissions.')
+            f'Delete the repo and retry, or check server-side permissions.'
+        )
 
 
 def push_resources(
@@ -266,15 +260,17 @@ def push_resources(
     created = False
     try:
         if not client.check_repo(username, name):
-            client.create_repo(
-                username, name, framework=framework, visibility=visibility)
+            client.create_repo(username, name, framework=framework, visibility=visibility)
             created = True
             logger.info(
-                'Created empty agent repo %s/%s (framework=%s, requested '
-                'visibility=%s).', username, name, framework, visibility)
+                'Created empty agent repo %s/%s (framework=%s, requested visibility=%s).',
+                username,
+                name,
+                framework,
+                visibility,
+            )
     except Exception as exc:
-        logger.warning('create_repo check failed (%s), proceeding anyway.',
-                       exc)
+        logger.warning('create_repo check failed (%s), proceeding anyway.', exc)
 
     # Before pushing any content, confirm the server actually honored a
     # private request -- a mismatch here used to be reported as a successful
@@ -288,10 +284,7 @@ def push_resources(
     # empty commit with ``commit failed: {"message":""}``.
     remote_sha: dict[str, str] = {}
     try:
-        remote_sha = {
-            f.path: f.sha256
-            for f in client.list_repo_files_detail(username, name)
-        }
+        remote_sha = {f.path: f.sha256 for f in client.list_repo_files_detail(username, name)}
     except Exception as exc:
         logger.debug(
             'Cannot list remote detail for idempotent skip (%s); uploading all.',
@@ -312,23 +305,23 @@ def push_resources(
             lfs_files.append((rel, content))
         else:
             b64 = base64.b64encode(content).decode('ascii')
-            normal_actions.append({
-                'action': 'create',
-                'path': rel,
-                'type': 'normal',
-                'size': size,
-                'sha256': '',
-                'content': b64,
-                'encoding': 'base64',
-            })
+            normal_actions.append(
+                {
+                    'action': 'create',
+                    'path': rel,
+                    'type': 'normal',
+                    'size': size,
+                    'sha256': '',
+                    'content': b64,
+                    'encoding': 'base64',
+                }
+            )
 
     # Commit normal files in one request.
     if normal_actions:
-        _retry_on_master_missing(lambda: client.commit_files(
-            username,
-            name,
-            normal_actions,
-            commit_message='sync: upload normal files'))
+        _retry_on_master_missing(
+            lambda: client.commit_files(username, name, normal_actions, commit_message='sync: upload normal files')
+        )
         for a in normal_actions:
             logger.info('  CREATE: %s (%d B)', a['path'], a['size'])
 
@@ -338,32 +331,32 @@ def push_resources(
     for rel, content in lfs_files:
         _retry_on_master_missing(
             lambda rel=rel, content=content: client.upload_lfs_file(
-                username,
-                name,
-                rel,
-                content,
-                action='create',
-                commit_message=f'sync: upload LFS {rel}'))
+                username, name, rel, content, action='create', commit_message=f'sync: upload LFS {rel}'
+            )
+        )
         logger.info('  CREATE (LFS): %s (%d B)', rel, len(content))
 
-    logger.info('Pushed %d file(s) (%d normal, %d LFS, %d unchanged).',
-                len(normal_actions) + len(lfs_files), len(normal_actions),
-                len(lfs_files), skipped)
+    logger.info(
+        'Pushed %d file(s) (%d normal, %d LFS, %d unchanged).',
+        len(normal_actions) + len(lfs_files),
+        len(normal_actions),
+        len(lfs_files),
+        skipped,
+    )
 
     # Mirror semantics: prune remote files that fall within this upload's
     # scope but are no longer present locally.
     if prune_patterns:
         import fnmatch
+
         try:
             remote_paths = set(client.list_repo_files(username, name))
         except Exception as exc:
-            logger.warning('Cannot list remote for prune (%s); skip prune.',
-                           exc)
+            logger.warning('Cannot list remote for prune (%s); skip prune.', exc)
             remote_paths = set()
         local_paths = set(resources.keys())
         stale = [
-            rp for rp in sorted(remote_paths - local_paths) if any(
-                fnmatch.fnmatch(rp, pat) for pat in prune_patterns)
+            rp for rp in sorted(remote_paths - local_paths) if any(fnmatch.fnmatch(rp, pat) for pat in prune_patterns)
         ]
         for fpath in stale:
             logger.info('  DELETE (prune): %s', fpath)
@@ -391,8 +384,7 @@ def push_incremental(
     from modelscope_hub.agent import is_lfs_file
 
     normal_actions: list[dict] = []
-    lfs_items: list[tuple[str, bytes,
-                          str]] = []  # (path, content, action_type)
+    lfs_items: list[tuple[str, bytes, str]] = []  # (path, content, action_type)
     delete_paths: list[str] = []
 
     for fpath, content in changed.items():
@@ -412,15 +404,17 @@ def push_incremental(
                 lfs_items.append((fpath, content, action_type))
             else:
                 b64 = base64.b64encode(content).decode('ascii')
-                normal_actions.append({
-                    'action': action_type,
-                    'path': fpath,
-                    'type': 'normal',
-                    'size': size,
-                    'sha256': '',
-                    'content': b64,
-                    'encoding': 'base64',
-                })
+                normal_actions.append(
+                    {
+                        'action': action_type,
+                        'path': fpath,
+                        'type': 'normal',
+                        'size': size,
+                        'sha256': '',
+                        'content': b64,
+                        'encoding': 'base64',
+                    }
+                )
 
     # Commit normal file actions in one batch.  The commit hits the same
     # fresh-repo master race as push_resources (create_repo is async, so master
@@ -428,21 +422,18 @@ def push_incremental(
     if normal_actions:
         for a in normal_actions:
             logger.info('  %s: %s', a['action'].upper(), a['path'])
-        _retry_on_master_missing(lambda: client.commit_files(
-            username, name, normal_actions, commit_message='watch sync'))
+        _retry_on_master_missing(
+            lambda: client.commit_files(username, name, normal_actions, commit_message='watch sync')
+        )
 
     # Upload LFS files one-by-one (their commit races master too).
     for fpath, content, action_type in lfs_items:
         logger.info('  %s (LFS): %s', action_type.upper(), fpath)
         _retry_on_master_missing(
-            lambda fpath=fpath, content=content, action_type=action_type:
-            client.upload_lfs_file(
-                username,
-                name,
-                fpath,
-                content,
-                action=action_type,
-                commit_message='watch sync'))
+            lambda fpath=fpath, content=content, action_type=action_type: client.upload_lfs_file(
+                username, name, fpath, content, action=action_type, commit_message='watch sync'
+            )
+        )
 
     # Delete files via the DELETE endpoint.
     for fpath in delete_paths:
@@ -482,19 +473,16 @@ def pull_incremental(
         # Fast path: identical raw sha means the local file already matches the
         # remote (only possible when the inbound hook does not rewrite it), so
         # skip the download entirely.
-        if local_content is not None and sha256_content(
-                local_content) == rfile.sha256:
+        if local_content is not None and sha256_content(local_content) == rfile.sha256:
             continue
-        content = client.download_repo_file(
-            username, name, rfile.path, binary=True)
+        content = client.download_repo_file(username, name, rfile.path, binary=True)
         # Every inbound write path funnels through the sanitize hook so secrets
         # (e.g. in QwenPaw agent.json) never reach disk regardless of sync mode.
         content = spec.sanitize_inbound_file(rfile.path, content)
         # Re-compare against the sanitized bytes: if the hook rewrote the file,
         # its raw sha differs from remote but may equal what is already on disk,
         # in which case there is nothing to write.
-        if local_content is not None and sha256_content(
-                local_content) == sha256_content(content):
+        if local_content is not None and sha256_content(local_content) == sha256_content(content):
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
@@ -536,6 +524,7 @@ def push_mirror(
     sha256 so unchanged files are skipped.
     """
     import fnmatch
+
     from modelscope_hub.errors import APIError
 
     if not resources:
@@ -555,16 +544,10 @@ def push_mirror(
         remote_files = []
 
     if not remote_files:
-        logger.info('Remote empty/new; doing full push for %s/%s.', username,
-                    name)
+        logger.info('Remote empty/new; doing full push for %s/%s.', username, name)
         push_resources(
-            client,
-            username,
-            name,
-            framework,
-            resources,
-            prune_patterns=prune_patterns,
-            visibility=visibility)
+            client, username, name, framework, resources, prune_patterns=prune_patterns, visibility=visibility
+        )
         return
 
     _verify_visibility_or_abort(client, username, name, visibility)
@@ -577,8 +560,7 @@ def push_mirror(
     changed: dict[str, bytes | None] = {}
     # New or content-changed files -> create/update.
     for rel, content in resources.items():
-        if rel not in remote_sha_map or sha256_content(
-                content) != remote_sha_map[rel]:
+        if rel not in remote_sha_map or sha256_content(content) != remote_sha_map[rel]:
             changed[rel] = content
     # Mirror delete: remote files in scope but absent locally -> delete.
     if prune_patterns:
@@ -587,13 +569,10 @@ def push_mirror(
                 changed[rp] = None
 
     if not changed:
-        logger.info('Remote already up to date for %s/%s (no changes).',
-                    username, name)
+        logger.info('Remote already up to date for %s/%s (no changes).', username, name)
         return
 
     n_upsert = sum(1 for v in changed.values() if v is not None)
     n_delete = sum(1 for v in changed.values() if v is None)
-    logger.info('Incremental push: %d upsert, %d delete for %s/%s.', n_upsert,
-                n_delete, username, name)
-    push_incremental(client, username, name, changed, remote_paths,
-                     remote_lfs_paths)
+    logger.info('Incremental push: %d upsert, %d delete for %s/%s.', n_upsert, n_delete, username, name)
+    push_incremental(client, username, name, changed, remote_paths, remote_lfs_paths)

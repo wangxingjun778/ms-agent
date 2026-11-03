@@ -4,6 +4,7 @@ Delegates ALL tool schema and dispatch logic to the orchestrator (which in
 turn delegates to the active MemoryBackend).  This ensures the tool
 surface automatically adapts to whichever backend is configured.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -30,8 +31,7 @@ class MemoryTool(ToolBase):
     via ``orchestrator.get_tool_schemas()`` / ``orchestrator.handle_tool_call()``.
     """
 
-    def __init__(self, config: Any,
-                 orchestrator: 'MemoryOrchestrator') -> None:
+    def __init__(self, config: Any, orchestrator: 'MemoryOrchestrator') -> None:
         super().__init__(config)
         self._orch = orchestrator
 
@@ -48,7 +48,8 @@ class MemoryTool(ToolBase):
                     server_name=SERVER_NAME,
                     description=s.get('description', ''),
                     parameters=s.get('parameters', {}),
-                ))
+                )
+            )
         return {SERVER_NAME: tools} if tools else {}
 
     async def call_tool(

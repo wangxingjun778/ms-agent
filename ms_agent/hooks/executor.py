@@ -7,13 +7,14 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ms_agent.hooks.events import HookResult
-from ms_agent.hooks.executors.command import (CommandHookExecutor,
-                                              HookExecutionContext)
+from ms_agent.hooks.executors.command import CommandHookExecutor, HookExecutionContext
 from ms_agent.hooks.registry import HookHandlerConfig
 from ms_agent.hooks.response_adapter import ResponseAdapter
 
-OnHandlerComplete = Callable[[HookHandlerConfig, HookResult, float],
-                             Awaitable[None], ]
+OnHandlerComplete = Callable[
+    [HookHandlerConfig, HookResult, float],
+    Awaitable[None],
+]
 
 
 class HookExecutor:
@@ -94,8 +95,7 @@ class HookExecutor:
 
             if blockable and result.action in ('deny', 'block'):
                 return HookResult(
-                    action=result.action
-                    if result.action == 'block' else 'deny',
+                    action=result.action if result.action == 'block' else 'deny',
                     reason=result.reason,
                     additional_context='\n'.join(merged_context_parts),
                     updated_args=result.updated_args or final_updated_args,

@@ -16,26 +16,22 @@ _manager = get_default_manager()
 
 _CINEMA_INPUT_PROPERTIES: dict[str, Any] = {
     'query': {
-        'type':
-        'string',
-        'description':
-        ('Description of the short video to generate. May include a local '
-         'text file path for reference material. '
-         'e.g. "Create a short video about GDP economics, about 3 minutes"'),
+        'type': 'string',
+        'description': (
+            'Description of the short video to generate. May include a local '
+            'text file path for reference material. '
+            'e.g. "Create a short video about GDP economics, about 3 minutes"'
+        ),
     },
     'config_path': {
-        'type':
-        'string',
-        'description':
-        ('Path to the singularity_cinema config directory. '
-         'Defaults to the bundled projects/singularity_cinema.'),
+        'type': 'string',
+        'description': (
+            'Path to the singularity_cinema config directory. Defaults to the bundled projects/singularity_cinema.'
+        ),
     },
     'output_dir': {
-        'type':
-        'string',
-        'description':
-        ('Directory for video outputs (defaults to output_video/ '
-         'in current directory if omitted)'),
+        'type': 'string',
+        'description': ('Directory for video outputs (defaults to output_video/ in current directory if omitted)'),
     },
     'llm_model': {
         'type': 'string',
@@ -71,13 +67,15 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     summary=(
         'Submit a short video generation task that runs in the background. '
         'Returns a task_id immediately -- use check_video_generation_progress '
-        'and get_video_generation_result to poll results.'),
+        'and get_video_generation_result to poll results.'
+    ),
     description=(
         'Launches the SingularityCinema pipeline as a background subprocess. '
         'The pipeline generates short videos from natural language '
         'descriptions through a multi-step workflow: script generation, '
         'segmentation, audio synthesis, image generation, animation '
-        'rendering, and final video composition. Output is an MP4 file.'),
+        'rendering, and final video composition. Output is an MP4 file.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _CINEMA_INPUT_PROPERTIES,
@@ -86,15 +84,9 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     output_schema={
         'type': 'object',
         'properties': {
-            'task_id': {
-                'type': 'string'
-            },
-            'status': {
-                'type': 'string'
-            },
-            'output_dir': {
-                'type': 'string'
-            },
+            'task_id': {'type': 'string'},
+            'status': {'type': 'string'},
+            'output_dir': {'type': 'string'},
         },
     },
     tags=['video', 'generation', 'cinema', 'multimedia', 'async', 'submit'],
@@ -106,20 +98,20 @@ CHECK_PROGRESS_DESCRIPTOR = CapabilityDescriptor(
     name='check_video_generation_progress',
     version='0.1.0',
     granularity='tool',
-    summary=('Check the progress of a running video generation task. '
-             'Returns status and pipeline step completion info.'),
+    summary=(
+        'Check the progress of a running video generation task. Returns status and pipeline step completion info.'
+    ),
     description=(
         'Polls the status of a video generation task previously submitted '
         'via submit_video_generation_task. Inspects the output directory '
-        'to report which pipeline steps have completed.'),
+        'to report which pipeline steps have completed.'
+    ),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
-                'type':
-                'string',
-                'description':
-                'The task_id returned by submit_video_generation_task',
+                'type': 'string',
+                'description': 'The task_id returned by submit_video_generation_task',
             },
         },
         'required': ['task_id'],
@@ -132,19 +124,20 @@ GET_RESULT_DESCRIPTOR = CapabilityDescriptor(
     name='get_video_generation_result',
     version='0.1.0',
     granularity='tool',
-    summary=('Retrieve the result from a completed video generation task. '
-             'Returns the video file path and pipeline artifacts.'),
+    summary=(
+        'Retrieve the result from a completed video generation task. '
+        'Returns the video file path and pipeline artifacts.'
+    ),
     description=(
         'Returns the path to the final MP4 video and information about '
-        'intermediate artifacts (script, segments, images, audio).'),
+        'intermediate artifacts (script, segments, images, audio).'
+    ),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
-                'type':
-                'string',
-                'description':
-                'The task_id returned by submit_video_generation_task',
+                'type': 'string',
+                'description': 'The task_id returned by submit_video_generation_task',
             },
         },
         'required': ['task_id'],
@@ -157,14 +150,16 @@ SYNC_DESCRIPTOR = CapabilityDescriptor(
     name='video_generation',
     version='0.1.0',
     granularity='project',
-    summary=
-    ('Generate a short video synchronously (BLOCKS until complete, ~20 min). '
-     'Prefer submit_video_generation_task for non-blocking usage.'),
+    summary=(
+        'Generate a short video synchronously (BLOCKS until complete, ~20 min). '
+        'Prefer submit_video_generation_task for non-blocking usage.'
+    ),
     description=(
         'Synchronous version that blocks until video generation is complete. '
         'WARNING: This typically takes ~20 minutes. Use '
         'submit_video_generation_task + check_video_generation_progress + '
-        'get_video_generation_result for non-blocking async operation.'),
+        'get_video_generation_result for non-blocking async operation.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _CINEMA_INPUT_PROPERTIES,
@@ -178,14 +173,12 @@ SYNC_DESCRIPTOR = CapabilityDescriptor(
 
 def _find_default_config() -> str | None:
     candidates = [
-        os.path.join(
-            os.path.dirname(__file__), '..', '..', '..', 'projects',
-            'singularity_cinema'),
+        os.path.join(os.path.dirname(__file__), '..', '..', '..', 'projects', 'singularity_cinema'),
     ]
     try:
         from importlib import resources as importlib_resources
-        trav = importlib_resources.files('ms_agent').joinpath(
-            'projects', 'singularity_cinema')
+
+        trav = importlib_resources.files('ms_agent').joinpath('projects', 'singularity_cinema')
         candidates.insert(0, str(trav))
     except Exception:
         pass
@@ -196,10 +189,7 @@ def _find_default_config() -> str | None:
     return None
 
 
-def _build_cmd(config_path: str,
-               query: str,
-               output_dir: str,
-               extra_args: dict[str, str] | None = None) -> list[str]:
+def _build_cmd(config_path: str, query: str, output_dir: str, extra_args: dict[str, str] | None = None) -> list[str]:
     cmd = [
         sys.executable,
         '-m',
@@ -276,12 +266,8 @@ def _check_pipeline_steps(output_dir: str) -> dict[str, Any]:
     if os.path.isfile(final_video):
         steps.append('compose_video')
 
-    images_count = (
-        len(list(Path(images_dir).glob('*.png')))
-        if os.path.isdir(images_dir) else 0)
-    audio_count = (
-        len(list(Path(audio_dir).glob('*.mp3')))
-        if os.path.isdir(audio_dir) else 0)
+    images_count = len(list(Path(images_dir).glob('*.png'))) if os.path.isdir(images_dir) else 0
+    audio_count = len(list(Path(audio_dir).glob('*.mp3'))) if os.path.isdir(audio_dir) else 0
 
     return {
         'completed_steps': steps,
@@ -356,8 +342,7 @@ async def _background_video_gen(task: AsyncTask) -> dict[str, Any]:
         raise RuntimeError(stderr_tail)
 
 
-async def _handle_submit(args: dict[str, Any],
-                         **kwargs: Any) -> dict[str, Any]:
+async def _handle_submit(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     query: str = args['query']
     config_path = args.get('config_path', '') or _find_default_config() or ''
     output_dir = args.get('output_dir', '')
@@ -383,26 +368,22 @@ async def _handle_submit(args: dict[str, Any],
     )
 
     return {
-        'task_id':
-        task.task_id,
-        'status':
-        'running',
-        'output_dir':
-        output_dir,
-        'message':
-        (f'Video generation task {task.task_id} started. '
-         f'Use check_video_generation_progress(task_id="{task.task_id}") '
-         f'to poll status.'),
+        'task_id': task.task_id,
+        'status': 'running',
+        'output_dir': output_dir,
+        'message': (
+            f'Video generation task {task.task_id} started. '
+            f'Use check_video_generation_progress(task_id="{task.task_id}") '
+            f'to poll status.'
+        ),
     }
 
 
-async def _handle_check_progress(args: dict[str, Any],
-                                 **kwargs: Any) -> dict[str, Any]:
+async def _handle_check_progress(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     return _manager.check(args['task_id'], progress_fn=_progress_fn)
 
 
-async def _handle_get_result(args: dict[str, Any],
-                             **kwargs: Any) -> dict[str, Any]:
+async def _handle_get_result(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     task_id: str = args['task_id']
     task = _manager.get(task_id)
 
@@ -412,14 +393,13 @@ async def _handle_get_result(args: dict[str, Any],
     if task.status == 'running':
         pipeline = _check_pipeline_steps(task.metadata.get('output_dir', ''))
         return {
-            'task_id':
-            task_id,
-            'status':
-            'running',
-            'message':
-            ('Video generation is still in progress. '
-             f'Steps completed: {len(pipeline["completed_steps"])}/9 '
-             f'({", ".join(pipeline["completed_steps"]) or "starting..."}).'),
+            'task_id': task_id,
+            'status': 'running',
+            'message': (
+                'Video generation is still in progress. '
+                f'Steps completed: {len(pipeline["completed_steps"])}/9 '
+                f'({", ".join(pipeline["completed_steps"]) or "starting..."}).'
+            ),
         }
 
     if task.status == 'failed':
@@ -438,8 +418,7 @@ async def _handle_get_result(args: dict[str, Any],
 
     if os.path.isfile(final_video):
         result['video_path'] = final_video
-        result['video_size_mb'] = round(
-            os.path.getsize(final_video) / (1024 * 1024), 2)
+        result['video_size_mb'] = round(os.path.getsize(final_video) / (1024 * 1024), 2)
     else:
         result['video_path'] = ''
         result['warning'] = 'final_video.mp4 not found in output directory'
@@ -462,10 +441,7 @@ async def _handle_sync(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     extra_args = _extract_extra_args(args)
 
     if not config_path or not os.path.isdir(config_path):
-        return {
-            'status': 'failed',
-            'error': f'Config not found: {config_path}'
-        }
+        return {'status': 'failed', 'error': f'Config not found: {config_path}'}
 
     if not output_dir:
         ts = time.strftime('%Y%m%d_%H%M%S')
@@ -487,8 +463,7 @@ async def _handle_sync(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
             return {
                 'status': 'completed',
                 'output_dir': output_dir,
-                'video_path':
-                final_video if os.path.isfile(final_video) else '',
+                'video_path': final_video if os.path.isfile(final_video) else '',
             }
         else:
             return {

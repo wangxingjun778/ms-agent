@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Tavily Extract API as ContentFetcher (replaces Jina for fetch_page / URL fetch)."""
+
 import os
 import time
 from typing import Any, Dict, Optional, Tuple
@@ -43,9 +44,7 @@ class TavilyExtractFetcher:
         self._include_favicon = include_favicon
         self._include_usage = include_usage
 
-    def fetch(self,
-              url: str,
-              query: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    def fetch(self, url: str, query: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Extract one URL. Optional ``query`` enables chunk reranking (more relevant raw_content).
         """
@@ -68,11 +67,13 @@ class TavilyExtractFetcher:
 
         try:
             from ms_agent.tools.search.tavily.search import KEYLESS_HEADER
+
             data = post_json(
                 TAVILY_EXTRACT_URL,
                 body,
                 timeout=self._timeout + 30.0,
-                headers=(dict(KEYLESS_HEADER) if not self._api_key else {}))
+                headers=(dict(KEYLESS_HEADER) if not self._api_key else {}),
+            )
         except Exception as e:
             logger.warning(f'Tavily extract failed for {url[:80]}: {e}')
             return '', {

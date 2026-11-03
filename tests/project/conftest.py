@@ -5,6 +5,7 @@ SessionManager (and the runtime SessionLog) place sessions under the global
 ``~/.ms_agent/projects/<...>`` root (paths.py). Redirect ``MS_AGENT_HOME`` to a
 per-test temp dir so tests never read or pollute the real user home.
 """
+
 import pytest
 
 

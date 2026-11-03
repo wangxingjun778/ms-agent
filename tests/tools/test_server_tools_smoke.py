@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -6,16 +7,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import json
+from modelscope.utils.test_utils import test_level
+
 from ms_agent.tools.search.websearch_tool import WebSearchTool
 from ms_agent.tools.todolist_tool import TodoListTool
 from projects.deep_research.v2.tools.evidence_tool import EvidenceTool
 from projects.deep_research.v2.tools.report_tool import ReportTool
 
-from modelscope.utils.test_utils import test_level
-
-_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', '..'))
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if _REPO_ROOT not in sys.path:
     # Allow running this test file directly: `python tests/tools/test_server_tools_smoke.py`
     # without requiring `tests/` to be a package.
@@ -27,12 +26,10 @@ def _make_config(output_dir: str, tools: dict) -> SimpleNamespace:
     Minimal config object compatible with ToolBase usage in this repo.
     Keep it SimpleNamespace-based so it's easy to tweak scenarios.
     """
-    return SimpleNamespace(
-        output_dir=output_dir, tools=SimpleNamespace(**tools))
+    return SimpleNamespace(output_dir=output_dir, tools=SimpleNamespace(**tools))
 
 
 class _FakeSearchResult:
-
     def __init__(self, results):
         self._results = results
 
@@ -82,27 +79,29 @@ class _FakeSearchEngine:
     def search(self, search_request):
         # Deterministic single-result output; easy to extend in new scenarios.
         q = (search_request or {}).get('query', '')
-        return _FakeSearchResult([{
-            'url': 'https://example.com/a',
-            'title': f'fake result for {q}',
-            'summary': 'fake summary',
-            'published_date': '2026-01-23',
-            # arxiv-specific keys (optional; keep empty to exercise fallback path)
-            'arxiv_id': '',
-            'id': '',
-            'authors': [],
-            'categories': [],
-        }])
+        return _FakeSearchResult(
+            [
+                {
+                    'url': 'https://example.com/a',
+                    'title': f'fake result for {q}',
+                    'summary': 'fake summary',
+                    'published_date': '2026-01-23',
+                    # arxiv-specific keys (optional; keep empty to exercise fallback path)
+                    'arxiv_id': '',
+                    'id': '',
+                    'authors': [],
+                    'categories': [],
+                }
+            ]
+        )
 
 
 class _FakeContentFetcher:
-
     def fetch(self, url: str):
         return (f'content for {url}', {'fetcher': 'fake'})
 
 
 class TestWebSearchToolServer(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_web_search_tool_smoke_no_network(self):
 
@@ -111,8 +110,7 @@ class TestWebSearchToolServer(unittest.TestCase):
                 cfg = _make_config(
                     td,
                     tools={
-                        'web_search':
-                        SimpleNamespace(
+                        'web_search': SimpleNamespace(
                             engines=['exa', 'serpapi', 'arxiv'],
                             exa_api_key='fake',
                             serpapi_api_key='fake',
@@ -136,37 +134,32 @@ class TestWebSearchToolServer(unittest.TestCase):
                     }[engine_type]
 
                     class _E(_FakeSearchEngine):
-
                         @classmethod
-                        def get_tool_definition(cls,
-                                                server_name: str = 'web_search'
-                                                ):
-                            base = dict(super().get_tool_definition(
-                                server_name=server_name))
+                        def get_tool_definition(cls, server_name: str = 'web_search'):
+                            base = dict(super().get_tool_definition(server_name=server_name))
                             base['tool_name'] = tool_name
-                            base[
-                                'description'] = f'Fake {engine_type} search (no network).'
+                            base['description'] = f'Fake {engine_type} search (no network).'
                             return base
 
                         def search(self, search_request):
                             q = (search_request or {}).get('query', '')
-                            return _FakeSearchResult([{
-                                'url':
-                                f'https://example.com/{engine_type}',
-                                'title':
-                                f'fake {engine_type} result for {q}',
-                                'summary':
-                                f'fake {engine_type} summary',
-                                'published_date':
-                                '2026-01-23',
-                            }])
+                            return _FakeSearchResult(
+                                [
+                                    {
+                                        'url': f'https://example.com/{engine_type}',
+                                        'title': f'fake {engine_type} result for {q}',
+                                        'summary': f'fake {engine_type} summary',
+                                        'published_date': '2026-01-23',
+                                    }
+                                ]
+                            )
 
                     return _E
 
-                with patch.object(wst, 'get_search_engine_class',
-                                  side_effect=_make_engine_cls), \
-                        patch.object(wst, 'get_content_fetcher',
-                                     return_value=_FakeContentFetcher()):
+                with (
+                    patch.object(wst, 'get_search_engine_class', side_effect=_make_engine_cls),
+                    patch.object(wst, 'get_content_fetcher', return_value=_FakeContentFetcher()),
+                ):
                     tool = WebSearchTool(cfg)
                     await tool.connect()
 
@@ -179,10 +172,8 @@ class TestWebSearchToolServer(unittest.TestCase):
                     self.assertIn('fetch_page', names)
 
                     # Ensure dynamic param injection works.
-                    arxiv_tool = next(t for t in tools['web_search']
-                                      if t['tool_name'] == 'arxiv_search')
-                    props = arxiv_tool.get('parameters',
-                                           {}).get('properties', {})
+                    arxiv_tool = next(t for t in tools['web_search'] if t['tool_name'] == 'arxiv_search')
+                    props = arxiv_tool.get('parameters', {}).get('properties', {})
                     self.assertIn('fetch_content', props)
 
                     # Engine tool routes
@@ -256,15 +247,12 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
     """
 
     def _network_enabled(self) -> bool:
-        return str(os.getenv('MS_AGENT_ENABLE_NETWORK_TESTS',
-                             '')).strip() in ('1', 'true', 'True')
+        return str(os.getenv('MS_AGENT_ENABLE_NETWORK_TESTS', '')).strip() in ('1', 'true', 'True')
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_arxiv_search_real(self):
         if not self._network_enabled():
-            self.skipTest(
-                'Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.'
-            )
+            self.skipTest('Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.')
 
         async def main():
             with tempfile.TemporaryDirectory() as td:
@@ -272,11 +260,9 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
                     td,
                     tools={
                         # Use arxiv only: no API key required, but still needs network.
-                        'web_search':
-                        SimpleNamespace(
+                        'web_search': SimpleNamespace(
                             engines=['arxiv'],
-                            fetch_content=
-                            True,  # avoid extra page fetching calls
+                            fetch_content=True,  # avoid extra page fetching calls
                             enable_chunking=False,
                             max_results=1,
                         )
@@ -311,9 +297,7 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_exa_search_real(self):
         if not self._network_enabled():
-            self.skipTest(
-                'Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.'
-            )
+            self.skipTest('Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.')
         if not os.getenv('EXA_API_KEY'):
             self.skipTest('EXA_API_KEY is required for Exa real-network test.')
 
@@ -322,8 +306,7 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
                 cfg = _make_config(
                     td,
                     tools={
-                        'web_search':
-                        SimpleNamespace(
+                        'web_search': SimpleNamespace(
                             engines=['exa'],
                             exa_api_key=os.getenv('EXA_API_KEY'),
                             fetch_content=False,  # keep it cheap + less flaky
@@ -360,24 +343,19 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_serpapi_search_real(self):
         if not self._network_enabled():
-            self.skipTest(
-                'Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.'
-            )
+            self.skipTest('Set MS_AGENT_ENABLE_NETWORK_TESTS=1 to run real-network tests.')
         if not os.getenv('SERPAPI_API_KEY'):
-            self.skipTest(
-                'SERPAPI_API_KEY is required for SerpApi real-network test.')
+            self.skipTest('SERPAPI_API_KEY is required for SerpApi real-network test.')
 
         async def main():
             with tempfile.TemporaryDirectory() as td:
                 cfg = _make_config(
                     td,
                     tools={
-                        'web_search':
-                        SimpleNamespace(
+                        'web_search': SimpleNamespace(
                             engines=['serpapi'],
                             serpapi_api_key=os.getenv('SERPAPI_API_KEY'),
-                            serpapi_provider=os.getenv('SERPAPI_PROVIDER',
-                                                       'google'),
+                            serpapi_provider=os.getenv('SERPAPI_PROVIDER', 'google'),
                             fetch_content=True,
                             enable_chunking=False,
                             max_results=1,
@@ -411,7 +389,6 @@ class TestWebSearchToolServerNetwork(unittest.TestCase):
 
 
 class TestTodoListToolServer(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_todo_list_tool_write_read_render(self):
 
@@ -420,8 +397,7 @@ class TestTodoListToolServer(unittest.TestCase):
                 cfg = _make_config(
                     td,
                     tools={
-                        'todo_list':
-                        SimpleNamespace(
+                        'todo_list': SimpleNamespace(
                             plan_filename='plan.json',
                             plan_md_filename='plan.md',
                             auto_render_md=True,
@@ -434,18 +410,19 @@ class TestTodoListToolServer(unittest.TestCase):
                 tools = await tool.get_tools()
                 self.assertIn('todo_list', tools)
                 names = {t['tool_name'] for t in tools['todo_list']}
-                self.assertEqual(names,
-                                 {'todo_write', 'todo_read', 'todo_render_md'})
+                self.assertEqual(names, {'todo_write', 'todo_read', 'todo_render_md'})
 
                 # Write + merge update
                 res1 = await tool.todo_write(
                     merge=True,
-                    todos=[{
-                        'id': 't1',
-                        'content': 'do A',
-                        'status': 'pending',
-                        'priority': 'high',
-                    }],
+                    todos=[
+                        {
+                            'id': 't1',
+                            'content': 'do A',
+                            'status': 'pending',
+                            'priority': 'high',
+                        }
+                    ],
                 )
                 data1 = json.loads(res1)
                 self.assertEqual(data1['status'], 'ok')
@@ -453,12 +430,14 @@ class TestTodoListToolServer(unittest.TestCase):
 
                 res2 = await tool.todo_write(
                     merge=True,
-                    todos=[{
-                        'id': 't1',
-                        'content': 'do A',
-                        'status': 'completed',
-                        'priority': 'high',
-                    }],
+                    todos=[
+                        {
+                            'id': 't1',
+                            'content': 'do A',
+                            'status': 'completed',
+                            'priority': 'high',
+                        }
+                    ],
                 )
                 data2 = json.loads(res2)
                 self.assertEqual(data2['todos'][0]['status'], 'completed')
@@ -480,14 +459,12 @@ class TestTodoListToolServer(unittest.TestCase):
 
 
 class TestEvidenceToolServer(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_evidence_tool_write_get_list_search_delete(self):
 
         async def main():
             with tempfile.TemporaryDirectory() as td:
-                cfg = _make_config(
-                    td, tools={'evidence_store': SimpleNamespace()})
+                cfg = _make_config(td, tools={'evidence_store': SimpleNamespace()})
                 tool = EvidenceTool(cfg)
                 await tool.connect()
 
@@ -497,11 +474,13 @@ class TestEvidenceToolServer(unittest.TestCase):
                 res = await tool.write_note(
                     title='Finding A',
                     content='Claim A. Support A',
-                    sources=[{
-                        'url': 'https://example.com/src',
-                        'published_at': '2026-01-01',
-                        'source_tier': 'primary',
-                    }],
+                    sources=[
+                        {
+                            'url': 'https://example.com/src',
+                            'published_at': '2026-01-01',
+                            'source_tier': 'primary',
+                        }
+                    ],
                     summary='summary A',
                     task_id='task_1',
                     tags=['tag1', 'tag2'],
@@ -515,22 +494,19 @@ class TestEvidenceToolServer(unittest.TestCase):
                 self.assertEqual(idx['status'], 'ok')
                 self.assertEqual(idx['total_notes'], 1)
 
-                got = json.loads(await tool.get_note(
-                    note_id=note_id, parse_note=True))
+                got = json.loads(await tool.get_note(note_id=note_id, parse_note=True))
                 self.assertEqual(got['status'], 'ok')
                 self.assertEqual(got['note']['note_id'], note_id)
                 self.assertEqual(got['note']['content'], 'Claim A. Support A')
 
-                listed = json.loads(await tool.list_notes(
-                    task_id='task_1', tags=['tag1']))
+                listed = json.loads(await tool.list_notes(task_id='task_1', tags=['tag1']))
                 self.assertEqual(listed['status'], 'ok')
                 self.assertEqual(listed['count'], 1)
 
                 listed2 = json.loads(await tool.list_notes(min_quality=90))
                 self.assertEqual(listed2['count'], 0)
 
-                searched = json.loads(await
-                                      tool.search_notes(keyword='Finding'))
+                searched = json.loads(await tool.search_notes(keyword='Finding'))
                 self.assertEqual(searched['status'], 'ok')
                 self.assertEqual(searched['count'], 1)
 
@@ -552,19 +528,23 @@ class TestEvidenceToolServer(unittest.TestCase):
                 await tool.connect()
 
                 # Write a note first; conclusion can reference it.
-                note_res = json.loads(await tool.write_note(
-                    title='Finding A',
-                    content='Claim A. Support A',
-                    sources=[{
-                        'url': 'https://example.com/src',
-                        'published_at': '2026-01-01',
-                        'source_tier': 'primary',
-                    }],
-                    summary='summary A',
-                    task_id='task_1',
-                    tags=['tag1', 'tag2'],
-                    quality_score=80,
-                ))
+                note_res = json.loads(
+                    await tool.write_note(
+                        title='Finding A',
+                        content='Claim A. Support A',
+                        sources=[
+                            {
+                                'url': 'https://example.com/src',
+                                'published_at': '2026-01-01',
+                                'source_tier': 'primary',
+                            }
+                        ],
+                        summary='summary A',
+                        task_id='task_1',
+                        tags=['tag1', 'tag2'],
+                        quality_score=80,
+                    )
+                )
                 note_id = note_res['note_id']
 
                 res = await tool.write_analysis(
@@ -586,117 +566,115 @@ class TestEvidenceToolServer(unittest.TestCase):
                 self.assertEqual(idx['total_analyses'], 1)
                 self.assertIn(analysis_id, idx.get('analyses', {}))
 
-                got = json.loads(await tool.get_analysis(
-                    analysis_id=analysis_id, parse_analysis=True))
+                got = json.loads(await tool.get_analysis(analysis_id=analysis_id, parse_analysis=True))
                 self.assertEqual(got['status'], 'ok')
                 self.assertEqual(got['analysis']['analysis_id'], analysis_id)
                 self.assertIn('markdown', got['analysis'].get('content', ''))
 
-                listed = json.loads(await tool.list_analyses(
-                    task_id='task_1', tags=['tag1']))
+                listed = json.loads(await tool.list_analyses(task_id='task_1', tags=['tag1']))
                 self.assertEqual(listed['status'], 'ok')
                 self.assertEqual(listed['count'], 1)
 
-                searched = json.loads(
-                    await tool.search_analyses(keyword='synthesis'))
+                searched = json.loads(await tool.search_analyses(keyword='synthesis'))
                 self.assertEqual(searched['status'], 'ok')
                 self.assertEqual(searched['count'], 1)
 
-                deleted = json.loads(
-                    await tool.delete_analysis(analysis_id=analysis_id))
+                deleted = json.loads(await tool.delete_analysis(analysis_id=analysis_id))
                 self.assertEqual(deleted['status'], 'ok')
 
-                missing = json.loads(
-                    await tool.get_analysis(analysis_id=analysis_id))
+                missing = json.loads(await tool.get_analysis(analysis_id=analysis_id))
                 self.assertEqual(missing['status'], 'error')
 
         asyncio.run(main())
 
 
 class TestReportToolServer(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_report_tool_outline_chapter_draft_conflict(self):
 
         async def main():
             with tempfile.TemporaryDirectory() as td:
                 # Prepare evidence using EvidenceTool to ensure realistic on-disk structure.
-                ev_cfg = _make_config(
-                    td, tools={'evidence_store': SimpleNamespace()})
+                ev_cfg = _make_config(td, tools={'evidence_store': SimpleNamespace()})
                 ev = EvidenceTool(ev_cfg)
                 await ev.connect()
-                n1 = json.loads(await ev.write_note(
-                    title='N1',
-                    content='C1. S1',
-                    sources=[{
-                        'url': 'https://example.com/1'
-                    }],
-                    summary='sum1',
-                    task_id='task_1',
-                    tags=['t'],
-                ))
-                n2 = json.loads(await ev.write_note(
-                    title='N2',
-                    content='C2. S2',
-                    sources=[{
-                        'url': 'https://example.com/2'
-                    }],
-                    summary='sum2',
-                    task_id='task_1',
-                    tags=['t'],
-                ))
+                n1 = json.loads(
+                    await ev.write_note(
+                        title='N1',
+                        content='C1. S1',
+                        sources=[{'url': 'https://example.com/1'}],
+                        summary='sum1',
+                        task_id='task_1',
+                        tags=['t'],
+                    )
+                )
+                n2 = json.loads(
+                    await ev.write_note(
+                        title='N2',
+                        content='C2. S2',
+                        sources=[{'url': 'https://example.com/2'}],
+                        summary='sum2',
+                        task_id='task_1',
+                        tags=['t'],
+                    )
+                )
                 note_ids = [n1['note_id'], n2['note_id']]
 
-                cfg = _make_config(
-                    td, tools={'report_generator': SimpleNamespace()})
+                cfg = _make_config(td, tools={'report_generator': SimpleNamespace()})
                 tool = ReportTool(cfg)
                 await tool.connect()
 
-                outline_res = json.loads(await tool.commit_outline(
-                    title='My Report',
-                    chapters=[{
-                        'title': 'Ch1',
-                        'goals': ['g1'],
-                        'sections_description': 'sec',
-                        'candidate_evidence': note_ids,
-                    }],
-                ))
+                outline_res = json.loads(
+                    await tool.commit_outline(
+                        title='My Report',
+                        chapters=[
+                            {
+                                'title': 'Ch1',
+                                'goals': ['g1'],
+                                'sections_description': 'sec',
+                                'candidate_evidence': note_ids,
+                            }
+                        ],
+                    )
+                )
                 self.assertEqual(outline_res['status'], 'ok')
 
-                bundle = json.loads(await tool.prepare_chapter_bundle(
-                    chapter_id=1,
-                    relevant_evidence=[note_ids[1]],
-                    need_raw_chunks=False,
-                ))
+                bundle = json.loads(
+                    await tool.prepare_chapter_bundle(
+                        chapter_id=1,
+                        relevant_evidence=[note_ids[1]],
+                        need_raw_chunks=False,
+                    )
+                )
                 self.assertEqual(bundle['status'], 'ok')
                 self.assertEqual(bundle['chapter_id'], 1)
                 self.assertEqual(bundle['evidence_count'], 2)
-                self.assertTrue(
-                    os.path.exists(os.path.join(td, bundle['meta_path'])))
+                self.assertTrue(os.path.exists(os.path.join(td, bundle['meta_path'])))
 
-                chapter_res = json.loads(await tool.commit_chapter(
-                    chapter_id=1,
-                    reranked_evidence=note_ids,
-                    content='# Ch1\n\nhello\n',
-                    cited_urls=['https://example.com/1'],
-                ))
+                chapter_res = json.loads(
+                    await tool.commit_chapter(
+                        chapter_id=1,
+                        reranked_evidence=note_ids,
+                        content='# Ch1\n\nhello\n',
+                        cited_urls=['https://example.com/1'],
+                    )
+                )
                 self.assertEqual(chapter_res['status'], 'ok')
-                self.assertTrue(
-                    os.path.exists(os.path.join(td, chapter_res['path'])))
+                self.assertTrue(os.path.exists(os.path.join(td, chapter_res['path'])))
 
                 # Draft assembly requires all chapters completed.
-                draft = json.loads(await tool.assemble_draft(
-                    include_toc=True, include_references=True))
+                draft = json.loads(await tool.assemble_draft(include_toc=True, include_references=True))
                 self.assertEqual(draft['status'], 'ok')
-                self.assertTrue(
-                    os.path.exists(os.path.join(td, draft['draft_path'])))
+                self.assertTrue(os.path.exists(os.path.join(td, draft['draft_path'])))
 
-                conflict = json.loads(await tool.commit_conflict(
-                    description='conflict',
-                    evidence_ids=note_ids,
-                    chapter_id=1,
-                    resolution='resolved',
-                ))
+                conflict = json.loads(
+                    await tool.commit_conflict(
+                        description='conflict',
+                        evidence_ids=note_ids,
+                        chapter_id=1,
+                        resolution='resolved',
+                    )
+                )
                 self.assertEqual(conflict['status'], 'ok')
 
                 status = json.loads(await tool.get_status())
@@ -705,10 +683,12 @@ class TestReportToolServer(unittest.TestCase):
                 self.assertTrue(status['draft_exists'])
                 self.assertGreaterEqual(status['conflicts_count'], 1)
 
-                updated = json.loads(await tool.update_outline(
-                    chapter_id=1,
-                    updates={'title': 'Ch1 updated'},
-                ))
+                updated = json.loads(
+                    await tool.update_outline(
+                        chapter_id=1,
+                        updates={'title': 'Ch1 updated'},
+                    )
+                )
                 self.assertEqual(updated['status'], 'ok')
 
                 not_impl = json.loads(await tool.load_chunk(chunk_ids=['c1']))

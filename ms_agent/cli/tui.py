@@ -27,8 +27,8 @@ class TuiCMD(CLICommand):
             '--config',
             type=str,
             default=None,
-            help='Path to an agent.yaml (or a task dir / modelscope id). '
-            'Defaults to the built-in agent.yaml.')
+            help='Path to an agent.yaml (or a task dir / modelscope id). Defaults to the built-in agent.yaml.',
+        )
         parser.add_argument(
             '--work-dir',
             '--work_dir',
@@ -37,23 +37,19 @@ class TuiCMD(CLICommand):
             default=None,
             help='Working/project directory (== output_dir). Defaults to the '
             'current directory. Framework internals go to <work_dir>/.ms_agent/; '
-            'sessions are global under ~/.ms_agent/projects/.')
-        parser.add_argument(
-            '--env',
-            type=str,
-            default=None,
-            help='Path to a .env file (defaults to ./.env).')
+            'sessions are global under ~/.ms_agent/projects/.',
+        )
+        parser.add_argument('--env', type=str, default=None, help='Path to a .env file (defaults to ./.env).')
         parser.add_argument(
             '--permission_mode',
             type=str,
             default='restricted',
             choices=['auto', 'strict', 'restricted', 'interactive'],
-            help='Permission mode for tool calls. Default `restricted` so '
-            'non-whitelisted tools ask for confirmation.')
+            help='Permission mode for tool calls. Default `restricted` so non-whitelisted tools ask for confirmation.',
+        )
         parser.add_argument(
-            '--trust_remote_code',
-            action='store_true',
-            help='Allow loading external code referenced by the config.')
+            '--trust_remote_code', action='store_true', help='Allow loading external code referenced by the config.'
+        )
         parser.add_argument(
             '--mcp-server-file',
             '--mcp_server_file',
@@ -61,7 +57,7 @@ class TuiCMD(CLICommand):
             type=str,
             default=None,
             help='Path to an MCP servers JSON file ({"mcpServers": {...}}) — '
-            'stdio / sse / streamable_http servers to connect for this session.'
+            'stdio / sse / streamable_http servers to connect for this session.',
         )
         parser.add_argument(
             '--emit-events',
@@ -71,7 +67,8 @@ class TuiCMD(CLICommand):
             default=None,
             help='Also append every structured AgentEvent as JSON lines to '
             'this file — the exact wire payloads a WebUI backend would '
-            'forward. Use it to inspect/validate the event contract.')
+            'forward. Use it to inspect/validate the event contract.',
+        )
         parser.set_defaults(func=subparser_func)
 
     def execute(self):
@@ -80,12 +77,12 @@ class TuiCMD(CLICommand):
         config = self.args.config
         if not config:
             # Fall back to the packaged default agent.yaml.
-            default_config = importlib_resources.files('ms_agent').joinpath(
-                'agent', 'agent.yaml')
+            default_config = importlib_resources.files('ms_agent').joinpath('agent', 'agent.yaml')
             with importlib_resources.as_file(default_config) as p:
                 config = str(p)
 
         from ms_agent.tui.app import main
+
         main(
             config,
             env_file=self.args.env,

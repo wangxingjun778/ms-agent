@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """OpenClaw workspace specification (root-per-agent)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -76,7 +77,7 @@ class OpenclawWorkspace(WorkspaceSpec):
         if head == 'workspace':
             return (DEFAULT_AGENT_NAME, rest)
         if head.startswith('workspace-'):
-            return (head[len('workspace-'):], rest)
+            return (head[len('workspace-') :], rest)
         return (None, rel_path)
 
     def join_all_path(self, agent_name: str, bare_path: str) -> str:
@@ -92,7 +93,7 @@ class OpenclawWorkspace(WorkspaceSpec):
         if base.is_dir():
             for d in sorted(base.glob('workspace-*')):
                 if d.is_dir():
-                    agents.append(d.name[len('workspace-'):])
+                    agents.append(d.name[len('workspace-') :])
         return agents or [DEFAULT_AGENT_NAME]
 
 

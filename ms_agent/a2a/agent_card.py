@@ -17,8 +17,7 @@ def build_agent_card(
     port: int = 5000,
     version: str = _DEFAULT_VERSION,
     title: str = 'MS-Agent',
-    description: str = ('Lightweight framework for empowering agents '
-                        'with autonomous exploration'),
+    description: str = ('Lightweight framework for empowering agents with autonomous exploration'),
     skills: list[dict] | None = None,
 ) -> dict:
     """Build an A2A ``AgentCard`` dict from ms-agent config.
@@ -34,6 +33,7 @@ def build_agent_card(
     if config_path and os.path.exists(config_path):
         try:
             from ms_agent.config.config import Config
+
             config = Config.from_task(config_path)
             cfg_desc = getattr(config, 'description', None)
             if cfg_desc:
@@ -42,8 +42,7 @@ def build_agent_card(
             if cfg_name:
                 title = str(cfg_name)
         except Exception:
-            logger.debug(
-                'Could not load config for agent card metadata', exc_info=True)
+            logger.debug('Could not load config for agent card metadata', exc_info=True)
 
     skill_list: list[AgentSkill] = []
     if skills:
@@ -55,7 +54,8 @@ def build_agent_card(
                     description=s.get('description', description),
                     tags=s.get('tags', []),
                     examples=s.get('examples', []),
-                ))
+                )
+            )
     else:
         skill_list.append(
             AgentSkill(
@@ -64,7 +64,8 @@ def build_agent_card(
                 description=description,
                 tags=['general', 'agent'],
                 examples=['Help me research a topic'],
-            ))
+            )
+        )
 
     card = AgentCard(
         name=title.lower().replace(' ', '-'),
@@ -86,8 +87,7 @@ def generate_agent_card_json(
     port: int = 5000,
     version: str = _DEFAULT_VERSION,
     title: str = 'MS-Agent',
-    description: str = ('Lightweight framework for empowering agents '
-                        'with autonomous exploration'),
+    description: str = ('Lightweight framework for empowering agents with autonomous exploration'),
     skills: list[dict] | None = None,
 ) -> dict:
     """Build an agent card and optionally write it to disk as JSON."""

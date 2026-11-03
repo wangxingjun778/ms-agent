@@ -24,7 +24,13 @@ docs-zh:
 
 .PHONY: lint
 lint:
-	pre-commit run --all-files
+	ruff check .
+	ruff format --check .
+
+.PHONY: format
+format:
+	ruff check --fix .
+	ruff format .
 
 .PHONY: whl
 whl:

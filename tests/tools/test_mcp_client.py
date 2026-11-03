@@ -3,9 +3,9 @@ import asyncio
 import os
 import unittest
 
-from ms_agent.tools.mcp_client import MCPClient
-
 from modelscope.utils.test_utils import test_level
+
+from ms_agent.tools.mcp_client import MCPClient
 
 
 class TestMCPClient(unittest.TestCase):
@@ -32,13 +32,12 @@ class TestMCPClient(unittest.TestCase):
         async def main():
             async with MCPClient(self.mcp_config) as mcp_client:
                 mcps = await mcp_client.get_tools()
-                assert ('fetch' in mcps)
+                assert 'fetch' in mcps
 
                 res = await mcp_client.call_tool(
-                    server_name='fetch',
-                    tool_name='fetch',
-                    tool_args={'url': 'http://www.baidu.com'})
-                assert ('baidu' in res)
+                    server_name='fetch', tool_name='fetch', tool_args={'url': 'http://www.baidu.com'}
+                )
+                assert 'baidu' in res
 
         asyncio.run(main())
 
@@ -49,7 +48,7 @@ class TestMCPClient(unittest.TestCase):
             mcp_client = MCPClient(self.mcp_config)
             await mcp_client.__aenter__()
             mcps = await mcp_client.get_tools()
-            assert ('fetch' in mcps)
+            assert 'fetch' in mcps
             await mcp_client.__aexit__(None, None, None)
 
         asyncio.run(main())
@@ -61,7 +60,7 @@ class TestMCPClient(unittest.TestCase):
             mcp_client = MCPClient(self.mcp_config)
             await mcp_client.connect()
             mcps = await mcp_client.get_tools()
-            assert ('fetch' in mcps)
+            assert 'fetch' in mcps
             await mcp_client.cleanup()
 
         asyncio.run(main())
@@ -73,7 +72,7 @@ class TestMCPClient(unittest.TestCase):
             async with MCPClient(self.mcp_config) as mcp_client:
                 await mcp_client.add_mcp_config(self.mcp_config2)
                 mcps = await mcp_client.get_tools()
-                assert ('fetch' in mcps and 'time' in mcps)
+                assert 'fetch' in mcps and 'time' in mcps
 
         asyncio.run(main())
 

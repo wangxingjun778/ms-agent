@@ -1,8 +1,9 @@
 """Unit tests for A2A components (no external processes or SDK needed)."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ms_agent.a2a.errors import (
     A2AServerError,
@@ -22,13 +23,12 @@ from ms_agent.a2a.translator import (
 )
 from ms_agent.llm.utils import Message
 
-
 # ======================================================================
 # Error mapping tests
 # ======================================================================
 
-class TestErrorMapping:
 
+class TestErrorMapping:
     def test_task_not_found(self):
         err = TaskNotFoundError('task_abc')
         assert err.code == -32001
@@ -88,8 +88,8 @@ class TestErrorMapping:
 # Translator tests
 # ======================================================================
 
-class TestTranslator:
 
+class TestTranslator:
     def test_extract_text_from_text_part(self):
         msg = MagicMock()
         part = MagicMock()
@@ -184,11 +184,12 @@ class TestTranslator:
 # Session store tests
 # ======================================================================
 
-class TestSessionStore:
 
+class TestSessionStore:
     @pytest.mark.asyncio
     async def test_get_or_create_missing_config(self):
         from ms_agent.a2a.session_store import A2AAgentStore
+
         store = A2AAgentStore(
             config_path='/nonexistent/config.yaml',
             max_tasks=2,
@@ -199,29 +200,31 @@ class TestSessionStore:
     @pytest.mark.asyncio
     async def test_get_returns_none_for_unknown(self):
         from ms_agent.a2a.session_store import A2AAgentStore
+
         store = A2AAgentStore(config_path='/tmp/fake.yaml')
         assert store.get('unknown_task') is None
 
     @pytest.mark.asyncio
     async def test_close_all_empty(self):
         from ms_agent.a2a.session_store import A2AAgentStore
+
         store = A2AAgentStore(config_path='/tmp/fake.yaml')
         await store.close_all()
 
     @pytest.mark.asyncio
     async def test_create_disables_stream_stdout_output(self):
-        from ms_agent.a2a.session_store import A2AAgentStore
         from omegaconf import OmegaConf
+
+        from ms_agent.a2a.session_store import A2AAgentStore
+
         config = OmegaConf.create({'llm': {'model': 'test'}})
         agent = MagicMock(spec=[])
 
-        with patch(
-                'ms_agent.a2a.session_store.os.path.exists',
-                return_value=True), patch(
-                    'ms_agent.a2a.session_store.Config.from_task',
-                    return_value=config), patch(
-                        'ms_agent.a2a.session_store.AgentLoader.build',
-                        return_value=agent):
+        with (
+            patch('ms_agent.a2a.session_store.os.path.exists', return_value=True),
+            patch('ms_agent.a2a.session_store.Config.from_task', return_value=config),
+            patch('ms_agent.a2a.session_store.AgentLoader.build', return_value=agent),
+        ):
             store = A2AAgentStore(config_path='/tmp/agent.yaml')
             try:
                 entry = await store.get_or_create('task_1')
@@ -234,11 +237,12 @@ class TestSessionStore:
 # Client manager tests
 # ======================================================================
 
-class TestClientManager:
 
+class TestClientManager:
     @pytest.mark.asyncio
     async def test_call_unknown_agent(self):
         from ms_agent.a2a.client import A2AClientManager
+
         mgr = A2AClientManager({})
         result = await mgr.call_agent('unknown', 'hi')
         assert 'Error' in result
@@ -247,6 +251,7 @@ class TestClientManager:
     @pytest.mark.asyncio
     async def test_call_agent_no_url(self):
         from ms_agent.a2a.client import A2AClientManager
+
         mgr = A2AClientManager({'test_agent': {'description': 'test'}})
         result = await mgr.call_agent('test_agent', 'hi')
         assert 'Error' in result
@@ -255,10 +260,13 @@ class TestClientManager:
     @pytest.mark.asyncio
     async def test_list_agents(self):
         from ms_agent.a2a.client import A2AClientManager
-        mgr = A2AClientManager({
-            'agent_a': {'url': 'http://a'},
-            'agent_b': {'url': 'http://b'},
-        })
+
+        mgr = A2AClientManager(
+            {
+                'agent_a': {'url': 'http://a'},
+                'agent_b': {'url': 'http://b'},
+            }
+        )
         agents = mgr.list_agents()
         assert 'agent_a' in agents
         assert 'agent_b' in agents
@@ -266,20 +274,20 @@ class TestClientManager:
     @pytest.mark.asyncio
     async def test_close_all(self):
         from ms_agent.a2a.client import A2AClientManager
+
         mgr = A2AClientManager({})
         await mgr.close_all()
 
     @pytest.mark.asyncio
     async def test_get_http_client_reuses_by_headers(self):
         from ms_agent.a2a.client import A2AClientManager
+
         mgr = A2AClientManager({})
         try:
             default_client = mgr._get_http_client()
             same_default_client = mgr._get_http_client()
-            auth_client = mgr._get_http_client(
-                {'Authorization': 'Bearer token'})
-            same_auth_client = mgr._get_http_client(
-                {'Authorization': 'Bearer token'})
+            auth_client = mgr._get_http_client({'Authorization': 'Bearer token'})
+            same_auth_client = mgr._get_http_client({'Authorization': 'Bearer token'})
 
             assert default_client is same_default_client
             assert auth_client is same_auth_client
@@ -290,6 +298,7 @@ class TestClientManager:
     @pytest.mark.asyncio
     async def test_close_all_closes_all_http_clients(self):
         from ms_agent.a2a.client import A2AClientManager
+
         mgr = A2AClientManager({})
         default_client = mgr._get_http_client()
         auth_client = mgr._get_http_client({'Authorization': 'Bearer token'})
@@ -302,13 +311,13 @@ class TestClientManager:
 
     def test_build_auth_headers_bearer(self):
         from ms_agent.a2a.client import A2AClientManager
-        headers = A2AClientManager._build_auth_headers({
-            'auth': {'type': 'bearer', 'token': 'my_token'}
-        })
+
+        headers = A2AClientManager._build_auth_headers({'auth': {'type': 'bearer', 'token': 'my_token'}})
         assert headers['Authorization'] == 'Bearer my_token'
 
     def test_build_auth_headers_no_auth(self):
         from ms_agent.a2a.client import A2AClientManager
+
         headers = A2AClientManager._build_auth_headers({})
         assert headers == {}
 
@@ -317,10 +326,11 @@ class TestClientManager:
 # Tool tests
 # ======================================================================
 
-class TestA2AAgentTool:
 
+class TestA2AAgentTool:
     def test_from_config_no_a2a_agents(self):
         from ms_agent.tools.a2a_agent_tool import A2AAgentTool
+
         config = MagicMock(spec=[])
         result = A2AAgentTool.from_config(config)
         assert result is None
@@ -328,13 +338,17 @@ class TestA2AAgentTool:
     @pytest.mark.asyncio
     async def test_get_tools(self):
         from ms_agent.tools.a2a_agent_tool import A2AAgentTool
+
         config = MagicMock()
-        tool = A2AAgentTool(config, a2a_agents_config={
-            'my_agent': {
-                'url': 'http://localhost:9999',
-                'description': 'Test agent',
-            }
-        })
+        tool = A2AAgentTool(
+            config,
+            a2a_agents_config={
+                'my_agent': {
+                    'url': 'http://localhost:9999',
+                    'description': 'Test agent',
+                }
+            },
+        )
         tools = await tool.get_tools()
         assert 'a2a_my_agent' in tools
         assert len(tools['a2a_my_agent']) == 1
@@ -343,14 +357,17 @@ class TestA2AAgentTool:
     @pytest.mark.asyncio
     async def test_call_tool_missing_query(self):
         from ms_agent.tools.a2a_agent_tool import A2AAgentTool
+
         config = MagicMock()
-        tool = A2AAgentTool(config, a2a_agents_config={
-            'my_agent': {
-                'url': 'http://localhost:9999',
-                'description': 'Test agent',
-            }
-        })
-        result = await tool.call_tool(
-            'a2a_my_agent', tool_name='my_agent', tool_args={})
+        tool = A2AAgentTool(
+            config,
+            a2a_agents_config={
+                'my_agent': {
+                    'url': 'http://localhost:9999',
+                    'description': 'Test agent',
+                }
+            },
+        )
+        result = await tool.call_tool('a2a_my_agent', tool_name='my_agent', tool_args={})
         assert 'Error' in result
         assert 'query' in result

@@ -42,16 +42,14 @@ class PermissionPolicy:
         if self.policy == 'auto_approve':
             return 'allow_once'
         if self.policy == 'remember_choice' and tool_name in self._remembered:
-            return 'allow_always' if self._remembered[
-                tool_name] else 'deny_once'
+            return 'allow_always' if self._remembered[tool_name] else 'deny_once'
         return None
 
     def record_choice(self, tool_name: str, allowed: bool) -> None:
         """Record a user's permission decision for future lookups."""
         if self.policy == 'remember_choice':
             self._remembered[tool_name] = allowed
-            logger.info('Permission remembered for %s: %s', tool_name,
-                        'allowed' if allowed else 'denied')
+            logger.info('Permission remembered for %s: %s', tool_name, 'allowed' if allowed else 'denied')
 
     def reset(self) -> None:
         """Clear all remembered decisions."""
@@ -74,14 +72,11 @@ async def request_tool_permission(
         return 'allow' in decision
 
     from acp.schema import PermissionOption, ToolCall
+
     options = [
-        PermissionOption(
-            option_id='allow_once', name='Allow', kind='allow_once'),
-        PermissionOption(
-            option_id='allow_always', name='Always allow',
-            kind='allow_always'),
-        PermissionOption(
-            option_id='deny_once', name='Deny', kind='reject_once'),
+        PermissionOption(option_id='allow_once', name='Allow', kind='allow_once'),
+        PermissionOption(option_id='allow_always', name='Always allow', kind='allow_always'),
+        PermissionOption(option_id='deny_once', name='Deny', kind='reject_once'),
     ]
     tool_call = ToolCall(
         tool_call_id=tool_call_id,
@@ -110,6 +105,5 @@ async def request_tool_permission(
         return allowed
 
     except Exception:
-        logger.warning('Permission request failed for %s, auto-approving',
-                       tool_name)
+        logger.warning('Permission request failed for %s, auto-approving', tool_name)
         return True

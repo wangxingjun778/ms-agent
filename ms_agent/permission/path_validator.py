@@ -155,8 +155,7 @@ def validate_path(
                 allowed=False,
                 resolved_path=path,
                 action='deny',
-                reason=
-                f'Glob patterns not allowed in {op_type} operations: {path}',
+                reason=f'Glob patterns not allowed in {op_type} operations: {path}',
             )
         path = get_glob_base_directory(path)
 
@@ -200,8 +199,7 @@ def validate_path(
             allowed=False,
             resolved_path=resolved_str,
             action='deny',
-            reason=
-            f'{op_type.capitalize()} path outside allowed directories: {resolved_str}',
+            reason=f'{op_type.capitalize()} path outside allowed directories: {resolved_str}',
         )
 
     return PathValidationResult(
@@ -212,8 +210,7 @@ def validate_path(
     )
 
 
-def is_dangerous_removal_path(
-    path: str, extra_patterns: 'tuple[str, ...]' = ()) -> bool:
+def is_dangerous_removal_path(path: str, extra_patterns: 'tuple[str, ...]' = ()) -> bool:
     """Check if a path is too dangerous for rm/rmdir, even within allowed dirs.
 
     ``extra_patterns`` are configurable (``safety_rules.dangerous_removal_paths``):
@@ -253,9 +250,11 @@ def is_dangerous_removal_path(
             return True
         if normalized == '/' or normalized == home:
             return True
-        if (_ROOT_CHILD.match(normalized)
-                or _WINDOWS_DRIVE_ROOT.match(normalized)
-                or _WINDOWS_DRIVE_CHILD.match(normalized)):
+        if (
+            _ROOT_CHILD.match(normalized)
+            or _WINDOWS_DRIVE_ROOT.match(normalized)
+            or _WINDOWS_DRIVE_CHILD.match(normalized)
+        ):
             return True
 
     return False

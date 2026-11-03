@@ -1,12 +1,11 @@
 import unittest
 
 from arxiv import Result, SortCriterion, SortOrder
-from ms_agent.tools.search.arxiv.schema import (ArxivSearchRequest,
-                                                ArxivSearchResult)
+from modelscope.utils.test_utils import test_level
+
+from ms_agent.tools.search.arxiv.schema import ArxivSearchRequest, ArxivSearchResult
 from ms_agent.tools.search.arxiv.search import ArxivSearch
 from ms_agent.tools.search.search_base import SearchEngineType
-
-from modelscope.utils.test_utils import test_level
 
 
 class MockArxivResult(Result):
@@ -38,7 +37,8 @@ class TestArxivSearchRequest(unittest.TestCase):
             query='deep learning',
             num_results=5,
             sort_strategy=SortCriterion.SubmittedDate,
-            sort_order=SortOrder.Ascending)
+            sort_order=SortOrder.Ascending,
+        )
         self.assertEqual(request.query, 'deep learning')
         self.assertEqual(request.num_results, 5)
         self.assertEqual(request.sort_strategy, SortCriterion.SubmittedDate)
@@ -53,7 +53,7 @@ class TestArxivSearchRequest(unittest.TestCase):
             'query': 'neural networks',
             'max_results': 3,
             'sort_by': SortCriterion.Relevance,
-            'sort_order': SortOrder.Descending
+            'sort_order': SortOrder.Descending,
         }
         self.assertEqual(result, expected)
 
@@ -80,18 +80,20 @@ class TestArxivSearchResult(unittest.TestCase):
                 entry_id='http://arxiv.org/abs/1234.5678',
                 title='Test Paper 1',
                 summary='This is a test paper about AI',
-                pdf_url='http://arxiv.org/pdf/1234.5678')
+                pdf_url='http://arxiv.org/pdf/1234.5678',
+            )
             yield MockArxivResult(
                 entry_id='http://arxiv.org/abs/8765.4321',
                 title='Test Paper 2',
                 summary='Another test paper about machine learning',
-                pdf_url='http://arxiv.org/pdf/8765.4321')
+                pdf_url='http://arxiv.org/pdf/8765.4321',
+            )
 
         self.arguments = {
             'query': 'Deep Learning',
             'num_results': 2,
             'sort_strategy': SortCriterion.Relevance,
-            'sort_order': SortOrder.Descending
+            'sort_order': SortOrder.Descending,
         }
         self.arxiv_results_generator_func = mock_results_generator_func
 
@@ -99,36 +101,28 @@ class TestArxivSearchResult(unittest.TestCase):
     def test_process_results(self):
         """Test processing of arxiv results."""
         search_result = ArxivSearchResult(
-            query='test query',
-            arguments=self.arguments,
-            response=self.arxiv_results_generator_func())
+            query='test query', arguments=self.arguments, response=self.arxiv_results_generator_func()
+        )
 
         processed = search_result.response
         self.assertEqual(len(processed.results), 2)
 
         # Test first result
-        self.assertEqual(processed.results[0].url,
-                         'http://arxiv.org/pdf/1234.5678')
-        self.assertEqual(processed.results[0].id,
-                         'http://arxiv.org/abs/1234.5678')
+        self.assertEqual(processed.results[0].url, 'http://arxiv.org/pdf/1234.5678')
+        self.assertEqual(processed.results[0].id, 'http://arxiv.org/abs/1234.5678')
         self.assertEqual(processed.results[0].title, 'Test Paper 1')
-        self.assertEqual(processed.results[0].summary,
-                         'This is a test paper about AI')
+        self.assertEqual(processed.results[0].summary, 'This is a test paper about AI')
 
         # Test second result
-        self.assertEqual(processed.results[1].url,
-                         'http://arxiv.org/pdf/8765.4321')
-        self.assertEqual(processed.results[1].id,
-                         'http://arxiv.org/abs/8765.4321')
+        self.assertEqual(processed.results[1].url, 'http://arxiv.org/pdf/8765.4321')
+        self.assertEqual(processed.results[1].id, 'http://arxiv.org/abs/8765.4321')
         self.assertEqual(processed.results[1].title, 'Test Paper 2')
-        self.assertEqual(processed.results[1].summary,
-                         'Another test paper about machine learning')
+        self.assertEqual(processed.results[1].summary, 'Another test paper about machine learning')
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_process_empty_results(self):
         """Test processing of empty results."""
-        result = ArxivSearchResult(
-            query='test query', arguments=self.arguments, response=[])
+        result = ArxivSearchResult(query='test query', arguments=self.arguments, response=[])
         processed = result.response
         self.assertEqual(len(processed.results), 0)
 
@@ -136,21 +130,17 @@ class TestArxivSearchResult(unittest.TestCase):
     def test_to_list(self):
         """Test conversion to list of dictionaries."""
         result = ArxivSearchResult(
-            query='test query',
-            arguments=self.arguments,
-            response=self.arxiv_results_generator_func())
+            query='test query', arguments=self.arguments, response=self.arxiv_results_generator_func()
+        )
 
         result_list = result.to_list()
         self.assertEqual(len(result_list), 2)
 
         # Test first result
-        self.assertEqual(result_list[0]['url'],
-                         'http://arxiv.org/pdf/1234.5678')
-        self.assertEqual(result_list[0]['id'],
-                         'http://arxiv.org/abs/1234.5678')
+        self.assertEqual(result_list[0]['url'], 'http://arxiv.org/pdf/1234.5678')
+        self.assertEqual(result_list[0]['id'], 'http://arxiv.org/abs/1234.5678')
         self.assertEqual(result_list[0]['title'], 'Test Paper 1')
-        self.assertEqual(result_list[0]['summary'],
-                         'This is a test paper about AI')
+        self.assertEqual(result_list[0]['summary'], 'This is a test paper about AI')
 
 
 class TestArxivSearch(unittest.TestCase):
@@ -168,21 +158,21 @@ class TestArxivSearch(unittest.TestCase):
         """Test search functionality."""
         search_engine = ArxivSearch()
         search_request = ArxivSearchRequest(
-            query='Deep Learning',
-            num_results=2,
-            sort_strategy=SortCriterion.Relevance,
-            sort_order=SortOrder.Descending)
+            query='Deep Learning', num_results=2, sort_strategy=SortCriterion.Relevance, sort_order=SortOrder.Descending
+        )
         search_result = search_engine.search(search_request)
 
         self.assertIsInstance(search_result, ArxivSearchResult)
         self.assertEqual(search_result.query, 'Deep Learning')
         self.assertEqual(
-            search_result.arguments, {
+            search_result.arguments,
+            {
                 'query': 'Deep Learning',
                 'max_results': 2,
                 'sort_strategy': SortCriterion.Relevance.value,
-                'sort_order': SortOrder.Descending.value
-            })
+                'sort_order': SortOrder.Descending.value,
+            },
+        )
         self.assertEqual(len(search_result.response.results), 2)
 
 

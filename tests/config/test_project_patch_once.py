@@ -6,6 +6,7 @@ as layer 4 and BaseAgent.__init__ merged it AGAIN on top of every caller-side
 override applied between resolve() and agent construction — silently making the
 project patch the highest-priority layer (the WebUI's shaping lost to it).
 """
+
 from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
@@ -41,7 +42,6 @@ def test_caller_override_survives_agent_init(tmp_path):
 def test_from_task_path_still_merges_patch(tmp_path):
     """Configs that did NOT go through resolve() keep the old behavior."""
     project = _project_with_patch(tmp_path, 'llm:\n  model: patched-model\n')
-    cfg = OmegaConf.create({'output_dir': str(project),
-                            'llm': {'model': 'yaml-model'}})
+    cfg = OmegaConf.create({'output_dir': str(project), 'llm': {'model': 'yaml-model'}})
     agent = LLMAgent(config=cfg)
     assert agent.config.llm.model == 'patched-model'

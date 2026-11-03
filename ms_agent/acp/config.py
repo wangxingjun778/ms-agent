@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from acp.schema import (SessionConfigOptionSelect, SessionConfigSelect,
-                        SessionConfigSelectOption, SessionMode,
-                        SessionModeState)
 from typing import Any
+
+from acp.schema import (
+    SessionConfigOptionSelect,
+    SessionConfigSelect,
+    SessionConfigSelectOption,
+    SessionMode,
+    SessionModeState,
+)
 
 from ms_agent.utils.logger import get_logger
 
@@ -35,7 +40,8 @@ def build_config_options(
                 category='model',
                 current_value=model_id,
                 options=values,
-            ))
+            )
+        )
 
     return options if options else None
 

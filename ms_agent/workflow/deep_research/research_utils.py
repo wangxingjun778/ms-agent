@@ -1,7 +1,8 @@
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from typing import Dict, List, Optional
 
 console = Console()
 
@@ -31,8 +32,7 @@ class ResearchRequest(BaseModel):
 
     query: str = Field(..., description='Research query')
     depth: int = Field(default=2, ge=1, le=5, description='Research depth')
-    breadth: int = Field(
-        default=4, ge=1, le=10, description='Research breadth')
+    breadth: int = Field(default=4, ge=1, le=10, description='Research breadth')
 
 
 class ResearchResponse(BaseModel):
@@ -47,10 +47,8 @@ class ResearchResponse(BaseModel):
 class LearningsResponse(BaseModel):
     """Response model for processed search results."""
 
-    learnings: List[str] = Field(
-        ..., description='List of learnings extracted from search results')
-    follow_up_questions: List[str] = Field(
-        ..., description='List of follow-up questions for further research')
+    learnings: List[str] = Field(..., description='List of learnings extracted from search results')
+    follow_up_questions: List[str] = Field(..., description='List of follow-up questions for further research')
 
 
 class ProgressTracker:
@@ -62,12 +60,10 @@ class ProgressTracker:
 
     def __enter__(self):
         self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn('[progress.description]{task.description}'),
-            console=console)
+            SpinnerColumn(), TextColumn('[progress.description]{task.description}'), console=console
+        )
         self.progress.__enter__()
-        self.task_id = self.progress.add_task(
-            'Starting research...', total=None)
+        self.task_id = self.progress.add_task('Starting research...', total=None)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

@@ -11,6 +11,7 @@ Preserved from the previous suite: the streaming first-chunk cases (gateways tha
 answer 200 and then reject inside the stream) and the transport-wiring case (a
 named-argument collision that took a whole transport offline).
 """
+
 import base64
 import io
 import os
@@ -27,40 +28,30 @@ except ImportError:  # pragma: no cover
 
 
 class _Boom(Exception):
-
     def __init__(self, status=400, msg='bad request'):
         super().__init__(msg)
         self.status_code = status
 
 
 #: ModelScope Qwen3-VL-8B-Instruct, 2026-08-21, verbatim.
-SIZE_400 = ("Error code: 400 - {'error': {'message': 'input size exceed limit "
-            "2048x2048,current input:(1183,2560)'}}")
+SIZE_400 = "Error code: 400 - {'error': {'message': 'input size exceed limit 2048x2048,current input:(1183,2560)'}}"
 #: DashScope compatible-mode, a text-only qwen model, 2026-08-18, verbatim.
-CAPABILITY_400 = ('<400> InternalError.Algo.InvalidParameter: The provided '
-                  'messages input is invalid. The error info is [Unexpected '
-                  'item type in content.]')
+CAPABILITY_400 = (
+    '<400> InternalError.Algo.InvalidParameter: The provided '
+    'messages input is invalid. The error info is [Unexpected '
+    'item type in content.]'
+)
 
-IMG_MESSAGES = [{
-    'role':
-    'user',
-    'content': [
-        {
-            'type': 'text',
-            'text': 'Image 1: a.png'
-        },
-        {
-            'type': 'image_url',
-            'image_url': {
-                'url': 'data:image/png;base64,AA'
-            }
-        },
-        {
-            'type': 'text',
-            'text': 'what is this'
-        },
-    ],
-}]
+IMG_MESSAGES = [
+    {
+        'role': 'user',
+        'content': [
+            {'type': 'text', 'text': 'Image 1: a.png'},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,AA'}},
+            {'type': 'text', 'text': 'what is this'},
+        ],
+    }
+]
 
 
 def _payload(size=(1183, 2560)):
@@ -70,26 +61,16 @@ def _payload(size=(1183, 2560)):
     buf = io.BytesIO()
     _PIL.new('RGB', size, 'navy').save(buf, 'PNG')
     data = base64.b64encode(buf.getvalue()).decode()
-    return [{
-        'role':
-        'user',
-        'content': [
-            {
-                'type': 'text',
-                'text': 'Image 1: poster.png'
-            },
-            {
-                'type': 'image_url',
-                'image_url': {
-                    'url': f'data:image/png;base64,{data}'
-                }
-            },
-            {
-                'type': 'text',
-                'text': '图里有什么？'
-            },
-        ],
-    }]
+    return [
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'Image 1: poster.png'},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{data}'}},
+                {'type': 'text', 'text': '图里有什么？'},
+            ],
+        }
+    ]
 
 
 def _edge_of(messages):
@@ -130,7 +111,8 @@ class TestTheOutage(_MemoCase):
             model='Qwen/Qwen3-VL-8B-Instruct',
             messages=_payload(),
             sent_images=True,
-            max_edge=2560)
+            max_edge=2560,
+        )
 
         self.assertEqual(out, 'ok')
         self.assertEqual(len(seen), 2, 'exactly one retry')
@@ -150,22 +132,17 @@ class TestTheOutage(_MemoCase):
             return 'ok'
 
         V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=_payload(),
-            sent_images=True,
-            max_edge=2560)
+            create, base_url='u', model='m', messages=_payload(), sent_images=True, max_edge=2560
+        )
         self.assertTrue(
-            M.has_image_blocks(captured[-1][0]['content']),
-            'a size complaint must not cost the user their image')
+            M.has_image_blocks(captured[-1][0]['content']), 'a size complaint must not cost the user their image'
+        )
 
 
 # --------------------------------------------------------------------------- #
 # The ladder, per diagnosis
 # --------------------------------------------------------------------------- #
 class TestLadder(_MemoCase):
-
     def _run(self, failing_message, *, accept, messages=None, max_edge=2048):
         """Drive the fallback with a client that accepts once ``accept`` holds."""
         attempts = []
@@ -182,42 +159,32 @@ class TestLadder(_MemoCase):
             model='m',
             messages=messages if messages is not None else IMG_MESSAGES,
             sent_images=True,
-            max_edge=max_edge)
+            max_edge=max_edge,
+        )
         return out, attempts
 
     def test_capability_refusal_drops_images_and_is_remembered(self):
-        out, attempts = self._run(
-            CAPABILITY_400,
-            accept=lambda m: not M.has_image_blocks(m[0]['content']))
+        out, attempts = self._run(CAPABILITY_400, accept=lambda m: not M.has_image_blocks(m[0]['content']))
         self.assertEqual(out, 'ok')
         self.assertEqual(len(attempts), 2)
 
     def test_unknown_refusal_drops_images_but_is_not_remembered(self):
         # A provider rewording its errors must not be able to produce a lasting
         # conclusion about a model.
-        out, _ = self._run(
-            'ERR_9912: constraint violated',
-            accept=lambda m: not M.has_image_blocks(m[0]['content']))
+        out, _ = self._run('ERR_9912: constraint violated', accept=lambda m: not M.has_image_blocks(m[0]['content']))
         self.assertEqual(out, 'ok')
 
     def test_shape_complaint_thins_the_batch_first(self):
         if _PIL is None:
             self.skipTest('Pillow unavailable')
         two = _payload((64, 64))
-        two[0]['content'].extend(
-            [two[0]['content'][0], two[0]['content'][1]])  # a second image
+        two[0]['content'].extend([two[0]['content'][0], two[0]['content'][1]])  # a second image
 
         def accept(messages):
-            imgs = [
-                b for b in messages[0]['content']
-                if b.get('type') == 'image_url'
-            ]
+            imgs = [b for b in messages[0]['content'] if b.get('type') == 'image_url']
             return len(imgs) <= 1
 
-        out, attempts = self._run(
-            'you may send at most 1 image per request',
-            accept=accept,
-            messages=two)
+        out, attempts = self._run('you may send at most 1 image per request', accept=accept, messages=two)
         self.assertEqual(out, 'ok')
         # It kept a picture rather than throwing them all away.
         self.assertTrue(M.has_image_blocks(attempts[-1][0]['content']))
@@ -230,12 +197,7 @@ class TestLadder(_MemoCase):
             raise _Boom(400, 'blocked by content_filter')
 
         with self.assertRaises(_Boom):
-            V.create_with_vision_fallback(
-                create,
-                base_url='u',
-                model='m',
-                messages=IMG_MESSAGES,
-                sent_images=True)
+            V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True)
         self.assertEqual(len(calls), 1, 'no recovery should be attempted')
 
     def test_exhausted_ladder_reraises_the_original_error(self):
@@ -251,7 +213,8 @@ class TestLadder(_MemoCase):
                 model='m',
                 messages=_payload() if _PIL else IMG_MESSAGES,
                 sent_images=True,
-                max_edge=2560)
+                max_edge=2560,
+            )
         self.assertIs(ctx.exception, original)
         # Nothing was learned, so nothing may be recorded.
 
@@ -261,41 +224,29 @@ class TestLadder(_MemoCase):
 
         with self.assertRaises(_Boom):
             V.create_with_vision_fallback(
-                create,
-                base_url='u',
-                model='m',
-                messages=[{
-                    'role': 'user',
-                    'content': 'plain'
-                }],
-                sent_images=False)
+                create, base_url='u', model='m', messages=[{'role': 'user', 'content': 'plain'}], sent_images=False
+            )
 
     def test_happy_path_is_a_passthrough(self):
         def create(messages, **kw):
             return 'fine'
 
         self.assertEqual(
-            V.create_with_vision_fallback(
-                create,
-                base_url='u',
-                model='m',
-                messages=IMG_MESSAGES,
-                sent_images=True), 'fine')
+            V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True),
+            'fine',
+        )
 
 
 # --------------------------------------------------------------------------- #
 # Memory
 # --------------------------------------------------------------------------- #
 class TestResolveMaxEdge(unittest.TestCase):
-
     class _Spec:
-
         def __init__(self, edge):
             self.max_image_edge = edge
 
     def test_default_when_provider_says_nothing(self):
-        self.assertEqual(
-            V.resolve_max_edge(self._Spec(0)), M.VisionOptions.max_edge)
+        self.assertEqual(V.resolve_max_edge(self._Spec(0)), M.VisionOptions.max_edge)
 
     def test_provider_may_widen(self):
         self.assertEqual(V.resolve_max_edge(self._Spec(2576)), 2576)
@@ -303,8 +254,7 @@ class TestResolveMaxEdge(unittest.TestCase):
     def test_provider_may_not_narrow(self):
         # A table that could narrow would turn "we forgot to update a provider"
         # into failed requests.
-        self.assertEqual(
-            V.resolve_max_edge(self._Spec(512)), M.VisionOptions.max_edge)
+        self.assertEqual(V.resolve_max_edge(self._Spec(512)), M.VisionOptions.max_edge)
 
     def test_explicit_user_value_wins(self):
         self.assertEqual(V.resolve_max_edge(self._Spec(2576), 1024), 1024)
@@ -325,9 +275,7 @@ class TestStreamTimeRefusal(_MemoCase):
         seen = []
 
         def create(messages, **kw):
-            has_img = any(
-                M.has_image_blocks(m.get('content')) for m in messages
-                if isinstance(m, dict))
+            has_img = any(M.has_image_blocks(m.get('content')) for m in messages if isinstance(m, dict))
             seen.append(has_img)
 
             def gen():
@@ -342,12 +290,7 @@ class TestStreamTimeRefusal(_MemoCase):
 
     def test_first_chunk_refusal_is_repaired_and_remembered(self):
         create, seen = self._streaming_create()
-        stream = V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True)
+        stream = V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True)
         self.assertEqual(list(stream), ['chunk-1', 'chunk-2'])
         self.assertEqual(seen, [True, False])
 
@@ -362,12 +305,7 @@ class TestStreamTimeRefusal(_MemoCase):
 
             return gen()
 
-        stream = V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True)
+        stream = V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True)
         with self.assertRaises(_Boom) as ctx:
             list(stream)
         self.assertIs(ctx.exception, original)
@@ -385,12 +323,7 @@ class TestStreamTimeRefusal(_MemoCase):
 
             return gen()
 
-        stream = V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True)
+        stream = V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True)
         got = []
         with self.assertRaises(_Boom):
             for item in stream:
@@ -399,7 +332,7 @@ class TestStreamTimeRefusal(_MemoCase):
         self.assertEqual(len(calls), 1)
 
     def test_an_accepted_but_empty_stream_is_not_evidence(self):
-        """"It did not error" is weaker than "it answered"."""
+        """ "It did not error" is weaker than "it answered"."""
 
         def create(messages, **kw):
             has_img = M.has_image_blocks(messages[0]['content'])
@@ -412,12 +345,7 @@ class TestStreamTimeRefusal(_MemoCase):
 
             return gen()
 
-        stream = V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True)
+        stream = V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True)
         self.assertEqual(list(stream), [])
 
     def test_non_streaming_result_is_untouched(self):
@@ -426,12 +354,9 @@ class TestStreamTimeRefusal(_MemoCase):
             return 'plain-response'
 
         self.assertEqual(
-            V.create_with_vision_fallback(
-                create,
-                base_url='u',
-                model='m',
-                messages=IMG_MESSAGES,
-                sent_images=True), 'plain-response')
+            V.create_with_vision_fallback(create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True),
+            'plain-response',
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -455,31 +380,27 @@ class TestTransportWiring(_MemoCase):
             return 'ok'
 
         params = dict(transport_params)
-        rest = {
-            k: v
-            for k, v in params.items() if k not in ('model', 'messages')
-        }
+        rest = {k: v for k, v in params.items() if k not in ('model', 'messages')}
         out = V.create_with_vision_fallback(
-            lambda messages, **kw: factory(
-                messages, model=params['model'], **kw),
+            lambda messages, **kw: factory(messages, model=params['model'], **kw),
             base_url='https://example/v1',
             model=params['model'],
             messages=params['messages'],
             sent_images=False,
-            **rest)
+            **rest,
+        )
         return out, seen
 
     def test_anthropic_shaped_params_do_not_collide(self):
-        out, seen = self._call({
-            'model': 'claude-x',
-            'messages': IMG_MESSAGES,
-            'max_tokens': 1024,
-            'thinking': {
-                'type': 'disabled',
-                'budget_tokens': 1024
-            },
-            'system': 'be brief',
-        })
+        out, seen = self._call(
+            {
+                'model': 'claude-x',
+                'messages': IMG_MESSAGES,
+                'max_tokens': 1024,
+                'thinking': {'type': 'disabled', 'budget_tokens': 1024},
+                'system': 'be brief',
+            }
+        )
         self.assertEqual(out, 'ok')
         self.assertEqual(seen['model'], 'claude-x')
         self.assertEqual(seen['max_tokens'], 1024)
@@ -494,7 +415,6 @@ class TestTransportWiring(_MemoCase):
         calls = []
 
         class _Messages:
-
             def create(self, **kw):
                 calls.append(kw)
                 return 'created'
@@ -507,17 +427,14 @@ class TestTransportWiring(_MemoCase):
             base_url = 'https://api.deepseek.com/anthropic'
             messages = _Messages()
 
-        transport = AM.AnthropicMessagesTransport.__new__(
-            AM.AnthropicMessagesTransport)
+        transport = AM.AnthropicMessagesTransport.__new__(AM.AnthropicMessagesTransport)
         transport.client = _Client()
         transport.model = 'deepseek-v4-pro'
         transport._vision = M.VisionOptions()
         transport._vision_supported = False
         transport._last_deliveries = []
 
-        out = transport._call_llm([Message(role='user', content='hi')],
-                                  tools=None,
-                                  stream=False)
+        out = transport._call_llm([Message(role='user', content='hi')], tools=None, stream=False)
 
         self.assertEqual(out, 'created')
         self.assertEqual(len(calls), 1)
@@ -526,7 +443,6 @@ class TestTransportWiring(_MemoCase):
 
 
 class TestStripImages(unittest.TestCase):
-
     def test_replaces_image_blocks_and_keeps_labels(self):
         out, changed = V.strip_images_from_messages(IMG_MESSAGES)
         self.assertTrue(changed)
@@ -565,17 +481,12 @@ class TestDegradeReporting(_MemoCase):
             return 'ok'
 
         V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True,
-            on_degrade=seen.append)
+            create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True, on_degrade=seen.append
+        )
         return seen
 
     def test_capability_refusal_reports_endpoint_rejected(self):
-        self.assertEqual(self._run(CAPABILITY_400),
-                         [V.REASON_ENDPOINT_REJECTED])
+        self.assertEqual(self._run(CAPABILITY_400), [V.REASON_ENDPOINT_REJECTED])
 
     def test_size_failure_reports_its_own_reason(self):
         # "Too large" and "this model refuses images" are different sentences
@@ -590,7 +501,8 @@ class TestDegradeReporting(_MemoCase):
             model='m',
             messages=IMG_MESSAGES,
             sent_images=True,
-            on_degrade=seen.append)
+            on_degrade=seen.append,
+        )
         self.assertEqual(seen, [])
 
     def test_a_reporting_failure_cannot_break_the_turn(self):
@@ -604,10 +516,6 @@ class TestDegradeReporting(_MemoCase):
             return 'ok'
 
         out = V.create_with_vision_fallback(
-            create,
-            base_url='u',
-            model='m',
-            messages=IMG_MESSAGES,
-            sent_images=True,
-            on_degrade=angry)
+            create, base_url='u', model='m', messages=IMG_MESSAGES, sent_images=True, on_degrade=angry
+        )
         self.assertEqual(out, 'ok')

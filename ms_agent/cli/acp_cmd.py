@@ -4,6 +4,7 @@ import os
 
 from ms_agent.config.env import Env
 from ms_agent.utils import strtobool
+
 from .base import CLICommand
 
 
@@ -93,8 +94,7 @@ class ACPCmd(CLICommand):
             required=False,
             type=str,
             default=None,
-            help=
-            'API key for HTTP authentication (or set MS_AGENT_ACP_API_KEY env)',
+            help='API key for HTTP authentication (or set MS_AGENT_ACP_API_KEY env)',
         )
         parser.set_defaults(func=subparser_func)
 
@@ -111,6 +111,7 @@ class ACPCmd(CLICommand):
             self._serve_http(config_path, trust_remote_code)
         else:
             from ms_agent.acp.server import serve
+
             serve(
                 config_path=config_path,
                 trust_remote_code=trust_remote_code,
@@ -129,8 +130,8 @@ class ACPCmd(CLICommand):
         app = FastAPI(
             title='MS-Agent ACP Internal API',
             description=(
-                'Non-standard HTTP/SSE service API for ms-agent ACP server. '
-                'This is NOT an ACP-standard transport.'),
+                'Non-standard HTTP/SSE service API for ms-agent ACP server. This is NOT an ACP-standard transport.'
+            ),
         )
         acp_router = configure_http_adapter(
             config_path=config_path,
@@ -168,8 +169,7 @@ class ACPRegistryCmd(CLICommand):
             required=False,
             type=str,
             default=None,
-            help=
-            'Path to agent config YAML (baked into manifest transport args)',
+            help='Path to agent config YAML (baked into manifest transport args)',
         )
         parser.add_argument(
             '--output',
@@ -189,6 +189,7 @@ class ACPRegistryCmd(CLICommand):
 
     def execute(self):
         from ms_agent.acp.registry import generate_agent_manifest
+
         manifest = generate_agent_manifest(
             config_path=self.args.config,
             output_path=self.args.output,

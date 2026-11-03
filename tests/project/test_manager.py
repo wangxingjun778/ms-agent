@@ -1,6 +1,7 @@
 import threading
 
 import pytest
+
 from ms_agent.project.manager import ProjectManager
 from ms_agent.project.types import DEFAULT_PROJECT_ID, Project
 
@@ -16,8 +17,7 @@ class TestProjectManager:
         assert default.id == DEFAULT_PROJECT_ID
         assert default.name == 'Default'
 
-    def test_concurrent_managers_can_create_the_default_project(
-            self, tmp_path):
+    def test_concurrent_managers_can_create_the_default_project(self, tmp_path):
         # A first visit does this from several requests at once: the WebUI
         # builds a manager per request and construction creates the default
         # project when missing.
@@ -30,9 +30,7 @@ class TestProjectManager:
         def visit() -> None:
             start.wait()
             try:
-                names.append(
-                    ProjectManager(
-                        base_dir=str(home)).get_default_project().name)
+                names.append(ProjectManager(base_dir=str(home)).get_default_project().name)
             except BaseException as exc:  # noqa: B902 - reported verbatim
                 failures.append(exc)
 
@@ -107,11 +105,13 @@ class TestProjectManager:
     def test_workspace_dir_created(self, pm):
         project = pm.create(name='WithWorkspace')
         from pathlib import Path
+
         assert (Path(project.path) / 'workspace').is_dir()
 
     def test_sessions_dir_created(self, pm):
         project = pm.create(name='WithSessions')
         from pathlib import Path
+
         assert (pm._projects_root / project.id / 'sessions').is_dir()
 
     def test_project_is_frozen(self, pm):
@@ -121,15 +121,16 @@ class TestProjectManager:
 
     def test_create_init_workspace_false_skips_workspace(self, pm, tmp_path):
         from pathlib import Path
+
         custom = tmp_path / 'no_ws'
-        project = pm.create(
-            name='NoWs', path=str(custom), init_workspace=False)
+        project = pm.create(name='NoWs', path=str(custom), init_workspace=False)
         assert not (Path(project.path) / 'workspace').exists()
 
     # -- open_folder (Codex "use an existing folder") --
 
     def test_open_folder_id_is_path_key(self, pm, tmp_path):
         from ms_agent.project.paths import project_key
+
         folder = tmp_path / 'my-repo'
         folder.mkdir()
         project = pm.open_folder(str(folder))
@@ -139,6 +140,7 @@ class TestProjectManager:
 
     def test_open_folder_does_not_create_workspace(self, pm, tmp_path):
         from pathlib import Path
+
         folder = tmp_path / 'existing-repo'
         folder.mkdir()
         pm.open_folder(str(folder))

@@ -8,6 +8,7 @@ When pruning actually occurs, the strategy returns compaction metadata so
 that the assembler can persist the pruned view and record a compaction
 event in the SessionLog.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,7 +70,7 @@ def _estimate_total_tokens(messages: List[Dict[str, Any]]) -> int:
         ct = int(msg.get('completion_tokens', 0) or 0)
         if pt or ct:
             base = pt + ct
-            tail = sum(_estimate_message_tokens(m) for m in messages[i + 1:])
+            tail = sum(_estimate_message_tokens(m) for m in messages[i + 1 :])
             return base + tail
 
     return sum(_estimate_message_tokens(m) for m in messages)
@@ -113,17 +114,14 @@ class ToolOutputPruner:
             tokens = _estimate_tokens(content)
             total_tool_tokens += tokens
             if total_tool_tokens > protect:
-                visible[idx] = {
-                    **msg, 'content': '[Output truncated to save context]'
-                }
+                visible[idx] = {**msg, 'content': '[Output truncated to save context]'}
                 pruned_count += 1
 
         if pruned_count == 0:
             return visible, None
 
         tokens_after = _estimate_total_tokens(visible)
-        logger.info(f'[tool_pruner] Pruned {pruned_count} tool outputs '
-                    f'({tokens_before} -> {tokens_after} tokens)')
+        logger.info(f'[tool_pruner] Pruned {pruned_count} tool outputs ({tokens_before} -> {tokens_after} tokens)')
 
         return visible, {
             'pruned_count': pruned_count,

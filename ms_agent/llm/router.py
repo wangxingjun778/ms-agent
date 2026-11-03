@@ -12,18 +12,20 @@ it exposes ``.model``, ``.config`` and ``.generate(messages, tools, **kwargs)``
 returning ``Message`` / ``Generator[Message]``. Typed ``LLMResponse`` output is
 available via ``generate_response`` for new consumers.
 """
+
 from __future__ import annotations
 
 import dataclasses
-from omegaconf import DictConfig, OmegaConf
 from typing import Generator, List, Optional, Union
 
+from omegaconf import DictConfig, OmegaConf
+
 from ms_agent.utils import get_logger
+
 from .adapter import ResponseAdapter
 from .credentials import CredentialResolver
 from .retry import smart_retry
-from .spec import (TRANSPORT_ANTHROPIC_MESSAGES, TRANSPORT_OPENAI_COMPAT,
-                   ProviderSpec, get_registry)
+from .spec import TRANSPORT_ANTHROPIC_MESSAGES, TRANSPORT_OPENAI_COMPAT, ProviderSpec, get_registry
 from .transport.base import Transport
 from .types import LLMResponse, ProviderCapabilities
 from .utils import Message, Tool
@@ -31,15 +33,18 @@ from .utils import Message, Tool
 logger = get_logger()
 
 
-def _build_transport(spec: ProviderSpec,
-                     model: str,
-                     api_key: Optional[str],
-                     base_url: str,
-                     gen_config: dict,
-                     vision: Optional['VisionOptions'] = None,
-                     vision_supported: bool = True) -> Transport:
+def _build_transport(
+    spec: ProviderSpec,
+    model: str,
+    api_key: Optional[str],
+    base_url: str,
+    gen_config: dict,
+    vision: Optional['VisionOptions'] = None,
+    vision_supported: bool = True,
+) -> Transport:
     if spec.transport == TRANSPORT_ANTHROPIC_MESSAGES:
         from .transport.anthropic_messages import AnthropicMessagesTransport
+
         return AnthropicMessagesTransport(
             model=model,
             api_key=api_key,
@@ -50,6 +55,7 @@ def _build_transport(spec: ProviderSpec,
         )
     if spec.transport == TRANSPORT_OPENAI_COMPAT:
         from .transport.openai_compat import OpenAICompatTransport
+
         return OpenAICompatTransport(
             model=model,
             api_key=api_key,
@@ -67,8 +73,7 @@ def _build_transport(spec: ProviderSpec,
 class LLMProvider:
     """Drop-in LLM facade built from a ProviderSpec + Transport."""
 
-    def __init__(self, config: DictConfig, spec: ProviderSpec,
-                 transport: Transport):
+    def __init__(self, config: DictConfig, spec: ProviderSpec, transport: Transport):
         self.config = config
         self.spec = spec
         self.transport = transport
@@ -106,13 +111,11 @@ class LLMProvider:
 
 
 class ProviderRouter:
-
     def __init__(self):
         self._registry = get_registry()
 
     def create(self, config: DictConfig) -> LLMProvider:
-        service = config.llm.get('service') if hasattr(
-            config.llm, 'get') else getattr(config.llm, 'service', None)
+        service = config.llm.get('service') if hasattr(config.llm, 'get') else getattr(config.llm, 'service', None)
         model = config.llm.model
 
         spec = self._registry.get(service)
@@ -129,7 +132,8 @@ class ProviderRouter:
         if spec is None:
             logger.info(
                 f'No provider spec for service={service} model={model}; '
-                f'falling back to a generic OpenAI-compatible transport.')
+                f'falling back to a generic OpenAI-compatible transport.'
+            )
             spec = ProviderSpec(
                 name=service or 'custom',
                 display_name=service or 'Custom',
@@ -142,8 +146,7 @@ class ProviderRouter:
         # endpoint (e.g. DeepSeek's /anthropic gateway). An explicit
         # ``config.llm.protocol`` overrides the spec's default transport so the
         # wire format matches the endpoint the user pointed at.
-        protocol = config.llm.get('protocol') if hasattr(
-            config.llm, 'get') else getattr(config.llm, 'protocol', None)
+        protocol = config.llm.get('protocol') if hasattr(config.llm, 'get') else getattr(config.llm, 'protocol', None)
         if protocol:
             forced = {
                 'anthropic': TRANSPORT_ANTHROPIC_MESSAGES,
@@ -157,10 +160,10 @@ class ProviderRouter:
         if not api_key:
             raise ValueError(
                 f'No API key found for provider "{spec.name}". Set one of '
-                f'{spec.api_key_env} or config.llm.{spec.name}_api_key.')
+                f'{spec.api_key_env} or config.llm.{spec.name}_api_key.'
+            )
 
-        gen_config = OmegaConf.to_container(
-            getattr(config, 'generation_config', DictConfig({})))
+        gen_config = OmegaConf.to_container(getattr(config, 'generation_config', DictConfig({})))
         gen_config = {**spec.default_generation_config, **(gen_config or {})}
 
         # Image attachments: encode options + whether this model may be shown
@@ -170,16 +173,15 @@ class ProviderRouter:
 
         from .multimodal import VisionOptions
         from .vision import resolve_max_edge, resolve_supports_vision
+
         vision = VisionOptions.from_config(config)
         # A provider that documents a HIGHER ceiling than the shared safe
         # default gets to use it. The table can only widen (see spec.py), so a
         # provider we have not catalogued simply encodes at the default.
-        vision = _replace(
-            vision, max_edge=resolve_max_edge(spec, vision.max_edge))
-        vision_supported = resolve_supports_vision(
-            config, spec=spec, model=model, base_url=base_url)
+        vision = _replace(vision, max_edge=resolve_max_edge(spec, vision.max_edge))
+        vision_supported = resolve_supports_vision(config, spec=spec, model=model, base_url=base_url)
 
-        transport = _build_transport(spec, model, api_key, base_url, gen_config,
-                                     vision=vision,
-                                     vision_supported=vision_supported)
+        transport = _build_transport(
+            spec, model, api_key, base_url, gen_config, vision=vision, vision_supported=vision_supported
+        )
         return LLMProvider(config=config, spec=spec, transport=transport)

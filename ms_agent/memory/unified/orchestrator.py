@@ -28,6 +28,7 @@ What it DOES own is the write/read discipline around the backend:
 
 Registered as ``unified_memory`` in ``memory_mapping``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,11 +41,13 @@ from typing import Any, Dict, List, Optional, Set
 
 from ms_agent.llm.utils import Message
 from ms_agent.memory.base import Memory
+
 # Single canonical deserializer, shared with ContextAssembler. A second local
 # copy previously drifted and silently dropped `tool_call_id` / `name`.
 from ms_agent.session.context_assembler import _dicts_to_messages
 from ms_agent.utils.atomic_file import atomic_write_json
 from ms_agent.utils.logger import get_logger
+
 from .config import MemoryConfig
 from .protocols import RECALL_BLOCK_MARKER, MemoryBackend, MemoryEntry
 from .registry import backend_registry
@@ -98,26 +101,18 @@ _SOFT_FIELDS = ('recall_top_k', 'ingest_interval')
 
 
 def _content_hash(msg: Dict[str, Any]) -> str:
-    raw = f"{msg.get('role', '')}\x1f{msg.get('content', '')}"
+    raw = f'{msg.get("role", "")}\x1f{msg.get("content", "")}'
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
 
 
 def _ingestable_hashes(msg_dicts: List[Dict[str, Any]]) -> Set[str]:
-    return {
-        _content_hash(m)
-        for m in msg_dicts
-        if m.get('role') in _INGEST_ROLES and m.get('content')
-    }
+    return {_content_hash(m) for m in msg_dicts if m.get('role') in _INGEST_ROLES and m.get('content')}
 
 
 def _changed_fields(old: MemoryConfig, new: MemoryConfig) -> Set[str]:
     # Field-by-field rather than ``asdict``: that deep-copies every value,
     # and ``llm_config`` / ``backend_options`` can hold anything.
-    return {
-        f.name
-        for f in fields(old)
-        if getattr(old, f.name, None) != getattr(new, f.name, None)
-    }
+    return {f.name for f in fields(old) if getattr(old, f.name, None) != getattr(new, f.name, None)}
 
 
 class MemoryOrchestrator(Memory):
@@ -149,12 +144,7 @@ class MemoryOrchestrator(Memory):
         self._turns_since_ingest = 0
         self._ledger: Optional[Set[str]] = None  # lazy-loaded from disk
         self._ledger_order: List[str] = []
-        self._status: Dict[str, Any] = {
-            'state': 'idle',
-            'at': None,
-            'count': None,
-            'error': None
-        }
+        self._status: Dict[str, Any] = {'state': 'idle', 'at': None, 'count': None, 'error': None}
 
     # ------------------------------------------------------------------
     # Standalone factory (lightweight mode)
@@ -183,10 +173,8 @@ class MemoryOrchestrator(Memory):
             storage_backend=str(cfg.get('storage_backend', 'file')),
             base_dir=str(base_dir),
             user_id=str(cfg.get('user_id', 'default')),
-            retrieval_strategy=str(
-                cfg.get('retrieval_strategy', 'full_dump')),
-            extraction_strategy=str(
-                cfg.get('extraction_strategy', 'tool_based')),
+            retrieval_strategy=str(cfg.get('retrieval_strategy', 'full_dump')),
+            extraction_strategy=str(cfg.get('extraction_strategy', 'tool_based')),
             security_scan=bool(cfg.get('security_scan', False)),
             char_limit=int(cfg.get('char_limit', 1_000_000)),
         )
@@ -202,7 +190,10 @@ class MemoryOrchestrator(Memory):
         instance._ledger = None
         instance._ledger_order = []
         instance._status = {
-            'state': 'idle', 'at': None, 'count': None, 'error': None,
+            'state': 'idle',
+            'at': None,
+            'count': None,
+            'error': None,
         }
         if llm_client is not None:
             instance.set_llm(llm_client)
@@ -217,8 +208,7 @@ class MemoryOrchestrator(Memory):
             backend_name = self.mem_config.storage_backend
             cls = backend_registry.resolve(backend_name)
             self._backend = cls(self.mem_config)
-            logger.info(f"[orchestrator] Created backend '{backend_name}' "
-                        f'-> {cls.__name__}')
+            logger.info(f"[orchestrator] Created backend '{backend_name}' -> {cls.__name__}")
         return self._backend
 
     async def _ensure_started(self, **kwargs: Any) -> MemoryBackend:
@@ -282,8 +272,7 @@ class MemoryOrchestrator(Memory):
             return
         await self._ingest(_messages_to_dicts(messages), **kwargs)
 
-    def schedule_add(self, messages: List[Message],
-                     **kwargs: Any) -> Optional[asyncio.Task]:
+    def schedule_add(self, messages: List[Message], **kwargs: Any) -> Optional[asyncio.Task]:
         """Ingest in the background; returns the task (None when skipped or
         run inline). The message list is snapshotted to dicts NOW — the
         caller's list keeps mutating after this returns (the next user turn
@@ -308,8 +297,7 @@ class MemoryOrchestrator(Memory):
         task = loop.create_task(self._ingest(msg_dicts, **kwargs))
         self._pending.add(task)
         task.add_done_callback(self._pending.discard)
-        task.add_done_callback(
-            lambda _t: self._inflight.difference_update(claimed))
+        task.add_done_callback(lambda _t: self._inflight.difference_update(claimed))
         return task
 
     def _should_ingest(self) -> bool:
@@ -322,8 +310,7 @@ class MemoryOrchestrator(Memory):
         self._turns_since_ingest = 0
         return True
 
-    async def _ingest(self, msg_dicts: List[Dict[str, Any]],
-                      **kwargs: Any) -> int:
+    async def _ingest(self, msg_dicts: List[Dict[str, Any]], **kwargs: Any) -> int:
         """The single write path: locked, delta-only, status-reporting.
 
         Never raises — a memory write must not break anything above it; the
@@ -359,8 +346,9 @@ class MemoryOrchestrator(Memory):
             self._set_status('error', error='cancelled')
             raise
         except Exception as e:  # noqa: BLE001 - reported via status
-            logger.error(f'[orchestrator] memory ingest failed, nothing was '
-                         f'persisted for this turn: {type(e).__name__}: {e}')
+            logger.error(
+                f'[orchestrator] memory ingest failed, nothing was persisted for this turn: {type(e).__name__}: {e}'
+            )
             self._set_status('error', error=f'{type(e).__name__}: {e}')
             return 0
         finally:
@@ -377,9 +365,9 @@ class MemoryOrchestrator(Memory):
         exists to guarantee — either way the memory is silently lost.
         """
         dicts = [
-            m for m in _messages_to_dicts(messages)
-            if m.get('role') in _INGEST_ROLES and m.get('content')
-            and _content_hash(m) not in self._inflight
+            m
+            for m in _messages_to_dicts(messages)
+            if m.get('role') in _INGEST_ROLES and m.get('content') and _content_hash(m) not in self._inflight
         ]
         self._ledger_mark(dicts, persist=True)
 
@@ -391,9 +379,7 @@ class MemoryOrchestrator(Memory):
             return
         done, still = await asyncio.wait(pending, timeout=timeout)
         if still:
-            logger.warning(
-                f'[orchestrator] {len(still)} memory ingest(s) still running '
-                f'after {timeout}s flush timeout')
+            logger.warning(f'[orchestrator] {len(still)} memory ingest(s) still running after {timeout}s flush timeout')
 
     @property
     def ingest_status(self) -> Dict[str, Any]:
@@ -401,13 +387,8 @@ class MemoryOrchestrator(Memory):
         status['pending'] = sum(1 for t in self._pending if not t.done())
         return status
 
-    def _set_status(self, state: str, count: Optional[int] = None,
-                    error: Optional[str] = None) -> None:
-        self._status.update(
-            state=state,
-            at=time.strftime('%Y-%m-%dT%H:%M:%S%z'),
-            count=count,
-            error=error)
+    def _set_status(self, state: str, count: Optional[int] = None, error: Optional[str] = None) -> None:
+        self._status.update(state=state, at=time.strftime('%Y-%m-%dT%H:%M:%S%z'), count=count, error=error)
 
     # ------------------------------------------------------------------
     # Ingest ledger (content hashes of already-ingested messages)
@@ -428,9 +409,7 @@ class MemoryOrchestrator(Memory):
             self._ledger = set(self._ledger_order)
         return self._ledger
 
-    def _ledger_delta(
-            self, msg_dicts: List[Dict[str,
-                                       Any]]) -> List[Dict[str, Any]]:
+    def _ledger_delta(self, msg_dicts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Conversational messages not yet ingested, in order. Repeated
         identical texts dedup to their first occurrence — a repeat carries no
         new fact, and it keeps the ledger content-addressed (stable across
@@ -448,8 +427,7 @@ class MemoryOrchestrator(Memory):
             delta.append(m)
         return delta
 
-    def _ledger_mark(self, msg_dicts: List[Dict[str, Any]],
-                     persist: bool = True) -> None:
+    def _ledger_mark(self, msg_dicts: List[Dict[str, Any]], persist: bool = True) -> None:
         seen = self._ledger_load()
         added = False
         for m in msg_dicts:
@@ -465,12 +443,7 @@ class MemoryOrchestrator(Memory):
                 seen.discard(stale)
             self._ledger_order = self._ledger_order[-_LEDGER_MAX:]
         try:
-            atomic_write_json(
-                self._ledger_path(), {
-                    'version': 1,
-                    'hashes': self._ledger_order
-                },
-                indent=None)
+            atomic_write_json(self._ledger_path(), {'version': 1, 'hashes': self._ledger_order}, indent=None)
         except OSError as e:  # pragma: no cover - bookkeeping never breaks
             logger.warning(f'[orchestrator] ingest ledger write failed: {e}')
 
@@ -596,11 +569,9 @@ class MemoryOrchestrator(Memory):
             # writing the fields through reaches it without a teardown.
             for field in _SOFT_FIELDS:
                 setattr(self.mem_config, field, getattr(new_cfg, field))
-            logger.info(f'[orchestrator] memory config updated in place: '
-                        f'{sorted(changed)}')
+            logger.info(f'[orchestrator] memory config updated in place: {sorted(changed)}')
             return False
-        logger.info(f'[orchestrator] memory config changed '
-                    f'({sorted(changed)}) -> rebuilding backend')
+        logger.info(f'[orchestrator] memory config changed ({sorted(changed)}) -> rebuilding backend')
         # Release the old store, but keep the instance usable — everyone
         # holding it must keep working, now against the new configuration.
         await self._shutdown_backend()
@@ -619,8 +590,7 @@ class MemoryOrchestrator(Memory):
     def _parse_config(self, config: Any) -> MemoryConfig:
         if isinstance(config, MemoryConfig):
             return config
-        if hasattr(config, 'memory') and hasattr(config.memory,
-                                                 'unified_memory'):
+        if hasattr(config, 'memory') and hasattr(config.memory, 'unified_memory'):
             mc = MemoryConfig.from_dict_config(config.memory.unified_memory)
             self._default_base_dir(mc, config)
             return mc
@@ -634,6 +604,7 @@ class MemoryOrchestrator(Memory):
         instead of the CWD (so MEMORY.md / facts / index don't scatter)."""
         if str(getattr(mc, 'base_dir', '.')).strip() in ('.', '', './'):
             from ms_agent.project.paths import memory_dir
+
             work = getattr(config, 'output_dir', None) or '.'
             mc.base_dir = str(memory_dir(work))
 

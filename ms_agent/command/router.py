@@ -5,14 +5,13 @@ Priority commands execute outside the agent lock for instant /stop response.
 
 Reference: nanobot/command/router.py (structure) + qwen-code (pre-parse + typed result)
 """
+
 from __future__ import annotations
 
-from ms_agent.command.types import (CommandContext, CommandDef, CommandHandler,
-                                    CommandResult)
+from ms_agent.command.types import CommandContext, CommandDef, CommandHandler, CommandResult
 
 
 class CommandRouter:
-
     def __init__(self) -> None:
         self._priority: dict[str, CommandHandler] = {}
         self._exact: dict[str, CommandHandler] = {}
@@ -60,8 +59,7 @@ class CommandRouter:
 
     # -- dispatch --
 
-    async def dispatch_priority(self,
-                                ctx: CommandContext) -> CommandResult | None:
+    async def dispatch_priority(self, ctx: CommandContext) -> CommandResult | None:
         handler = self._priority.get(ctx.command_name.lower())
         if handler:
             return await handler(ctx)
@@ -98,8 +96,7 @@ class CommandRouter:
                 return cmd_def
         return None
 
-    def list_commands(self,
-                      source: str = 'cli') -> dict[str, list[CommandDef]]:
+    def list_commands(self, source: str = 'cli') -> dict[str, list[CommandDef]]:
         result: dict[str, list[CommandDef]] = {}
         for cmd_def in self._registry.values():
             if source in cmd_def.ui_scope:

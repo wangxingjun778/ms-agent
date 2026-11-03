@@ -4,10 +4,11 @@ import asyncio
 import json
 import os
 import secrets
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import Any
 
 from ms_agent.acp.server import MSAgentACPServer
 from ms_agent.utils.logger import get_logger
@@ -63,6 +64,7 @@ class _DummyConn:
     object. Over HTTP we intercept ``session_update`` calls and
     stream them back as SSE events instead.
     """
+
     server = None
 
     def __init__(self):
@@ -73,27 +75,22 @@ class _DummyConn:
             self._queues[session_id] = asyncio.Queue()
         return self._queues[session_id]
 
-    async def session_update(self, session_id: str, update: Any,
-                             **kwargs) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs) -> None:
         q = self.get_queue(session_id)
-        data = update.model_dump(
-            by_alias=True) if hasattr(update, 'model_dump') else update
+        data = update.model_dump(by_alias=True) if hasattr(update, 'model_dump') else update
         await q.put(data)
 
-    async def request_permission(self, session_id: str, tool_call: Any,
-                                 options: list, **kwargs) -> Any:
+    async def request_permission(self, session_id: str, tool_call: Any, options: list, **kwargs) -> Any:
         allow = next(
             (o for o in options if 'allow' in (getattr(o, 'kind', '') or '')),
             None,
         )
         if allow:
             from types import SimpleNamespace
-            return SimpleNamespace(
-                outcome={
-                    'outcome': 'selected',
-                    'id': getattr(allow, 'option_id', 'allow_once')
-                })
+
+            return SimpleNamespace(outcome={'outcome': 'selected', 'id': getattr(allow, 'option_id', 'allow_once')})
         from types import SimpleNamespace
+
         return SimpleNamespace(outcome={'outcome': 'cancelled'})
 
 
@@ -104,15 +101,14 @@ def _check_api_key(authorization: str | None = Header(None)):
     if not authorization:
         raise HTTPException(401, 'Authorization header required')
     parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower(
-    ) != 'bearer' or not secrets.compare_digest(parts[1], _api_key):
+    if len(parts) != 2 or parts[0].lower() != 'bearer' or not secrets.compare_digest(parts[1], _api_key):
         raise HTTPException(403, 'Invalid API key')
 
 
 @router.post('/rpc')
 async def rpc_endpoint(
-        req: RPCRequest,
-        _auth: None = Depends(_check_api_key),
+    req: RPCRequest,
+    _auth: None = Depends(_check_api_key),
 ):
     """Single JSON-RPC endpoint for all ACP methods.
 
@@ -129,7 +125,8 @@ async def rpc_endpoint(
     try:
         if method == 'initialize':
             result = await _server.initialize(
-                protocol_version=params.get('protocolVersion', 1), )
+                protocol_version=params.get('protocolVersion', 1),
+            )
             return _jsonrpc_ok(rpc_id, result)
 
         elif method == 'session/new':
@@ -158,11 +155,7 @@ async def rpc_endpoint(
 
         elif method == 'session/cancel':
             await _server.cancel(session_id=params.get('sessionId', ''))
-            return JSONResponse({
-                'jsonrpc': '2.0',
-                'id': rpc_id,
-                'result': None
-            })
+            return JSONResponse({'jsonrpc': '2.0', 'id': rpc_id, 'result': None})
 
         elif method == 'session/setConfigOption':
             result = await _server.set_config_option(
@@ -174,29 +167,19 @@ async def rpc_endpoint(
 
         else:
             return JSONResponse(
-                {
-                    'jsonrpc': '2.0',
-                    'id': rpc_id,
-                    'error': {
-                        'code': -32601,
-                        'message': f'Method not found: {method}'
-                    }
-                },
+                {'jsonrpc': '2.0', 'id': rpc_id, 'error': {'code': -32601, 'message': f'Method not found: {method}'}},
                 status_code=200,
             )
 
     except Exception as e:
         from ms_agent.acp.errors import ACPError, wrap_agent_error
+
         rpc_err = wrap_agent_error(e)
         return JSONResponse(
             {
                 'jsonrpc': '2.0',
                 'id': rpc_id,
-                'error': {
-                    'code': rpc_err.code,
-                    'message': rpc_err.message,
-                    'data': getattr(rpc_err, 'data', None)
-                }
+                'error': {'code': rpc_err.code, 'message': rpc_err.message, 'data': getattr(rpc_err, 'data', None)},
             },
             status_code=200,
         )
@@ -205,6 +188,7 @@ async def rpc_endpoint(
 async def _handle_prompt_sse(rpc_id, params):
     """Run a prompt and stream updates as SSE events."""
     from acp import text_block as tb
+
     session_id = params.get('sessionId', '')
     prompt_blocks = params.get('prompt', [])
 
@@ -223,7 +207,8 @@ async def _handle_prompt_sse(rpc_id, params):
             _server.prompt(
                 prompt=acp_blocks,
                 session_id=session_id,
-            ))
+            )
+        )
         try:
             while not prompt_task.done():
                 try:
@@ -237,22 +222,15 @@ async def _handle_prompt_sse(rpc_id, params):
                 yield f'data: {json.dumps(update, default=str)}\n\n'
 
             result = prompt_task.result()
-            final = result.model_dump(
-                by_alias=True) if hasattr(result, 'model_dump') else result
+            final = result.model_dump(by_alias=True) if hasattr(result, 'model_dump') else result
             response = {'jsonrpc': '2.0', 'id': rpc_id, 'result': final}
             yield f'data: {json.dumps(response, default=str)}\n\n'
 
         except Exception as e:
             from ms_agent.acp.errors import wrap_agent_error
+
             rpc_err = wrap_agent_error(e)
-            err_resp = {
-                'jsonrpc': '2.0',
-                'id': rpc_id,
-                'error': {
-                    'code': rpc_err.code,
-                    'message': rpc_err.message
-                }
-            }
+            err_resp = {'jsonrpc': '2.0', 'id': rpc_id, 'error': {'code': rpc_err.code, 'message': rpc_err.message}}
             yield f'data: {json.dumps(err_resp)}\n\n'
 
     return StreamingResponse(
@@ -267,6 +245,5 @@ async def _handle_prompt_sse(rpc_id, params):
 
 
 def _jsonrpc_ok(rpc_id, result) -> JSONResponse:
-    data = result.model_dump(
-        by_alias=True) if hasattr(result, 'model_dump') else result
+    data = result.model_dump(by_alias=True) if hasattr(result, 'model_dump') else result
     return JSONResponse({'jsonrpc': '2.0', 'id': rpc_id, 'result': data})

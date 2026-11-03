@@ -2,12 +2,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Validate that SKILL.md Capability Index matches the live registry / MCP set.
 
-Exit code 0 on match, 1 on drift. Intended for CI and local pre-commit checks.
+Exit code 0 on match, 1 on drift. Intended for CI and local lint checks.
 
 Usage::
 
     python ms-agent-skills/scripts/validate_capability_index.py
 """
+
 from __future__ import annotations
 
 import re
@@ -51,9 +52,7 @@ def main() -> int:
     # but they must not appear in the skill index.
     parents_in_index = skill_tools & (registered - mcp_exposed)
     if parents_in_index:
-        errors.append(
-            f'Parent-only descriptors listed in SKILL.md index: '
-            f'{sorted(parents_in_index)}')
+        errors.append(f'Parent-only descriptors listed in SKILL.md index: {sorted(parents_in_index)}')
 
     print(f'SKILL.md index tools : {len(skill_tools)}')
     print(f'Registry registered  : {len(registered)}')

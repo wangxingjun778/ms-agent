@@ -54,5 +54,5 @@ def test_zip_download_skips_external_symlink(tmp_path):
         names = zf.namelist()
         blob = b''.join(zf.read(n) for n in names)
     assert any(n.endswith('safe.txt') for n in names)
-    assert not any('leak' in n for n in names)   # symlink entry skipped
-    assert b'TOP-SECRET' not in blob              # external content not leaked
+    assert not any('leak' in n for n in names)  # symlink entry skipped
+    assert b'TOP-SECRET' not in blob  # external content not leaked

@@ -1,16 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from abc import abstractmethod
-from omegaconf import DictConfig
 from typing import Any, Dict, List, Optional
 
+from omegaconf import DictConfig
+
 from ms_agent.config import Config
+
 from ..utils.constants import DEFAULT_RETRY_COUNT
 from .utils import Message, Tool
 
 
 class LLM:
-
     retry_count = int(os.environ.get('LLM_RETRY_COUNT', DEFAULT_RETRY_COUNT))
 
     def __init__(self, config: DictConfig):
@@ -22,11 +23,9 @@ class LLM:
         self.config = config
 
     @abstractmethod
-    def generate(self,
-                 messages: List[Message],
-                 model: Optional[str] = None,
-                 tools: Optional[List[Tool]] = None,
-                 **kwargs) -> Any:
+    def generate(
+        self, messages: List[Message], model: Optional[str] = None, tools: Optional[List[Tool]] = None, **kwargs
+    ) -> Any:
         """Generate response by the given messages.
 
         Args:
@@ -41,10 +40,7 @@ class LLM:
         pass
 
     @classmethod
-    def from_task(cls,
-                  config_dir_or_id: str,
-                  *,
-                  env: Optional[Dict[str, str]] = None) -> Any:
+    def from_task(cls, config_dir_or_id: str, *, env: Optional[Dict[str, str]] = None) -> Any:
         """Instantiate an LLM instance.
 
         Args:
@@ -82,17 +78,21 @@ class LLM:
         router_flag = config.llm.get('use_provider_router', None)
         if router_flag:
             from .router import ProviderRouter
+
             return ProviderRouter().create(config)
 
         from .model_mapping import OpenAI, all_services_mapping
+
         service = config.llm.get('service')
 
         # Auto-route providers the legacy mapping cannot serve but the registry
         # knows. Unset (None) enables this; an explicit False opts out.
         if router_flag is None and service and service not in all_services_mapping:
             from .spec import get_registry
+
             if get_registry().get(service) is not None:
                 from .router import ProviderRouter
+
                 return ProviderRouter().create(config)
 
         if service in all_services_mapping:

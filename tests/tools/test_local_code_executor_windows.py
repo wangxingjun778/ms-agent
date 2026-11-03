@@ -13,7 +13,6 @@ def _bare_tool() -> LocalCodeExecutionTool:
 
 
 class _FakeProcess:
-
     def __init__(self):
         self.returncode = 0
 
@@ -30,18 +29,14 @@ def _run_shell(command: str):
     tool.shell_env = {'PATH': '/usr/bin'}
     tool._ws = mock.Mock(root='/tmp')
     tool._artifacts = mock.Mock()
-    tool._artifacts.pack_json_shell_result.side_effect = (
-        lambda **kwargs: kwargs)
+    tool._artifacts.pack_json_shell_result.side_effect = lambda **kwargs: kwargs
     seen = {}
 
     async def _fake_exec(cmd, **kwargs):
         seen['cmd'] = cmd
         return _FakeProcess()
 
-    with mock.patch(
-            'ms_agent.tools.code.local_code_executor.asyncio.'
-            'create_subprocess_shell',
-            new=_fake_exec):
+    with mock.patch('ms_agent.tools.code.local_code_executor.asyncio.create_subprocess_shell', new=_fake_exec):
         asyncio.run(tool.shell_executor(command=command))
     return seen['cmd']
 
@@ -51,10 +46,10 @@ def test_command_reaches_the_shell_verbatim():
     to switch to a LOGIN shell on metacharacters, so `cmd` and `cmd ; true`
     ran under different PATHs and could resolve different binaries."""
     for command in (
-            'python3 -V',
-            'python3 -V ; true',
-            'pip install jsonschema && python3 -c "import jsonschema"',
-            'grep -r x . 2>/dev/null | head -3',
+        'python3 -V',
+        'python3 -V ; true',
+        'pip install jsonschema && python3 -c "import jsonschema"',
+        'grep -r x . 2>/dev/null | head -3',
     ):
         assert _run_shell(command) == command
 
@@ -82,14 +77,26 @@ def test_sanitized_env_keeps_windows_runtime_variables():
         'LOCALAPPDATA': r'C:\Users\tester\AppData\Local',
         'SECRET_TOKEN': 'must-not-leak',
     }
-    with mock.patch.dict(os.environ, windows_env, clear=True), mock.patch(
-            'ms_agent.tools.code.local_code_executor.os.name', 'nt'):
+    with (
+        mock.patch.dict(os.environ, windows_env, clear=True),
+        mock.patch('ms_agent.tools.code.local_code_executor.os.name', 'nt'),
+    ):
         env = _bare_tool()._build_env('shell_env', inherit=False)
 
     for key in (
-            'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP',
-            'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'USERNAME', 'APPDATA',
-            'LOCALAPPDATA'):
+        'SYSTEMROOT',
+        'WINDIR',
+        'COMSPEC',
+        'PATHEXT',
+        'TEMP',
+        'TMP',
+        'USERPROFILE',
+        'HOMEDRIVE',
+        'HOMEPATH',
+        'USERNAME',
+        'APPDATA',
+        'LOCALAPPDATA',
+    ):
         assert env[key] == windows_env[key]
     assert env['INHERITED_FROM_LOCAL'] == 'False'
     assert 'SECRET_TOKEN' not in env
@@ -110,21 +117,23 @@ def test_posix_env_carries_identity_tmpdir_tls_and_proxy():
         'AWS_SECRET_ACCESS_KEY': 'must-not-leak',
         'OPENAI_API_KEY': 'must-not-leak',
     }
-    with mock.patch.dict(os.environ, parent, clear=True), mock.patch(
-            'ms_agent.tools.code.local_code_executor.os.name', 'posix'):
+    with (
+        mock.patch.dict(os.environ, parent, clear=True),
+        mock.patch('ms_agent.tools.code.local_code_executor.os.name', 'posix'),
+    ):
         env = _bare_tool()._build_env('shell_env', inherit=False)
 
-    for key in ('PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'SSL_CERT_FILE',
-                'HTTPS_PROXY', 'TERM'):
+    for key in ('PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'SSL_CERT_FILE', 'HTTPS_PROXY', 'TERM'):
         assert env[key] == parent[key], key
     assert 'AWS_SECRET_ACCESS_KEY' not in env
     assert 'OPENAI_API_KEY' not in env
 
     # And a parent without a variable must not have one invented for it:
     # passing an empty TMPDIR is worse than passing none.
-    with mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True), \
-            mock.patch('ms_agent.tools.code.local_code_executor.os.name',
-                       'posix'):
+    with (
+        mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True),
+        mock.patch('ms_agent.tools.code.local_code_executor.os.name', 'posix'),
+    ):
         sparse = _bare_tool()._build_env('shell_env', inherit=False)
     assert 'TMPDIR' not in sparse
     assert 'USER' not in sparse
@@ -145,8 +154,10 @@ def test_agent_env_overrides_the_parents_interactive_settings():
         'NO_COLOR': '',
         'GIT_TERMINAL_PROMPT': '1',
     }
-    with mock.patch.dict(os.environ, hostile_parent, clear=True), mock.patch(
-            'ms_agent.tools.code.local_code_executor.os.name', 'posix'):
+    with (
+        mock.patch.dict(os.environ, hostile_parent, clear=True),
+        mock.patch('ms_agent.tools.code.local_code_executor.os.name', 'posix'),
+    ):
         env = _bare_tool()._build_env('shell_env', inherit=False)
 
     for key, expected in _AGENT_FRIENDLY_ENV.items():
@@ -162,19 +173,23 @@ def test_config_can_still_override_the_agent_defaults():
 
     tool = _bare_tool()
     tool.tool_config = SimpleNamespace(shell_env={'PAGER': 'bat'})
-    with mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True), \
-            mock.patch('ms_agent.tools.code.local_code_executor.os.name',
-                       'posix'):
+    with (
+        mock.patch.dict(os.environ, {'PATH': '/usr/bin'}, clear=True),
+        mock.patch('ms_agent.tools.code.local_code_executor.os.name', 'posix'),
+    ):
         env = tool._build_env('shell_env', inherit=False)
     assert env['PAGER'] == 'bat'
     assert env['GIT_PAGER'] == 'cat'  # untouched keys keep the safe default
 
 
 def test_image_shell_path_does_not_change_kernel_or_parent_environment():
-    parent = {'PATH': '/opt/service/bin:/usr/local/bin:/usr/bin',
-              'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin',
-              'VIRTUAL_ENV': '/opt/service', 'PYTHONPATH': '/opt/service/lib',
-              'SECRET_TOKEN': 'must-not-leak'}
+    parent = {
+        'PATH': '/opt/service/bin:/usr/local/bin:/usr/bin',
+        'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin',
+        'VIRTUAL_ENV': '/opt/service',
+        'PYTHONPATH': '/opt/service/lib',
+        'SECRET_TOKEN': 'must-not-leak',
+    }
     with mock.patch.dict(os.environ, parent, clear=True):
         tool = _bare_tool()
         shell = tool._build_env('shell_env')
@@ -189,11 +204,12 @@ def test_explicit_project_environment_wins_over_image_defaults():
     from types import SimpleNamespace
 
     tool = _bare_tool()
-    tool.tool_config = SimpleNamespace(shell_env={
-        'PATH': '/project/.venv/bin:/usr/bin', 'VIRTUAL_ENV': '/project/.venv'})
-    with mock.patch.dict(os.environ, {
-            'PATH': '/opt/service/bin:/usr/bin',
-            'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin'}, clear=True):
+    tool.tool_config = SimpleNamespace(
+        shell_env={'PATH': '/project/.venv/bin:/usr/bin', 'VIRTUAL_ENV': '/project/.venv'}
+    )
+    with mock.patch.dict(
+        os.environ, {'PATH': '/opt/service/bin:/usr/bin', 'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin'}, clear=True
+    ):
         shell = tool._build_env('shell_env')
     assert shell['PATH'] == '/project/.venv/bin:/usr/bin'
     assert shell['VIRTUAL_ENV'] == '/project/.venv'
@@ -204,8 +220,8 @@ def test_plugin_tools_are_available_without_an_explicit_shell_env():
 
     tool = _bare_tool()
     tool.tool_config = SimpleNamespace(plugin_bin_paths=['/plugin/bin'])
-    with mock.patch.dict(os.environ, {
-            'PATH': '/opt/service/bin:/usr/bin',
-            'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin'}, clear=True):
+    with mock.patch.dict(
+        os.environ, {'PATH': '/opt/service/bin:/usr/bin', 'MS_AGENT_SHELL_PATH': '/usr/local/bin:/usr/bin'}, clear=True
+    ):
         env = tool._build_env('shell_env')
     assert env['PATH'] == '/plugin/bin:/usr/local/bin:/usr/bin'

@@ -25,13 +25,13 @@ been delivered the turn is already partly rendered, and silently restarting it
 would duplicate or contradict what the user has seen — so a later failure is
 re-raised untouched.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Iterator
 
 
-def retry_on_first_chunk(result: Any, repair: Callable[[BaseException],
-                                                       Any]) -> Any:
+def retry_on_first_chunk(result: Any, repair: Callable[[BaseException], Any]) -> Any:
     """Guard the first advance of ``result`` with ``repair``.
 
     ``result`` is whatever the provider client returned. Non-iterators (a

@@ -10,17 +10,19 @@ specific; override via the ``<SERVICE>_TEST_MODEL`` env var if needed.
 The Anthropic Messages transport is validated against DeepSeek's
 anthropic-compatible endpoint, so no real Anthropic key is required.
 """
+
 import os
 import unittest
 
-from ms_agent.llm import LLM
-from ms_agent.llm.utils import Message, Tool
+from modelscope.utils.test_utils import test_level
 from omegaconf import OmegaConf
 
-from modelscope.utils.test_utils import test_level
+from ms_agent.llm import LLM
+from ms_agent.llm.utils import Message, Tool
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 except Exception:
     pass
@@ -35,14 +37,10 @@ TOOLS = [
         description='Create a directory in the file system',
         parameters={
             'type': 'object',
-            'properties': {
-                'dir_name': {
-                    'type': 'string',
-                    'description': 'directory name'
-                }
-            },
-            'required': ['dir_name']
-        })
+            'properties': {'dir_name': {'type': 'string', 'description': 'directory name'}},
+            'required': ['dir_name'],
+        },
+    )
 ]
 
 # service -> (default model, env key that must be present)
@@ -66,21 +64,22 @@ def _msgs(text):
 
 def _config(service, model, stream=False):
     # Credentials resolved from env by the provider spec; not placed here.
-    return OmegaConf.create({
-        'llm': {
-            'use_provider_router': True,
-            'service': service,
-            'model': os.getenv(f'{service.upper()}_TEST_MODEL', model),
-        },
-        'generation_config': {
-            'stream': stream,
-            'max_tokens': MAX_TOKENS,
+    return OmegaConf.create(
+        {
+            'llm': {
+                'use_provider_router': True,
+                'service': service,
+                'model': os.getenv(f'{service.upper()}_TEST_MODEL', model),
+            },
+            'generation_config': {
+                'stream': stream,
+                'max_tokens': MAX_TOKENS,
+            },
         }
-    })
+    )
 
 
 class TestProviderRouterLive(unittest.TestCase):
-
     def _run(self, service):
         model, env_key = PROVIDERS[service]
         if not os.getenv(env_key):
@@ -90,8 +89,7 @@ class TestProviderRouterLive(unittest.TestCase):
         llm = LLM.from_config(_config(service, model))
         res = llm.generate(messages=_msgs('浙江的省会是哪里？只答城市名。'), tools=None)
         self.assertTrue(res.content, f'{service}: empty content')
-        self.assertNotIn('<think>', res.content,
-                         f'{service}: reasoning leaked into content')
+        self.assertNotIn('<think>', res.content, f'{service}: reasoning leaked into content')
 
         # stream
         llm = LLM.from_config(_config(service, model, stream=True))
@@ -109,14 +107,11 @@ class TestProviderRouterLive(unittest.TestCase):
         # complete name + arguments, not a partial fragment.
         llm = LLM.from_config(_config(service, model, stream=True))
         chunk = None
-        for chunk in llm.generate(
-                messages=_msgs('请创建一个名为 demo 的目录。'), tools=TOOLS):
+        for chunk in llm.generate(messages=_msgs('请创建一个名为 demo 的目录。'), tools=TOOLS):
             pass
-        self.assertTrue(chunk and chunk.tool_calls,
-                        f'{service}: no streamed tool call')
+        self.assertTrue(chunk and chunk.tool_calls, f'{service}: no streamed tool call')
         tc = chunk.tool_calls[0]
-        self.assertTrue(tc.get('tool_name') and tc.get('arguments'),
-                        f'{service}: incomplete streamed tool call')
+        self.assertTrue(tc.get('tool_name') and tc.get('arguments'), f'{service}: incomplete streamed tool call')
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_modelscope(self):
@@ -155,8 +150,7 @@ class TestProviderRouterLive(unittest.TestCase):
         llm = LLM.from_config(_config('deepseek', model))
         res = llm.generate(messages=_msgs('2+2 等于几？简要思考。'), tools=None)
         self.assertTrue(res.content, 'reasoner: empty content')
-        self.assertTrue(getattr(res, 'reasoning_content', ''),
-                        'reasoner: no reasoning_content')
+        self.assertTrue(getattr(res, 'reasoning_content', ''), 'reasoner: no reasoning_content')
         self.assertNotIn('<think>', res.content)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
@@ -165,8 +159,7 @@ class TestProviderRouterLive(unittest.TestCase):
             self.skipTest('needs DASHSCOPE_API_KEY')
         cfg = _config('dashscope', 'qwen3.7-plus')
         cfg.generation_config.max_tokens = 40
-        res = LLM.from_config(cfg).generate(
-            messages=_msgs('写一段约200字介绍杭州的短文。'), tools=None)
+        res = LLM.from_config(cfg).generate(messages=_msgs('写一段约200字介绍杭州的短文。'), tools=None)
         self.assertGreater(res.api_calls, 1)
         self.assertGreater(res.completion_tokens, 40)
 
@@ -175,9 +168,9 @@ class TestProviderRouterLive(unittest.TestCase):
         if not os.getenv('DEEPSEEK_API_KEY'):
             self.skipTest('needs DEEPSEEK_API_KEY')
         from ms_agent.llm.types import ProviderCapability
+
         llm = LLM.from_config(_config('deepseek', 'deepseek-v4-flash'))
-        self.assertTrue(
-            llm.capabilities.supports(ProviderCapability.TOOL_CALL))
+        self.assertTrue(llm.capabilities.supports(ProviderCapability.TOOL_CALL))
 
 
 class TestAnthropicProtocolLive(unittest.TestCase):
@@ -185,24 +178,24 @@ class TestAnthropicProtocolLive(unittest.TestCase):
     endpoint (https://api.deepseek.com/anthropic)."""
 
     def _config(self, stream=False):
-        return OmegaConf.create({
-            'llm': {
-                'use_provider_router': True,
-                'service': 'anthropic',
-                'model': 'deepseek-v4-flash',
-                # route the DeepSeek key to the anthropic transport
-                'anthropic_api_key': os.environ.get('DEEPSEEK_API_KEY'),
-                'anthropic_base_url': 'https://api.deepseek.com/anthropic',
-            },
-            'generation_config': {
-                'stream': stream,
-                'max_tokens': MAX_TOKENS,
+        return OmegaConf.create(
+            {
+                'llm': {
+                    'use_provider_router': True,
+                    'service': 'anthropic',
+                    'model': 'deepseek-v4-flash',
+                    # route the DeepSeek key to the anthropic transport
+                    'anthropic_api_key': os.environ.get('DEEPSEEK_API_KEY'),
+                    'anthropic_base_url': 'https://api.deepseek.com/anthropic',
+                },
+                'generation_config': {
+                    'stream': stream,
+                    'max_tokens': MAX_TOKENS,
+                },
             }
-        })
+        )
 
-    @unittest.skipUnless(
-        test_level() >= 0 and os.getenv('DEEPSEEK_API_KEY'),
-        'needs DEEPSEEK_API_KEY')
+    @unittest.skipUnless(test_level() >= 0 and os.getenv('DEEPSEEK_API_KEY'), 'needs DEEPSEEK_API_KEY')
     def test_text_no_stream(self):
         llm = LLM.from_config(self._config())
         try:
@@ -217,9 +210,7 @@ class TestAnthropicProtocolLive(unittest.TestCase):
             raise
         self.assertTrue(res.content)
 
-    @unittest.skipUnless(
-        test_level() >= 0 and os.getenv('DEEPSEEK_API_KEY'),
-        'needs DEEPSEEK_API_KEY')
+    @unittest.skipUnless(test_level() >= 0 and os.getenv('DEEPSEEK_API_KEY'), 'needs DEEPSEEK_API_KEY')
     def test_text_stream(self):
         llm = LLM.from_config(self._config(stream=True))
         chunk = None

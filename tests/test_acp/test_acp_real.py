@@ -13,8 +13,7 @@ import time
 
 import pytest
 
-_REPO_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DEFAULT_CONFIG = os.path.join(_REPO_ROOT, 'ms_agent', 'agent', 'agent.yaml')
 _ACP_TEST_CONFIG = os.environ.get('ACP_TEST_CONFIG', _DEFAULT_CONFIG)
 
@@ -25,13 +24,18 @@ sys.path.insert(0, _REPO_ROOT)
 # 1. Error mapping — real exception objects, real RequestError
 # ======================================================================
 
-class TestErrorMappingReal:
 
+class TestErrorMappingReal:
     def test_all_custom_errors_have_correct_codes(self):
         from ms_agent.acp.errors import (
-            SessionNotFoundError, ResourceNotFoundError, LLMError,
-            RateLimitError, ConfigError, MaxSessionsError,
+            ConfigError,
+            LLMError,
+            MaxSessionsError,
+            RateLimitError,
+            ResourceNotFoundError,
+            SessionNotFoundError,
         )
+
         cases = [
             (SessionNotFoundError('ses_x'), -32001),
             (ResourceNotFoundError('/tmp/x'), -32002),
@@ -47,7 +51,8 @@ class TestErrorMappingReal:
 
     def test_wrap_agent_error_produces_real_request_error(self):
         from acp import RequestError
-        from ms_agent.acp.errors import wrap_agent_error, LLMError
+
+        from ms_agent.acp.errors import LLMError, wrap_agent_error
 
         rpc = wrap_agent_error(LLMError('model down'))
         assert isinstance(rpc, RequestError)
@@ -55,6 +60,7 @@ class TestErrorMappingReal:
 
     def test_wrap_python_stdlib_exceptions(self):
         from acp import RequestError
+
         from ms_agent.acp.errors import wrap_agent_error
 
         for exc, expected_code in [
@@ -69,6 +75,7 @@ class TestErrorMappingReal:
 
     def test_wrap_unknown_exception_fallback(self):
         from acp import RequestError
+
         from ms_agent.acp.errors import wrap_agent_error
 
         rpc = wrap_agent_error(RuntimeError('surprise'))
@@ -77,6 +84,7 @@ class TestErrorMappingReal:
 
     def test_wrap_already_request_error_passthrough(self):
         from acp import RequestError
+
         from ms_agent.acp.errors import wrap_agent_error
 
         original = RequestError(-32999, 'custom')
@@ -88,10 +96,11 @@ class TestErrorMappingReal:
 # 2. Translator — real ACP SDK types, real Message objects
 # ======================================================================
 
-class TestTranslatorReal:
 
+class TestTranslatorReal:
     def test_prompt_to_messages_with_real_text_block(self):
         from acp import text_block
+
         from ms_agent.acp.translator import ACPTranslator
         from ms_agent.llm.utils import Message
 
@@ -103,6 +112,7 @@ class TestTranslatorReal:
 
     def test_prompt_to_messages_appends_to_history(self):
         from acp import text_block
+
         from ms_agent.acp.translator import ACPTranslator
         from ms_agent.llm.utils import Message
 
@@ -145,8 +155,7 @@ class TestTranslatorReal:
         from ms_agent.llm.utils import Message
 
         t = ACPTranslator()
-        tc = {'id': 'tc_abc', 'type': 'function', 'tool_name': 'web_search',
-              'arguments': '{"q": "test"}'}
+        tc = {'id': 'tc_abc', 'type': 'function', 'tool_name': 'web_search', 'arguments': '{"q": "test"}'}
         msg = Message(role='assistant', content='', tool_calls=[tc])
 
         u1 = t.messages_to_updates([msg])
@@ -180,8 +189,9 @@ class TestTranslatorReal:
         assert len(t._completed_tool_ids) == 0
 
     def test_build_plan_update_produces_real_acp_type(self):
-        from ms_agent.acp.translator import ACPTranslator
         from acp.schema import AgentPlanUpdate
+
+        from ms_agent.acp.translator import ACPTranslator
 
         steps = [
             {'description': 'Step 1', 'status': 'completed', 'priority': 'high'},
@@ -193,8 +203,9 @@ class TestTranslatorReal:
         assert len(update.entries) == 3
 
     def test_map_stop_reason_end_turn(self):
-        from ms_agent.acp.translator import ACPTranslator
         from types import SimpleNamespace
+
+        from ms_agent.acp.translator import ACPTranslator
 
         session = SimpleNamespace(
             cancelled=False,
@@ -206,8 +217,9 @@ class TestTranslatorReal:
         assert ACPTranslator.map_stop_reason(session) == 'end_turn'
 
     def test_map_stop_reason_max_rounds(self):
-        from ms_agent.acp.translator import ACPTranslator
         from types import SimpleNamespace
+
+        from ms_agent.acp.translator import ACPTranslator
 
         session = SimpleNamespace(
             cancelled=False,
@@ -219,8 +231,9 @@ class TestTranslatorReal:
         assert ACPTranslator.map_stop_reason(session) == 'max_turn_requests'
 
     def test_map_stop_reason_cancelled(self):
-        from ms_agent.acp.translator import ACPTranslator
         from types import SimpleNamespace
+
+        from ms_agent.acp.translator import ACPTranslator
 
         session = SimpleNamespace(
             cancelled=True,
@@ -230,6 +243,7 @@ class TestTranslatorReal:
 
     def test_tool_kind_mapping(self):
         from ms_agent.acp.translator import _TOOL_KIND_MAP
+
         assert _TOOL_KIND_MAP['code_executor'] == 'execute'
         assert _TOOL_KIND_MAP['web_search'] == 'search'
         assert _TOOL_KIND_MAP['file_read'] == 'read'
@@ -241,12 +255,13 @@ class TestTranslatorReal:
 # 3. Config module — real OmegaConf objects
 # ======================================================================
 
-class TestConfigReal:
 
+class TestConfigReal:
     def test_build_config_options_with_model(self):
-        from omegaconf import OmegaConf
-        from ms_agent.acp.config import build_config_options
         from acp.schema import SessionConfigOptionSelect
+        from omegaconf import OmegaConf
+
+        from ms_agent.acp.config import build_config_options
 
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
         opts = build_config_options(cfg)
@@ -258,6 +273,7 @@ class TestConfigReal:
 
     def test_build_config_options_with_available_models(self):
         from omegaconf import OmegaConf
+
         from ms_agent.acp.config import build_config_options
 
         cfg = OmegaConf.create({'llm': {'model': 'gpt-4o'}})
@@ -267,6 +283,7 @@ class TestConfigReal:
 
     def test_build_config_options_no_model(self):
         from omegaconf import OmegaConf
+
         from ms_agent.acp.config import build_config_options
 
         cfg = OmegaConf.create({'other': 'value'})
@@ -274,6 +291,7 @@ class TestConfigReal:
 
     def test_apply_config_option_model(self):
         from omegaconf import OmegaConf
+
         from ms_agent.acp.config import apply_config_option
 
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
@@ -282,14 +300,16 @@ class TestConfigReal:
 
     def test_apply_config_option_unknown_id(self):
         from omegaconf import OmegaConf
+
         from ms_agent.acp.config import apply_config_option
 
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
         assert apply_config_option(cfg, 'temperature', '0.5') is False
 
     def test_build_session_modes(self):
-        from ms_agent.acp.config import build_session_modes
         from acp.schema import SessionModeState
+
+        from ms_agent.acp.config import build_session_modes
 
         modes = build_session_modes()
         assert isinstance(modes, SessionModeState)
@@ -301,8 +321,8 @@ class TestConfigReal:
 # 4. Permissions — real PermissionPolicy objects
 # ======================================================================
 
-class TestPermissionsReal:
 
+class TestPermissionsReal:
     def test_auto_approve_flow(self):
         from ms_agent.acp.permissions import PermissionPolicy
 
@@ -369,8 +389,8 @@ class TestPermissionsReal:
 # 5. Registry — real manifest generation + file write
 # ======================================================================
 
-class TestRegistryReal:
 
+class TestRegistryReal:
     def test_manifest_structure(self):
         from ms_agent.acp.registry import generate_agent_manifest
 
@@ -400,7 +420,7 @@ class TestRegistryReal:
             path = f.name
 
         try:
-            m = generate_agent_manifest(
+            generate_agent_manifest(
                 config_path='/test/config.yaml',
                 output_path=path,
                 title='Test Agent',
@@ -430,8 +450,8 @@ class TestRegistryReal:
 # 6. SessionStore — real store object (no agent creation, tests structure)
 # ======================================================================
 
-class TestSessionStoreReal:
 
+class TestSessionStoreReal:
     def test_empty_store(self):
         from ms_agent.acp.session_store import ACPSessionStore
 
@@ -440,8 +460,8 @@ class TestSessionStoreReal:
         assert store.max_sessions == 4
 
     def test_get_nonexistent(self):
-        from ms_agent.acp.session_store import ACPSessionStore
         from ms_agent.acp.errors import SessionNotFoundError
+        from ms_agent.acp.session_store import ACPSessionStore
 
         store = ACPSessionStore()
         with pytest.raises(SessionNotFoundError) as exc_info:
@@ -450,8 +470,8 @@ class TestSessionStoreReal:
 
     @pytest.mark.asyncio
     async def test_create_with_invalid_config(self):
-        from ms_agent.acp.session_store import ACPSessionStore
         from ms_agent.acp.errors import ConfigError
+        from ms_agent.acp.session_store import ACPSessionStore
 
         store = ACPSessionStore()
         with pytest.raises(ConfigError):
@@ -465,7 +485,7 @@ class TestSessionStoreReal:
 
         monkeypatch.setattr(sys, 'argv', ['test'])
 
-        from ms_agent.acp.session_store import ACPSessionStore, ACPSessionEntry
+        from ms_agent.acp.session_store import ACPSessionEntry, ACPSessionStore
 
         store = ACPSessionStore()
         try:
@@ -493,8 +513,8 @@ class TestSessionStoreReal:
 
         store = ACPSessionStore(max_sessions=2)
         try:
-            s1 = await store.create(config_path=_ACP_TEST_CONFIG, cwd='/tmp')
-            s2 = await store.create(config_path=_ACP_TEST_CONFIG, cwd='/tmp')
+            await store.create(config_path=_ACP_TEST_CONFIG, cwd='/tmp')
+            await store.create(config_path=_ACP_TEST_CONFIG, cwd='/tmp')
             assert len(store.list_sessions()) == 2
 
             s3 = await store.create(config_path=_ACP_TEST_CONFIG, cwd='/tmp')
@@ -508,10 +528,11 @@ class TestSessionStoreReal:
 # 7. ACPAgentTool — real tool object creation
 # ======================================================================
 
-class TestACPAgentToolReal:
 
+class TestACPAgentToolReal:
     def test_from_config_returns_none_without_acp_agents(self):
         from omegaconf import OmegaConf
+
         from ms_agent.tools.acp_agent_tool import ACPAgentTool
 
         cfg = OmegaConf.create({'llm': {'model': 'test'}})
@@ -519,18 +540,21 @@ class TestACPAgentToolReal:
 
     def test_from_config_creates_tool(self):
         from omegaconf import OmegaConf
+
         from ms_agent.tools.acp_agent_tool import ACPAgentTool
 
-        cfg = OmegaConf.create({
-            'llm': {'model': 'test'},
-            'acp_agents': {
-                'codex': {
-                    'command': 'codex',
-                    'args': ['mcp-server'],
-                    'description': 'Codex coding agent',
+        cfg = OmegaConf.create(
+            {
+                'llm': {'model': 'test'},
+                'acp_agents': {
+                    'codex': {
+                        'command': 'codex',
+                        'args': ['mcp-server'],
+                        'description': 'Codex coding agent',
+                    },
                 },
-            },
-        })
+            }
+        )
         tool = ACPAgentTool.from_config(cfg)
         assert tool is not None
         assert 'codex' in tool._client_manager.list_agents()
@@ -538,23 +562,26 @@ class TestACPAgentToolReal:
     @pytest.mark.asyncio
     async def test_get_tools_structure(self):
         from omegaconf import OmegaConf
+
         from ms_agent.tools.acp_agent_tool import ACPAgentTool
 
-        cfg = OmegaConf.create({
-            'llm': {'model': 'test'},
-            'acp_agents': {
-                'agent_a': {
-                    'command': 'echo',
-                    'args': [],
-                    'description': 'Agent A desc',
+        cfg = OmegaConf.create(
+            {
+                'llm': {'model': 'test'},
+                'acp_agents': {
+                    'agent_a': {
+                        'command': 'echo',
+                        'args': [],
+                        'description': 'Agent A desc',
+                    },
+                    'agent_b': {
+                        'command': 'echo',
+                        'args': [],
+                        'description': 'Agent B desc',
+                    },
                 },
-                'agent_b': {
-                    'command': 'echo',
-                    'args': [],
-                    'description': 'Agent B desc',
-                },
-            },
-        })
+            }
+        )
         tool = ACPAgentTool(cfg, acp_agents_config=OmegaConf.to_container(cfg.acp_agents, resolve=True))
         tools = await tool._get_tools_inner()
         assert 'acp_agent_a' in tools
@@ -566,8 +593,8 @@ class TestACPAgentToolReal:
 # 8. ACP Client Manager — real object, config-based
 # ======================================================================
 
-class TestACPClientManagerReal:
 
+class TestACPClientManagerReal:
     def test_empty_manager(self):
         from ms_agent.acp.client import ACPClientManager
 
@@ -601,8 +628,8 @@ class TestACPClientManagerReal:
 # 9. CLI — acp-registry command real execution
 # ======================================================================
 
-class TestCLIReal:
 
+class TestCLIReal:
     def test_acp_registry_generates_json(self):
         """Run 'ms-agent acp-registry' as a subprocess and verify output."""
         import subprocess
@@ -612,9 +639,10 @@ class TestCLIReal:
 
         try:
             result = subprocess.run(
-                [sys.executable, '-m', 'ms_agent.cli.cli',
-                 'acp-registry', '--output', outpath, '--title', 'TestAgent'],
-                capture_output=True, text=True, timeout=30,
+                [sys.executable, '-m', 'ms_agent.cli.cli', 'acp-registry', '--output', outpath, '--title', 'TestAgent'],
+                capture_output=True,
+                text=True,
+                timeout=30,
                 cwd=_REPO_ROOT,
             )
             assert result.returncode == 0, f'stderr: {result.stderr}'
@@ -633,9 +661,10 @@ class TestCLIReal:
         import subprocess
 
         result = subprocess.run(
-            [sys.executable, '-m', 'ms_agent.cli.cli',
-             'acp-registry', '--config', _ACP_TEST_CONFIG, '--output', ''],
-            capture_output=True, text=True, timeout=30,
+            [sys.executable, '-m', 'ms_agent.cli.cli', 'acp-registry', '--config', _ACP_TEST_CONFIG, '--output', ''],
+            capture_output=True,
+            text=True,
+            timeout=30,
             cwd=_REPO_ROOT,
         )
         stdout_json = json.loads(result.stdout)
@@ -646,12 +675,12 @@ class TestCLIReal:
 # 10. ACP Server — real spawn_agent_process (initialize + new_session)
 # ======================================================================
 
+
 @pytest.mark.skipif(
     not os.path.isfile(_ACP_TEST_CONFIG),
     reason='No agent config found',
 )
 class TestACPServerReal:
-
     @pytest.mark.asyncio
     async def test_initialize_and_new_session(self):
         """Spawn a real ACP server subprocess and test initialize + new_session."""
@@ -678,9 +707,11 @@ class TestACPServerReal:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _ACP_TEST_CONFIG,
+            '--config',
+            _ACP_TEST_CONFIG,
         ) as (conn, proc):
             init_resp = await conn.initialize(protocol_version=1)
             assert init_resp.protocol_version == 1
@@ -704,6 +735,7 @@ class TestACPServerReal:
         class TestClient(Client):
             async def session_update(self, session_id, update, **kwargs):
                 pass
+
             async def request_permission(self, options, session_id, tool_call, **kwargs):
                 return {'outcome': {'outcome': 'cancelled'}}
 
@@ -711,9 +743,11 @@ class TestACPServerReal:
         async with spawn_agent_process(
             client,
             sys.executable,
-            '-m', 'ms_agent.cli.cli',
+            '-m',
+            'ms_agent.cli.cli',
             'acp',
-            '--config', _ACP_TEST_CONFIG,
+            '--config',
+            _ACP_TEST_CONFIG,
         ) as (conn, proc):
             await conn.initialize(protocol_version=1)
             session = await conn.new_session(cwd='/tmp', mcp_servers=[])
@@ -727,20 +761,19 @@ class TestACPServerReal:
 # 11. CollectorClient — real _CollectorClient object behavior
 # ======================================================================
 
-class TestCollectorClientReal:
 
+class TestCollectorClientReal:
     @pytest.mark.asyncio
     async def test_collect_text_updates(self):
-        from ms_agent.acp.client import _CollectorClient
         from types import SimpleNamespace
+
+        from ms_agent.acp.client import _CollectorClient
 
         client = _CollectorClient()
         sid = 'ses_test'
 
-        update1 = SimpleNamespace(session_update='agent_message_chunk',
-                                  content=SimpleNamespace(text='Hello '))
-        update2 = SimpleNamespace(session_update='agent_message_chunk',
-                                  content=SimpleNamespace(text='World'))
+        update1 = SimpleNamespace(session_update='agent_message_chunk', content=SimpleNamespace(text='Hello '))
+        update2 = SimpleNamespace(session_update='agent_message_chunk', content=SimpleNamespace(text='World'))
 
         await client.session_update(sid, update1)
         await client.session_update(sid, update2)
@@ -749,8 +782,9 @@ class TestCollectorClientReal:
 
     @pytest.mark.asyncio
     async def test_ignores_non_text_updates(self):
-        from ms_agent.acp.client import _CollectorClient
         from types import SimpleNamespace
+
+        from ms_agent.acp.client import _CollectorClient
 
         client = _CollectorClient()
         sid = 'ses_test'
@@ -761,8 +795,9 @@ class TestCollectorClientReal:
 
     @pytest.mark.asyncio
     async def test_auto_approve_permission(self):
-        from ms_agent.acp.client import _CollectorClient
         from types import SimpleNamespace
+
+        from ms_agent.acp.client import _CollectorClient
 
         client = _CollectorClient(permission_policy='auto_approve')
         options = [
@@ -786,12 +821,13 @@ class TestCollectorClientReal:
 # 12. HTTP Adapter — DummyConn queue behavior (no server start needed)
 # ======================================================================
 
-class TestHTTPAdapterComponents:
 
+class TestHTTPAdapterComponents:
     @pytest.mark.asyncio
     async def test_dummy_conn_queue(self):
-        from ms_agent.acp.http_adapter import _DummyConn
         from types import SimpleNamespace
+
+        from ms_agent.acp.http_adapter import _DummyConn
 
         conn = _DummyConn()
         q = conn.get_queue('ses_1')
@@ -806,8 +842,9 @@ class TestHTTPAdapterComponents:
 
     @pytest.mark.asyncio
     async def test_dummy_conn_auto_approve(self):
-        from ms_agent.acp.http_adapter import _DummyConn
         from types import SimpleNamespace
+
+        from ms_agent.acp.http_adapter import _DummyConn
 
         conn = _DummyConn()
         options = [

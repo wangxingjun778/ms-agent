@@ -44,6 +44,7 @@ class ACPProxyCmd(CLICommand):
             config_path = os.path.abspath(config_path)
 
         from ms_agent.acp.proxy import serve_proxy
+
         serve_proxy(
             config_path=config_path,
             log_file=self.args.log_file,

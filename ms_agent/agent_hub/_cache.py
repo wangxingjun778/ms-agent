@@ -13,6 +13,7 @@ Cache layout (under ``~/.cache/modelscope/agent/``)::
 
 Honours ``MODELSCOPE_CACHE`` via :class:`~modelscope_hub.config.HubConfig`.
 """
+
 from __future__ import annotations
 
 import json

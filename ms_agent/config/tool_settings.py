@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Merge tool settings without losing switches or mixing include/exclude lists."""
+
 from copy import deepcopy
 
 from ms_agent.utils.constants import TOOL_PLUGIN_NAME
@@ -19,15 +20,14 @@ def merge_tool_settings(base: dict, patch: dict) -> dict:
             result[name] = deepcopy(values)
             continue
         if not isinstance(values, dict):
-            raise ValueError(
-                f'tools.{name} must be an object; use enabled: false to disable it')
+            raise ValueError(f'tools.{name} must be an object; use enabled: false to disable it')
         for flag in ('enabled', 'mcp'):
             if flag in values and not isinstance(values[flag], bool):
                 raise ValueError(f'tools.{name}.{flag} must be a boolean')
         for selector in ('include', 'exclude'):
             if selector in values and (
-                    not isinstance(values[selector], list)
-                    or any(not isinstance(item, str) for item in values[selector])):
+                not isinstance(values[selector], list) or any(not isinstance(item, str) for item in values[selector])
+            ):
                 raise ValueError(f'tools.{name}.{selector} must be a list of names')
         if values.get('include') and values.get('exclude'):
             raise ValueError(f'tools.{name}: set either include or exclude, not both')

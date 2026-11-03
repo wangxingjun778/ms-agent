@@ -7,15 +7,16 @@ on startup. Only *user-authored* skills should travel across machines and
 frameworks, so this mixin drops every file under a framework skill directory,
 identifying framework skills by their ``SKILL.md`` frontmatter.
 """
+
 from __future__ import annotations
 
-import yaml
 from pathlib import Path
+
+import yaml
 
 # Metadata keys whose presence marks a skill as framework-provided (bundled)
 # rather than user-authored.
-_BUNDLED_SKILL_KEYS = frozenset(
-    {'emoji', 'requires', 'install', 'builtin_skill_version'})
+_BUNDLED_SKILL_KEYS = frozenset({'emoji', 'requires', 'install', 'builtin_skill_version'})
 
 
 class BundledSkillFilterMixin:
@@ -142,9 +143,7 @@ class BundledSkillFilterMixin:
         if skills_root.is_dir():
             for skill_md in skills_root.rglob('SKILL.md'):
                 if not self._is_framework_skill(skill_md, bundled):
-                    keep.add(
-                        skill_md.parent.relative_to(
-                            self.workspace_root).as_posix())
+                    keep.add(skill_md.parent.relative_to(self.workspace_root).as_posix())
         cache[skills_rel] = keep
         return keep
 
@@ -156,6 +155,5 @@ class BundledSkillFilterMixin:
         if 'skills' not in parts:
             return False
         i = parts.index('skills')
-        keep = self._user_skill_dirs('/'.join(parts[:i + 1]))
-        return not any(rel_path == d or rel_path.startswith(d + '/')
-                       for d in keep)
+        keep = self._user_skill_dirs('/'.join(parts[: i + 1]))
+        return not any(rel_path == d or rel_path.startswith(d + '/') for d in keep)

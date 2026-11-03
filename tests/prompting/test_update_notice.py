@@ -7,6 +7,7 @@ Also pins the coexistence contract of the three user-turn attachments:
 skill update notice (host prefix) + prompt-files notice (SDK prefix) +
 memory recall (SDK append) — none may suppress another.
 """
+
 import asyncio
 
 import pytest
@@ -14,7 +15,8 @@ from omegaconf import OmegaConf
 
 from ms_agent.agent.llm_agent import LLMAgent
 from ms_agent.llm.utils import Message
-from ms_agent.prompting import builtin, workspace_files as wf
+from ms_agent.prompting import builtin
+from ms_agent.prompting import workspace_files as wf
 
 
 @pytest.fixture()
@@ -49,9 +51,11 @@ def test_fingerprints_track_injected_body_only(home, tmp_path):
     work.mkdir(parents=True, exist_ok=True)
     base = wf.head_source_fingerprints(str(work))
     assert set(base) == {
-        '~/.ms_agent/SOUL.md', '~/.ms_agent/AGENTS.md',
-        '~/.ms_agent/PROFILE.md', '<project>/AGENTS.md',
-        '<project>/.ms_agent/AGENTS.md'
+        '~/.ms_agent/SOUL.md',
+        '~/.ms_agent/AGENTS.md',
+        '~/.ms_agent/PROFILE.md',
+        '<project>/AGENTS.md',
+        '<project>/.ms_agent/AGENTS.md',
     }
 
     # A comment-only edit is invisible to the model -> no fingerprint change.
@@ -70,14 +74,14 @@ def test_fingerprints_track_injected_body_only(home, tmp_path):
 
     # No project -> no project keys.
     assert set(wf.head_source_fingerprints(None)) == {
-        '~/.ms_agent/SOUL.md', '~/.ms_agent/AGENTS.md',
-        '~/.ms_agent/PROFILE.md'
+        '~/.ms_agent/SOUL.md',
+        '~/.ms_agent/AGENTS.md',
+        '~/.ms_agent/PROFILE.md',
     }
 
 
 def test_render_update_notice_shape(home):
-    text = wf.render_update_notice(
-        ['~/.ms_agent/AGENTS.md', '<project>/.ms_agent/AGENTS.md'])
+    text = wf.render_update_notice(['~/.ms_agent/AGENTS.md', '<project>/.ms_agent/AGENTS.md'])
     assert text.startswith('<system-reminder>')
     assert text.endswith('</system-reminder>')
     assert wf.UPDATE_NOTICE_MARKER in text
@@ -194,8 +198,7 @@ def test_all_three_attachments_coexist(home, tmp_path):
 
     agent.memory_tools = [FakeOrchestrator()]
 
-    skill_notice = ('<system-reminder>\nSkill inventory updated. CURRENT '
-                    'full list: ...\n</system-reminder>')
+    skill_notice = '<system-reminder>\nSkill inventory updated. CURRENT full list: ...\n</system-reminder>'
     messages = _user_turn(f'{skill_notice}\n\n查一下我的偏好')
 
     commit = agent._attach_prompt_update_notice(messages)
@@ -205,8 +208,7 @@ def test_all_three_attachments_coexist(home, tmp_path):
     content = messages[-1].content
     # prompt-files notice first, then the host's skill notice, then the words,
     # then recall — and the retrieval query carried none of the notices.
-    assert content.index(wf.UPDATE_NOTICE_MARKER) < content.index(
-        'Skill inventory updated')
+    assert content.index(wf.UPDATE_NOTICE_MARKER) < content.index('Skill inventory updated')
     assert content.index('Skill inventory updated') < content.index('查一下我的偏好')
     assert content.rstrip().endswith('</system-reminder>')
     assert '- MEM: F1' in content
@@ -233,9 +235,8 @@ def test_recall_not_suppressed_by_skill_notice_alone(home, tmp_path):
     messages = [
         Message(role='system', content='S'),
         Message(
-            role='user',
-            content=('<system-reminder>\nSkill inventory updated.\n'
-                     '</system-reminder>\n\n我的主题偏好？')),
+            role='user', content=('<system-reminder>\nSkill inventory updated.\n</system-reminder>\n\n我的主题偏好？')
+        ),
     ]
     asyncio.run(agent._attach_memory_recall(messages))
     assert '深色主题' in messages[-1].content
@@ -255,5 +256,4 @@ def test_live_files_hint_present_iff_personalized_content(home, tmp_path):
 
     # Gate off -> no hint.
     agent2 = _agent(tmp_path)
-    assert 'stay live during the conversation' not in \
-        agent2._build_system_content()
+    assert 'stay live during the conversation' not in agent2._build_system_content()

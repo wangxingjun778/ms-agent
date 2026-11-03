@@ -4,6 +4,7 @@
 Heavy / long-running project capabilities are not exercised end-to-end here.
 Keyed engines (exa/tavily) are skipped when the corresponding env var is absent.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,6 @@ import pytest
 
 from ms_agent.capabilities import create_registry
 from ms_agent.capabilities.mcp_server import _is_exposed_over_mcp
-
 
 EXPECTED_MCP_TOOLS = {
     'replace_file_contents',
@@ -56,7 +56,6 @@ EXPECTED_MCP_TOOLS = {
 
 
 class TestCapabilityRegistry(unittest.TestCase):
-
     def test_create_registry_counts(self):
         registry = create_registry()
         caps = registry.list_all()
@@ -83,6 +82,7 @@ class TestCapabilityRegistry(unittest.TestCase):
     def test_lsp_missing_backend_actionable_error(self):
         """When pyright-langserver is absent, return an installable hint."""
         import shutil
+
         if shutil.which('pyright-langserver'):
             self.skipTest('pyright-langserver is installed on this machine')
 
@@ -101,7 +101,6 @@ class TestCapabilityRegistry(unittest.TestCase):
 
 
 class TestMcpServerCheck(unittest.TestCase):
-
     def test_check_json_distinguishes_counts(self):
         proc = subprocess.run(
             [sys.executable, '-m', 'ms_agent.capabilities.mcp_server', '--check'],
@@ -116,15 +115,11 @@ class TestMcpServerCheck(unittest.TestCase):
         self.assertEqual(data['status'], 'ok')
         self.assertEqual(data['registered_total'], 31)
         self.assertEqual(data['mcp_exposed_total'], 30)
-        exposed_names = {
-            c['name']
-            for c in data['capabilities'] if c.get('mcp_exposed')
-        }
+        exposed_names = {c['name'] for c in data['capabilities'] if c.get('mcp_exposed')}
         self.assertEqual(exposed_names, EXPECTED_MCP_TOOLS)
 
 
 class TestFilesystemCapability(unittest.TestCase):
-
     def test_replace_file_contents_and_lines(self):
         registry = create_registry()
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,10 +156,10 @@ class TestFilesystemCapability(unittest.TestCase):
 
 
 class TestWebSearchCapability(unittest.TestCase):
-
     @unittest.skipUnless(
         os.environ.get('MS_AGENT_RUN_NETWORK_TESTS') == '1',
-        'Set MS_AGENT_RUN_NETWORK_TESTS=1 to exercise the live arXiv API')
+        'Set MS_AGENT_RUN_NETWORK_TESTS=1 to exercise the live arXiv API',
+    )
     def test_arxiv_search_real(self):
         registry = create_registry()
 

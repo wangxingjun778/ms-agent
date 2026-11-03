@@ -18,32 +18,31 @@ _manager = get_default_manager()
 
 _DOC_RESEARCH_INPUT_PROPERTIES: dict[str, Any] = {
     'query': {
-        'type':
-        'string',
-        'description':
-        ('Research prompt or question about the documents. '
-         'e.g. "Deeply analyze and summarize the following document"'),
+        'type': 'string',
+        'description': (
+            'Research prompt or question about the documents. '
+            'e.g. "Deeply analyze and summarize the following document"'
+        ),
     },
     'urls': {
-        'type':
-        'string',
-        'description':
-        ('Newline-separated or comma-separated URLs to research. '
-         'Supports PDF, web pages, arxiv links. '
-         'e.g. "https://arxiv.org/pdf/2504.17432"'),
+        'type': 'string',
+        'description': (
+            'Newline-separated or comma-separated URLs to research. '
+            'Supports PDF, web pages, arxiv links. '
+            'e.g. "https://arxiv.org/pdf/2504.17432"'
+        ),
     },
     'file_paths': {
-        'type':
-        'string',
-        'description': ('Comma-separated local file paths to analyze. '
-                        'Supports PDF, TXT, PPT, DOCX. '
-                        'e.g. "/path/to/paper.pdf,/path/to/notes.txt"'),
+        'type': 'string',
+        'description': (
+            'Comma-separated local file paths to analyze. '
+            'Supports PDF, TXT, PPT, DOCX. '
+            'e.g. "/path/to/paper.pdf,/path/to/notes.txt"'
+        ),
     },
     'output_dir': {
-        'type':
-        'string',
-        'description':
-        'Directory for research outputs (auto-generated if omitted)',
+        'type': 'string',
+        'description': 'Directory for research outputs (auto-generated if omitted)',
     },
 }
 
@@ -53,12 +52,14 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     granularity='project',
     summary=(
         'Submit a document research task that runs in the background. '
-        'Analyzes documents/URLs and produces a multimodal markdown report.'),
+        'Analyzes documents/URLs and produces a multimodal markdown report.'
+    ),
     description=(
         'Launches a document research workflow that deeply analyzes '
         'provided documents (PDF, TXT, PPT, DOCX) or URLs and produces '
         'a structured markdown report with extracted images, tables, '
-        'and key insights. Supports multi-file and multi-URL inputs.'),
+        'and key insights. Supports multi-file and multi-URL inputs.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _DOC_RESEARCH_INPUT_PROPERTIES,
@@ -67,15 +68,9 @@ SUBMIT_DESCRIPTOR = CapabilityDescriptor(
     output_schema={
         'type': 'object',
         'properties': {
-            'task_id': {
-                'type': 'string'
-            },
-            'status': {
-                'type': 'string'
-            },
-            'output_dir': {
-                'type': 'string'
-            },
+            'task_id': {'type': 'string'},
+            'status': {'type': 'string'},
+            'output_dir': {'type': 'string'},
         },
     },
     tags=['document', 'research', 'analysis', 'report', 'async', 'submit'],
@@ -88,16 +83,13 @@ CHECK_PROGRESS_DESCRIPTOR = CapabilityDescriptor(
     version='0.1.0',
     granularity='tool',
     summary=('Check the progress of a running document research task.'),
-    description=(
-        'Polls the status of a doc_research task previously submitted via '
-        'submit_doc_research_task.'),
+    description=('Polls the status of a doc_research task previously submitted via submit_doc_research_task.'),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
                 'type': 'string',
-                'description':
-                'The task_id returned by submit_doc_research_task',
+                'description': 'The task_id returned by submit_doc_research_task',
             },
         },
         'required': ['task_id'],
@@ -110,19 +102,18 @@ GET_REPORT_DESCRIPTOR = CapabilityDescriptor(
     name='get_doc_research_report',
     version='0.1.0',
     granularity='tool',
-    summary=(
-        'Retrieve the final report from a completed document research task.'),
+    summary=('Retrieve the final report from a completed document research task.'),
     description=(
         'Reads the markdown report produced by a completed doc_research task. '
         'The report includes text analysis, extracted images, tables, '
-        'and key findings following the MECE principle.'),
+        'and key findings following the MECE principle.'
+    ),
     input_schema={
         'type': 'object',
         'properties': {
             'task_id': {
                 'type': 'string',
-                'description':
-                'The task_id returned by submit_doc_research_task',
+                'description': 'The task_id returned by submit_doc_research_task',
             },
             'max_chars': {
                 'type': 'integer',
@@ -140,13 +131,15 @@ SYNC_DESCRIPTOR = CapabilityDescriptor(
     name='doc_research',
     version='0.1.0',
     granularity='project',
-    summary=
-    ('Analyze documents/URLs and generate a research report (BLOCKS, 1-20 min). '
-     'Prefer submit_doc_research_task for non-blocking usage.'),
+    summary=(
+        'Analyze documents/URLs and generate a research report (BLOCKS, 1-20 min). '
+        'Prefer submit_doc_research_task for non-blocking usage.'
+    ),
     description=(
         'Synchronous version that blocks until document research is complete. '
         'Analyzes documents/URLs and produces a structured markdown report. '
-        'WARNING: May take 5-20 minutes depending on document count/size.'),
+        'WARNING: May take 5-20 minutes depending on document count/size.'
+    ),
     input_schema={
         'type': 'object',
         'properties': _DOC_RESEARCH_INPUT_PROPERTIES,
@@ -188,10 +181,7 @@ def _count_resources(output_dir: str) -> dict[str, int]:
     resources_dir = os.path.join(output_dir, 'resources')
     if not os.path.isdir(resources_dir):
         return {'images': 0}
-    images = len([
-        f for f in os.listdir(resources_dir)
-        if f.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
-    ])
+    images = len([f for f in os.listdir(resources_dir) if f.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))])
     return {'images': images}
 
 
@@ -212,8 +202,7 @@ def _create_workflow(workdir: str) -> Any:
     from ms_agent.llm.openai import OpenAIChat
 
     api_key = os.environ.get('OPENAI_API_KEY', '')
-    base_url = os.environ.get(
-        'OPENAI_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+    base_url = os.environ.get('OPENAI_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
     model = os.environ.get('OPENAI_MODEL_ID', 'qwen3-max')
 
     client = OpenAIChat(
@@ -222,8 +211,8 @@ def _create_workflow(workdir: str) -> Any:
         base_url=base_url,
     )
 
-    from ms_agent.workflow.deep_research.research_workflow import \
-        ResearchWorkflow
+    from ms_agent.workflow.deep_research.research_workflow import ResearchWorkflow
+
     return ResearchWorkflow(
         client=client,
         workdir=workdir,
@@ -261,14 +250,12 @@ async def _background_doc_research(task: AsyncTask) -> dict[str, Any]:
     return {'report_path': report_path, 'output_dir': output_dir}
 
 
-async def _handle_submit(args: dict[str, Any],
-                         **kwargs: Any) -> dict[str, Any]:
+async def _handle_submit(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     query: str = (args.get('query') or '').strip()
     if not query:
         return {'error': 'query is required'}
 
-    urls_or_files = _parse_urls_and_files(
-        args.get('urls'), args.get('file_paths'))
+    urls_or_files = _parse_urls_and_files(args.get('urls'), args.get('file_paths'))
 
     output_dir = args.get('output_dir', '')
     if not output_dir:
@@ -287,26 +274,22 @@ async def _handle_submit(args: dict[str, Any],
     )
 
     return {
-        'task_id':
-        task.task_id,
-        'status':
-        'running',
-        'output_dir':
-        output_dir,
-        'message':
-        (f'Document research task {task.task_id} started. '
-         f'Use check_doc_research_progress(task_id="{task.task_id}") '
-         f'to poll status.'),
+        'task_id': task.task_id,
+        'status': 'running',
+        'output_dir': output_dir,
+        'message': (
+            f'Document research task {task.task_id} started. '
+            f'Use check_doc_research_progress(task_id="{task.task_id}") '
+            f'to poll status.'
+        ),
     }
 
 
-async def _handle_check_progress(args: dict[str, Any],
-                                 **kwargs: Any) -> dict[str, Any]:
+async def _handle_check_progress(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     return _manager.check(args['task_id'], progress_fn=_progress_fn)
 
 
-async def _handle_get_report(args: dict[str, Any],
-                             **kwargs: Any) -> dict[str, Any]:
+async def _handle_get_report(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     task_id: str = args['task_id']
     max_chars: int = args.get('max_chars', 50000)
     task = _manager.get(task_id)
@@ -325,8 +308,7 @@ async def _handle_get_report(args: dict[str, Any],
         return {'task_id': task_id, 'status': 'failed', 'error': task.error}
 
     output_dir = task.metadata.get('output_dir', '')
-    report_path = task.metadata.get('report_path',
-                                    '') or _find_report(output_dir)
+    report_path = task.metadata.get('report_path', '') or _find_report(output_dir)
     if not report_path or not os.path.isfile(report_path):
         return {
             'task_id': task_id,
@@ -340,9 +322,7 @@ async def _handle_get_report(args: dict[str, Any],
 
     truncated = len(content) > max_chars
     if truncated:
-        content = content[:max_chars] + (
-            '\n\n... [truncated, use a larger max_chars or read the file directly]'
-        )
+        content = content[:max_chars] + ('\n\n... [truncated, use a larger max_chars or read the file directly]')
 
     resources = _count_resources(output_dir)
 
@@ -362,8 +342,7 @@ async def _handle_sync(args: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     if not query:
         return {'error': 'query is required'}
 
-    urls_or_files = _parse_urls_and_files(
-        args.get('urls'), args.get('file_paths'))
+    urls_or_files = _parse_urls_and_files(args.get('urls'), args.get('file_paths'))
 
     output_dir = args.get('output_dir', '')
     if not output_dir:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Union
 
 from ms_agent.utils.logger import logger
+
 from .discovery import SkillDescriptor
 from .schema import SkillSchema, SkillSchemaParser
 
@@ -23,13 +24,9 @@ class SkillLoader:
     def __init__(self):
         self.loaded_skills: Dict[str, SkillSchema] = {}
         self.parser = SkillSchemaParser()
-        self._discovery_cache: Dict[Path,
-                                    tuple[tuple[int, int, int],
-                                          Optional[SkillDescriptor]]] = {}
+        self._discovery_cache: Dict[Path, tuple[tuple[int, int, int], Optional[SkillDescriptor]]] = {}
 
-    def load_skills(
-        self, skills: Union[str, List[str], List[SkillSchema]]
-    ) -> Dict[str, SkillSchema]:
+    def load_skills(self, skills: Union[str, List[str], List[SkillSchema]]) -> Dict[str, SkillSchema]:
         """
         Load agent skills from various sources.
 
@@ -49,8 +46,7 @@ class SkillLoader:
 
         if isinstance(skills, str):
             skill_list = [skills]
-        elif all(isinstance(s, str) for s in skills) or all(
-                isinstance(s, SkillSchema) for s in skills):
+        elif all(isinstance(s, str) for s in skills) or all(isinstance(s, SkillSchema) for s in skills):
             skill_list = skills
         else:
             raise ValueError('Invalid skills input type.')
@@ -59,8 +55,7 @@ class SkillLoader:
             if isinstance(skill, SkillSchema):
                 skill_key = self._get_skill_key(skill=skill)
                 all_skills[skill_key] = skill
-                logger.info(
-                    f'Loaded skill from SkillSchema object: {skill_key}')
+                logger.info(f'Loaded skill from SkillSchema object: {skill_key}')
                 continue
 
             skill_dir: Path = Path(skill)
@@ -76,16 +71,14 @@ class SkillLoader:
                     all_skills[skill_key] = skill_schema
                     # logger.info(f'Successfully loaded skill: {skill_key}')
             else:
-                skill_schema_dict: Dict[
-                    str, SkillSchema] = self._scan_and_load_skills(skill_dir)
+                skill_schema_dict: Dict[str, SkillSchema] = self._scan_and_load_skills(skill_dir)
                 all_skills.update(skill_schema_dict)
 
         self.loaded_skills.update(all_skills)
 
         return all_skills
 
-    def discover_skills(
-            self, skills: Union[str, List[str]]) -> Dict[str, SkillDescriptor]:
+    def discover_skills(self, skills: Union[str, List[str]]) -> Dict[str, SkillDescriptor]:
         """Discover local skills without traversing their support files.
 
         The source ordering, hidden-directory rule, maximum nesting depth,
@@ -111,7 +104,7 @@ class SkillLoader:
                 continue
             roots: Iterable[Path]
             if self._is_skill_directory(path):
-                roots = (path, )
+                roots = (path,)
             else:
                 roots = self._iter_skill_directories(path)
             for root in roots:
@@ -119,11 +112,7 @@ class SkillLoader:
                 descriptor = self._discover_single_skill(root)
                 if descriptor is not None:
                     discovered[descriptor.key] = descriptor
-        self._discovery_cache = {
-            path: cached
-            for path, cached in self._discovery_cache.items()
-            if path in active_roots
-        }
+        self._discovery_cache = {path: cached for path, cached in self._discovery_cache.items() if path in active_roots}
         return discovered
 
     def _is_skill_directory(self, path: Path) -> bool:
@@ -168,22 +157,19 @@ class SkillLoader:
             logger.error(f'Error loading skill ({skill_dir}): {str(e)}')
             return None
 
-    def _discover_single_skill(self,
-                               skill_dir: Path) -> Optional[SkillDescriptor]:
+    def _discover_single_skill(self, skill_dir: Path) -> Optional[SkillDescriptor]:
         try:
             skill_dir = skill_dir.resolve()
             skill_md = skill_dir / 'SKILL.md'
             file_stat = skill_md.stat()
-            fingerprint = (file_stat.st_mtime_ns, file_stat.st_ctime_ns,
-                           file_stat.st_size)
+            fingerprint = (file_stat.st_mtime_ns, file_stat.st_ctime_ns, file_stat.st_size)
             cached = self._discovery_cache.get(skill_dir)
             if cached is not None and cached[0] == fingerprint:
                 return cached[1]
 
             content = skill_md.read_text(encoding='utf-8')
             frontmatter = self.parser.parse_yaml_frontmatter(content)
-            if (not frontmatter or 'name' not in frontmatter
-                    or 'description' not in frontmatter):
+            if not frontmatter or 'name' not in frontmatter or 'description' not in frontmatter:
                 self._discovery_cache[skill_dir] = (fingerprint, None)
                 return None
             descriptor = SkillDescriptor(
@@ -312,9 +298,8 @@ class SkillLoader:
             return {}
         frontmatter = self.parser.parse_yaml_frontmatter(content) or {}
         name = str(frontmatter.get('name') or path.stem)
-        description = str(
-            frontmatter.get('description') or f'Plugin command {name}')
-        skill_id = (f'{plugin_id}:{name}' if plugin_id else f'command:{name}')
+        description = str(frontmatter.get('description') or f'Plugin command {name}')
+        skill_id = f'{plugin_id}:{name}' if plugin_id else f'command:{name}'
         body_text = re.sub(
             r'^---\s*\n.*?\n---\s*\n',
             '',
@@ -360,9 +345,7 @@ class SkillLoader:
         return skill
 
 
-def load_skills(
-    skills: Union[str, List[str],
-                  List[SkillSchema]]) -> Dict[str, SkillSchema]:
+def load_skills(skills: Union[str, List[str], List[SkillSchema]]) -> Dict[str, SkillSchema]:
     """
     Convenience function to load skills without creating a SkillLoader instance.
 

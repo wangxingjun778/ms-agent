@@ -11,13 +11,13 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from ms_agent.utils import get_logger
+
 from .config import PermissionConfig
-from .handler import (AutoPermissionHandler, PermissionAction,
-                      PermissionHandler, PermissionResponse)
+from .handler import AutoPermissionHandler, PermissionAction, PermissionHandler, PermissionResponse
 from .matcher import CONTENT_SEP, PermissionMatcher
 from .memory import PermissionMemory
 from .suggestions import generate_suggestions
-from ms_agent.utils import get_logger
 
 logger = get_logger()
 
@@ -71,10 +71,7 @@ class PermissionEnforcer:
             self._ask_lock_loop = loop
         return self._ask_lock
 
-    async def _ask_user(self,
-                        *,
-                        forced: bool = False,
-                        **kwargs) -> PermissionResponse | None:
+    async def _ask_user(self, *, forced: bool = False, **kwargs) -> PermissionResponse | None:
         """Put one ask in front of the user, serialized unless the handler
         declares it can service several at once.
 
@@ -98,8 +95,7 @@ class PermissionEnforcer:
                 return await self._handler.ask(forced=forced, **kwargs)
             return await self._handler.ask(**kwargs)
         async with self._ask_lock_for_loop():
-            if not forced and self._memory.matches(kwargs['tool_name'],
-                                                   kwargs['tool_args']):
+            if not forced and self._memory.matches(kwargs['tool_name'], kwargs['tool_args']):
                 return None
             return await self._handler.ask(**kwargs)
 
@@ -118,9 +114,7 @@ class PermissionEnforcer:
         except (TypeError, ValueError):
             return True  # can't introspect — assume it takes it, don't strip
         params = sig.parameters.values()
-        return (any(p.name == param for p in params)
-                or any(p.kind == inspect.Parameter.VAR_KEYWORD
-                       for p in params))
+        return any(p.name == param for p in params) or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
 
     async def check(
         self,
@@ -167,8 +161,7 @@ class PermissionEnforcer:
         # that is the whole point of "ask even under full access" — but not the
         # user's own remembered answer below, so consenting once still sticks.
         ask_rule = next(
-            (p for p in self._config.ask_rules
-             if self._matcher.match_with_content(p, tool_name, tool_args)),
+            (p for p in self._config.ask_rules if self._matcher.match_with_content(p, tool_name, tool_args)),
             None,
         )
         if ask_rule and not self._can_ask_human():
@@ -177,21 +170,17 @@ class PermissionEnforcer:
             # written to gate would be worse than refusing.
             return PermissionDecision(
                 action='deny',
-                reason=(f'Ask rule matched: {ask_rule}; no interactive '
-                        'handler is attached to confirm it'),
+                reason=(f'Ask rule matched: {ask_rule}; no interactive handler is attached to confirm it'),
             )
 
         # 2. Auto / strict mode → allow (safety handled by SafetyGuard + ask_resolver)
         if self._config.mode in ('auto', 'strict') and not ask_rule:
-            return PermissionDecision(
-                action='allow',
-                reason=f'{self._config.mode.capitalize()} mode')
+            return PermissionDecision(action='allow', reason=f'{self._config.mode.capitalize()} mode')
 
         # 3. Whitelist → allow
         if not ask_rule:
             for pattern in self._config.whitelist:
-                if self._matcher.match_with_content(pattern, tool_name,
-                                                    tool_args):
+                if self._matcher.match_with_content(pattern, tool_name, tool_args):
                     return PermissionDecision(
                         action='allow',
                         reason=f'Allowed by whitelist rule: {pattern}',
@@ -216,8 +205,7 @@ class PermissionEnforcer:
 
         return self._process_response(response, tool_name, tool_args)
 
-    def _remember_pattern(self, response: PermissionResponse, tool_name: str,
-                          tool_args: dict[str, Any]) -> str:
+    def _remember_pattern(self, response: PermissionResponse, tool_name: str, tool_args: dict[str, Any]) -> str:
         """What to remember when the caller named no pattern of its own.
 
         The bare tool name means "allow this TOOL" — for the shell that is
@@ -253,9 +241,7 @@ class PermissionEnforcer:
             PermissionResponse(action=PermissionAction.ALLOW_ONCE),
         )
         if released:
-            logger.info(
-                'permission pattern %r also released %d waiting request(s)',
-                pattern, released)
+            logger.info('permission pattern %r also released %d waiting request(s)', pattern, released)
         return released
 
     def _process_response(
@@ -273,8 +259,7 @@ class PermissionEnforcer:
             )
 
         if response.action == PermissionAction.ALLOW_ONCE:
-            return PermissionDecision(
-                action='allow', reason='User allowed once')
+            return PermissionDecision(action='allow', reason='User allowed once')
 
         if response.action == PermissionAction.ALLOW_SESSION:
             pattern = self._remember_pattern(response, tool_name, tool_args)

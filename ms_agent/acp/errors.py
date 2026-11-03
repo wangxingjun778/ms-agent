@@ -14,41 +14,33 @@ class ACPError(Exception):
 
 
 class SessionNotFoundError(ACPError):
-
     def __init__(self, session_id: str):
-        super().__init__(-32001, 'Session not found',
-                         {'sessionId': session_id})
+        super().__init__(-32001, 'Session not found', {'sessionId': session_id})
 
 
 class ResourceNotFoundError(ACPError):
-
     def __init__(self, path: str):
         super().__init__(-32002, 'Resource not found', {'path': path})
 
 
 class LLMError(ACPError):
-
     def __init__(self, detail: str):
         super().__init__(-32003, 'LLM generation failed', {'detail': detail})
 
 
 class RateLimitError(ACPError):
-
     def __init__(self, detail: str = ''):
         super().__init__(-32004, 'Rate limit exceeded', {'detail': detail})
 
 
 class ConfigError(ACPError):
-
     def __init__(self, detail: str):
         super().__init__(-32005, 'Invalid configuration', {'detail': detail})
 
 
 class MaxSessionsError(ACPError):
-
     def __init__(self, max_sessions: int):
-        super().__init__(-32006, 'Maximum concurrent sessions reached',
-                         {'max': max_sessions})
+        super().__init__(-32006, 'Maximum concurrent sessions reached', {'max': max_sessions})
 
 
 # Map known ms-agent / Python exception types to ACP JSON-RPC errors.

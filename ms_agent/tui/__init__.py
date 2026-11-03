@@ -12,6 +12,7 @@ teardown) while the TUI supplies three UI-agnostic seams from ``ms_agent.ui``:
 
 The same seams a WebUI backend consumes, so the TUI validates that contract.
 """
+
 from ms_agent.tui.app import TuiApp, main
 from ms_agent.tui.input import PromptToolkitInput
 from ms_agent.tui.renderer import RichEventSink

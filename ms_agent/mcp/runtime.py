@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """MCP runtime state machine and ToolManager synchronization."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,8 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Literal, Optional
 
-from ms_agent.config.mcp_schema import (ResolvedMCPConfig,
-                                        connection_params_for_client)
+from ms_agent.config.mcp_schema import ResolvedMCPConfig, connection_params_for_client
 from ms_agent.tools.mcp_client import MCPClient
 from ms_agent.utils import enhance_error, get_logger
 
@@ -19,8 +19,14 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-MCPServerStatus = Literal['registered', 'connecting', 'connected', 'degraded',
-                          'error', 'disabled', ]
+MCPServerStatus = Literal[
+    'registered',
+    'connecting',
+    'connected',
+    'degraded',
+    'error',
+    'disabled',
+]
 
 FAILURE_HISTORY_LIMIT = 20
 # Transient failures (timeout / 5xx) must reach this count before degraded.
@@ -49,8 +55,7 @@ class MCPServerState:
     last_success_at: str | None = None
     last_failure_at: str | None = None
     consecutive_failures: int = 0
-    failure_history: Deque[MCPFailureRecord] = field(
-        default_factory=lambda: deque(maxlen=FAILURE_HISTORY_LIMIT))
+    failure_history: Deque[MCPFailureRecord] = field(default_factory=lambda: deque(maxlen=FAILURE_HISTORY_LIMIT))
     tool_count: int = 0
     cached_tools: list[dict] = field(default_factory=list)
     connected_at: str | None = None
@@ -125,8 +130,7 @@ class MCPRuntime:
 
         if mcp_client is not None:
             self._client = mcp_client
-            self._owns_client = (
-                owns_client if owns_client is not None else False)
+            self._owns_client = owns_client if owns_client is not None else False
         else:
             mcp_json = config.to_mcp_json() if config else None
             self._client = MCPClient(mcp_config=mcp_json)
@@ -197,8 +201,7 @@ class MCPRuntime:
         state.status = 'connecting'
         state.last_error = None
         try:
-            await self._client.connect_single_server(
-                name, connection_params_for_client(state.config))
+            await self._client.connect_single_server(name, connection_params_for_client(state.config))
             state.status = 'connected'
             state.connected_at = _utc_now()
             state.last_success_at = state.connected_at
@@ -282,19 +285,14 @@ class MCPRuntime:
 
     # ── config hot update ──────────────────────────────────────────────
 
-    async def apply_config(self,
-                           config: ResolvedMCPConfig) -> list[MCPServerState]:
+    async def apply_config(self, config: ResolvedMCPConfig) -> list[MCPServerState]:
         async with self._sync_lock:
             self._config = config
             old_names = set(self._states)
             new_names = set(config.mcp_servers)
             removed = old_names - new_names
             added = new_names - old_names
-            changed = {
-                n
-                for n in old_names & new_names
-                if self._states[n].config != config.mcp_servers[n]
-            }
+            changed = {n for n in old_names & new_names if self._states[n].config != config.mcp_servers[n]}
 
             for name in removed:
                 if self._client.is_connected(name):
@@ -368,18 +366,11 @@ class MCPRuntime:
                 'message': f'Unknown MCP server: {server_name}',
             }
         return {
-            'success':
-            False,
-            'error':
-            'mcp_unavailable',
-            'server_name':
-            server_name,
-            'status':
-            state.status,
-            'message':
-            state.last_error or
-            (f'MCP server {server_name} is not callable (status={state.status})'
-             ),
+            'success': False,
+            'error': 'mcp_unavailable',
+            'server_name': server_name,
+            'status': state.status,
+            'message': state.last_error or (f'MCP server {server_name} is not callable (status={state.status})'),
         }
 
     # ── failure tracking ───────────────────────────────────────────────
@@ -394,8 +385,7 @@ class MCPRuntime:
         exc: BaseException | None = None,
     ) -> None:
         async with self._sync_lock:
-            degraded = self._apply_failure_state(
-                name, phase, message, tool_name=tool_name, exc=exc)
+            degraded = self._apply_failure_state(name, phase, message, tool_name=tool_name, exc=exc)
             if degraded:
                 await self._sync_tools_unlocked()
 
@@ -412,9 +402,7 @@ class MCPRuntime:
         state = self._states.get(name)
         if state is None:
             return False
-        failure_kind = (
-            classify_mcp_failure(exc)
-            if exc is not None else classify_failure_message(message))
+        failure_kind = classify_mcp_failure(exc) if exc is not None else classify_failure_message(message)
         if failure_kind == 'none':
             return False
         now = _utc_now()
@@ -428,9 +416,7 @@ class MCPRuntime:
         state.last_error = message
         state.last_failure_at = now
         state.consecutive_failures += 1
-        should_degrade = (
-            failure_kind == 'hard'
-            or state.consecutive_failures >= DEGRADED_FAILURE_THRESHOLD)
+        should_degrade = failure_kind == 'hard' or state.consecutive_failures >= DEGRADED_FAILURE_THRESHOLD
         if should_degrade and state.status == 'connected':
             state.status = 'degraded'
             return True
@@ -458,7 +444,8 @@ class MCPRuntime:
                 at=state.last_failure_at,
                 phase='connect',
                 message=message,
-            ))
+            )
+        )
 
     # ── ToolManager integration ────────────────────────────────────────
 
@@ -489,10 +476,10 @@ class MCPRuntime:
         needs_resync = False
         for server_name, exc in failures:
             if self._apply_failure_state(
-                    server_name,
-                    'list_tools',
-                    str(exc),
-                    exc=exc,
+                server_name,
+                'list_tools',
+                str(exc),
+                exc=exc,
             ):
                 needs_resync = True
         if needs_resync:

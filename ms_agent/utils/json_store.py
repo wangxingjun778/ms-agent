@@ -1,4 +1,5 @@
 """Strict JSON objects and short, atomic read-modify-write transactions."""
+
 from __future__ import annotations
 
 import copy

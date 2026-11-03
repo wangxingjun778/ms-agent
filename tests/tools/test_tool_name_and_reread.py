@@ -1,5 +1,6 @@
 """Two ways a tool call used to dead-end: an unusable name error, and a read
 that returned no content."""
+
 import json
 import os
 
@@ -10,10 +11,12 @@ from ms_agent.tools.tool_manager import ToolManager
 
 
 def _fs_config(workspace):
-    return OmegaConf.create({
-        'output_dir': str(workspace),
-        'tools': {'file_system': {}},
-    })
+    return OmegaConf.create(
+        {
+            'output_dir': str(workspace),
+            'tools': {'file_system': {}},
+        }
+    )
 
 
 def _manager_with(index_keys) -> ToolManager:
@@ -30,15 +33,13 @@ def test_unambiguous_shorthand_resolves_and_says_so():
 
 
 def test_ambiguous_shorthand_is_not_guessed():
-    manager = _manager_with(
-        ['code_executor---shell_executor', 'code_executor---file_operation'])
+    manager = _manager_with(['code_executor---shell_executor', 'code_executor---file_operation'])
     resolved, _ = manager._resolve_tool_name('code_executor')
     assert resolved is None
 
 
 def test_unknown_name_reports_candidates_not_a_traceback():
-    manager = _manager_with(
-        ['file_system---read_file', 'file_system---write_file'])
+    manager = _manager_with(['file_system---read_file', 'file_system---write_file'])
     message = manager._unknown_tool_message('file_system---raed_file')
     assert 'file_system---read_file' in message
     assert 'exact tool name' in message
@@ -60,10 +61,8 @@ async def test_reading_the_same_file_twice_returns_content_both_times(tmp_path):
 
     tool = FileSystemTool(_fs_config(workspace))
 
-    first = await tool.call_tool(
-        'file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
-    second = await tool.call_tool(
-        'file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
+    first = await tool.call_tool('file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
+    second = await tool.call_tool('file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
 
     first_payload = json.loads(first)['rules.md']
     second_payload = json.loads(second)['rules.md']
@@ -83,8 +82,7 @@ async def test_rereading_after_a_change_reports_the_new_content(tmp_path):
     target.write_text('v1\n', encoding='utf-8')
 
     tool = FileSystemTool(_fs_config(workspace))
-    await tool.call_tool(
-        'file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
+    await tool.call_tool('file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
 
     # Push mtime forward so the change is visible whatever the clock's
     # granularity is.
@@ -92,8 +90,7 @@ async def test_rereading_after_a_change_reports_the_new_content(tmp_path):
     future = os.path.getmtime(target) + 2
     os.utime(target, (future, future))
 
-    again = await tool.call_tool(
-        'file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
+    again = await tool.call_tool('file_system', tool_name='read_file', tool_args={'path': 'rules.md'})
     payload = json.loads(again)['rules.md']
     assert 'v2' in payload
     assert 'unchanged' not in payload

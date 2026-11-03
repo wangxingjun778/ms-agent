@@ -31,6 +31,7 @@ Sidecar (``{session_key}.meta.json``)::
     {"session_key": "abc", "created_at": "...", "last_consolidated": 0,
      "round": 0, "title": "", "status": "idle"}
 """
+
 from __future__ import annotations
 
 import json
@@ -105,29 +106,37 @@ class SessionLog:
 
     def records(self) -> List[Dict[str, Any]]:
         from ms_agent.session.replay import read_records
+
         if self._records is None:
             self._records = read_records(self._path)
         return self._records
 
-    def commit_compaction(self, messages: List[Dict[str, Any]],
-                          event: Dict[str, Any]) -> None:
+    def commit_compaction(self, messages: List[Dict[str, Any]], event: Dict[str, Any]) -> None:
         """Publish a new context only after all of its records are durable."""
         if not messages:
             return
         transaction = uuid.uuid4().hex
-        self.record_compaction({**event, 'transaction_id': transaction,
-                                'message_count': len(messages)})
+        self.record_compaction({**event, 'transaction_id': transaction, 'message_count': len(messages)})
         try:
-            seqs = [self.append({
-                **{k: v for k, v in msg.items()
-                   if k not in ('seq', 'timestamp', '_compaction_id')},
-                '_source': 'compaction', '_compaction_id': transaction,
-            }) for msg in messages]
-            self._append_line({
-                '_type': 'compaction_commit', 'seq': self._next_seq(),
-                'transaction_id': transaction,
-                'context_start': seqs[0], 'context_end': seqs[-1],
-            })
+            seqs = [
+                self.append(
+                    {
+                        **{k: v for k, v in msg.items() if k not in ('seq', 'timestamp', '_compaction_id')},
+                        '_source': 'compaction',
+                        '_compaction_id': transaction,
+                    }
+                )
+                for msg in messages
+            ]
+            self._append_line(
+                {
+                    '_type': 'compaction_commit',
+                    'seq': self._next_seq(),
+                    'transaction_id': transaction,
+                    'context_start': seqs[0],
+                    'context_end': seqs[-1],
+                }
+            )
             self.last_consolidated = seqs[0]
         finally:
             self._messages = None
@@ -135,24 +144,31 @@ class SessionLog:
     def record_turn_checkpoint(self, round: int, state: dict | None = None) -> None:
         """Persist the successful reply before waiting for another user input."""
         from ms_agent.session.replay import fork_points
+
         points = fork_points(self.records(), require_checkpoint=False)
         if not points:
             return
         point = points[-1]
-        if any(r.get('_type') == 'turn_checkpoint'
-               and r.get('assistant_seq') == point.assistant_seq for r in self.records()):
+        if any(
+            r.get('_type') == 'turn_checkpoint' and r.get('assistant_seq') == point.assistant_seq
+            for r in self.records()
+        ):
             return
         # Never checkpoint an earlier reply while the latest user turn is open.
-        original = [r for r in self.records() if r.get('role')
-                    and r.get('_source') != 'compaction']
+        original = [r for r in self.records() if r.get('role') and r.get('_source') != 'compaction']
         if not original or original[-1].get('seq') != point.assistant_seq:
             return
-        self._append_line({
-            '_type': 'turn_checkpoint', 'seq': self._next_seq(),
-            'status': 'completed', 'assistant_seq': point.assistant_seq,
-            'context_start': self.last_consolidated, 'round': round,
-            'state': state or {},
-        })
+        self._append_line(
+            {
+                '_type': 'turn_checkpoint',
+                'seq': self._next_seq(),
+                'status': 'completed',
+                'assistant_seq': point.assistant_seq,
+                'context_start': self.last_consolidated,
+                'round': round,
+                'state': state or {},
+            }
+        )
 
     def record_error(self, event: Dict[str, Any]) -> None:
         """Record an error event — a non-message, display-only marker.
@@ -174,8 +190,7 @@ class SessionLog:
         if rnd is not None:
             message = event.get('message')
             for prior in self.get_errors():
-                if (prior.get('round') == rnd
-                        and prior.get('message') == message):
+                if prior.get('round') == rnd and prior.get('message') == message:
                     return
         seq = self._next_seq()
         record = {
@@ -249,6 +264,7 @@ class SessionLog:
     @property
     def last_consolidated(self) -> int:
         from ms_agent.session.replay import committed_records
+
         _, start = committed_records(self.records())
         return start if start is not None else self._read_meta().get('last_consolidated', 0)
 
@@ -288,6 +304,7 @@ class SessionLog:
         if self._messages is not None:
             return self._messages
         from ms_agent.session.replay import context_messages
+
         msgs = context_messages(self.records(), start=0)
         self._messages = msgs
         return msgs
@@ -302,12 +319,14 @@ class SessionLog:
         """
         if not entries:
             return
-        self._append_line({
-            '_type': 'image_delivery',
-            'seq': self._next_seq(),
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'entries': entries,
-        })
+        self._append_line(
+            {
+                '_type': 'image_delivery',
+                'seq': self._next_seq(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'entries': entries,
+            }
+        )
         self._messages = None  # force a reload so the merge is applied
 
     def get_visible_messages(self) -> List[Dict[str, Any]]:
@@ -521,8 +540,7 @@ class SessionLog:
         # 1. Preferred: the sidecar file.
         if self._meta_path.exists():
             try:
-                self._metadata = json.loads(
-                    self._meta_path.read_text(encoding='utf-8'))
+                self._metadata = json.loads(self._meta_path.read_text(encoding='utf-8'))
                 return self._metadata
             except (json.JSONDecodeError, OSError):
                 pass
@@ -575,8 +593,7 @@ class SessionLog:
             os.fsync(f.fileno())
 
 
-def _merge_image_delivery(msgs: List[Dict[str, Any]],
-                          record: Dict[str, Any]) -> None:
+def _merge_image_delivery(msgs: List[Dict[str, Any]], record: Dict[str, Any]) -> None:
     """Fold an ``image_delivery`` record back onto the turn it describes.
 
     Matches by workspace path against the most recent user row that carries
@@ -592,10 +609,7 @@ def _merge_image_delivery(msgs: List[Dict[str, Any]],
     entries = record.get('entries') or []
     if not entries:
         return
-    by_path = {
-        str(e.get('path') or ''): str(e.get('state') or '')
-        for e in entries if isinstance(e, dict)
-    }
+    by_path = {str(e.get('path') or ''): str(e.get('state') or '') for e in entries if isinstance(e, dict)}
     for row in reversed(msgs):
         attachments = row.get('attachments') if isinstance(row, dict) else None
         if not attachments:

@@ -1,6 +1,5 @@
 from ms_agent.command.router import CommandRouter
-from ms_agent.command.types import (CommandContext, CommandDef, CommandResult,
-                                    CommandResultType)
+from ms_agent.command.types import CommandContext, CommandDef, CommandResult, CommandResultType
 
 CMD_STOP = CommandDef(
     name='stop',
@@ -14,7 +13,7 @@ CMD_NEW = CommandDef(
     name='new',
     description='End current session',
     category='session',
-    aliases=('reset', ),
+    aliases=('reset',),
 )
 
 CMD_STATUS = CommandDef(
@@ -27,22 +26,18 @@ CMD_STATUS = CommandDef(
 async def cmd_stop(ctx: CommandContext) -> CommandResult:
     if ctx.runtime:
         ctx.runtime.should_stop = True
-    return CommandResult(
-        type=CommandResultType.MESSAGE, content='Agent stopped.')
+    return CommandResult(type=CommandResultType.MESSAGE, content='Agent stopped.')
 
 
 async def cmd_new(ctx: CommandContext) -> CommandResult:
     if ctx.runtime:
         ctx.runtime.should_stop = True
-    return CommandResult(
-        type=CommandResultType.QUIT, content='Session ended. Start a new one.')
+    return CommandResult(type=CommandResultType.QUIT, content='Session ended. Start a new one.')
 
 
 async def cmd_status(ctx: CommandContext) -> CommandResult:
     if ctx.runtime:
-        content = (f'Round: {ctx.runtime.round}\n'
-                   f'Tag: {ctx.runtime.tag}\n'
-                   f'Should stop: {ctx.runtime.should_stop}')
+        content = f'Round: {ctx.runtime.round}\nTag: {ctx.runtime.tag}\nShould stop: {ctx.runtime.should_stop}'
     else:
         content = 'No active agent.'
     return CommandResult(type=CommandResultType.MESSAGE, content=content)

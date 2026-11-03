@@ -9,15 +9,18 @@ from ms_agent.permission.shell_validator import SafetyDecision
 class TestStrictMode:
     """strict mode: all ask → deny."""
 
-    @pytest.mark.parametrize('category', [
-        'process_input_sub',
-        'process_output_sub',
-        'parse_failure',
-        'cd_write_compound',
-        'command_validator',
-        'shell_expansion',
-        'read_outside_dirs',
-    ])
+    @pytest.mark.parametrize(
+        'category',
+        [
+            'process_input_sub',
+            'process_output_sub',
+            'parse_failure',
+            'cd_write_compound',
+            'command_validator',
+            'shell_expansion',
+            'read_outside_dirs',
+        ],
+    )
     def test_all_ask_denied(self, category: str) -> None:
         decision = SafetyDecision(action='ask', reason='test', category=category)
         result = resolve_ask(decision, mode='strict')
@@ -28,15 +31,18 @@ class TestStrictMode:
 class TestInteractiveMode:
     """interactive mode: ask unchanged."""
 
-    @pytest.mark.parametrize('category', [
-        'process_input_sub',
-        'process_output_sub',
-        'parse_failure',
-        'cd_write_compound',
-        'command_validator',
-        'shell_expansion',
-        'read_outside_dirs',
-    ])
+    @pytest.mark.parametrize(
+        'category',
+        [
+            'process_input_sub',
+            'process_output_sub',
+            'parse_failure',
+            'cd_write_compound',
+            'command_validator',
+            'shell_expansion',
+            'read_outside_dirs',
+        ],
+    )
     def test_all_ask_preserved(self, category: str) -> None:
         decision = SafetyDecision(action='ask', reason='test reason', category=category)
         result = resolve_ask(decision, mode='interactive')

@@ -1,8 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from abc import abstractmethod
-from omegaconf import DictConfig
 from typing import Any, Dict, Optional
+
+from omegaconf import DictConfig
 
 from ms_agent.utils.constants import DEFAULT_OUTPUT_DIR
 
@@ -26,8 +27,7 @@ class ToolBase:
         self.config = config
         self.exclude_functions = []
         self.include_functions = []
-        self.output_dir = getattr(self.config, 'output_dir',
-                                  DEFAULT_OUTPUT_DIR)
+        self.output_dir = getattr(self.config, 'output_dir', DEFAULT_OUTPUT_DIR)
 
     @property
     def max_output_chars(self) -> Optional[float]:
@@ -58,9 +58,9 @@ class ToolBase:
             self.exclude_functions = getattr(tool_config, 'exclude', [])
             self.include_functions = getattr(tool_config, 'include', [])
 
-        assert (not self.exclude_functions) or (
-            not self.include_functions
-        ), 'Set either `include` or `exclude` in tools config.'
+        assert (not self.exclude_functions) or (not self.include_functions), (
+            'Set either `include` or `exclude` in tools config.'
+        )
 
     @abstractmethod
     async def connect(self) -> None:
@@ -110,8 +110,7 @@ class ToolBase:
         pass
 
     @abstractmethod
-    async def call_tool(self, server_name: str, *, tool_name: str,
-                        tool_args: dict) -> str:
+    async def call_tool(self, server_name: str, *, tool_name: str, tool_args: dict) -> str:
         """Call a tool.
 
         Args:

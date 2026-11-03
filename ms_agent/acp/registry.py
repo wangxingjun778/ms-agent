@@ -17,8 +17,7 @@ def generate_agent_manifest(
     output_path: str = 'agent.json',
     version: str = _DEFAULT_VERSION,
     title: str = 'MS-Agent',
-    description:
-    str = 'Lightweight framework for empowering agents with autonomous exploration',
+    description: str = 'Lightweight framework for empowering agents with autonomous exploration',
 ) -> Dict[str, Any]:
     """Build and optionally write an ``agent.json`` manifest.
 

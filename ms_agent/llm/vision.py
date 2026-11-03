@@ -48,13 +48,13 @@ Streaming is covered in both shapes: clients that issue the request eagerly
 raise out of ``create`` itself, and gateways that answer 200 and then fail
 inside the stream raise on the first chunk (``llm/stream_retry.py``).
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ms_agent.llm import multimodal
-from ms_agent.llm.image_errors import (ImageFailure, classify, edge_ladder,
-                                       status_of)
+from ms_agent.llm.image_errors import ImageFailure, classify, edge_ladder, status_of
 from ms_agent.utils import get_logger
 
 logger = get_logger()
@@ -99,8 +99,7 @@ def is_image_refusal(exc: Exception, sent_images: bool) -> bool:
     kind of image problem it was — the distinction that keeps a size complaint
     from being recorded as blindness.
     """
-    return classify(
-        exc, sent_images=sent_images).failure is not ImageFailure.NOT_IMAGE_RELATED
+    return classify(exc, sent_images=sent_images).failure is not ImageFailure.NOT_IMAGE_RELATED
 
 
 def strip_images_from_messages(messages: Any) -> Tuple[Any, bool]:
@@ -119,9 +118,7 @@ def strip_images_from_messages(messages: Any) -> Tuple[Any, bool]:
             continue
         content = message.get('content')
         if multimodal.has_image_blocks(content):
-            message = {
-                **message, 'content': multimodal.strip_image_blocks(content)
-            }
+            message = {**message, 'content': multimodal.strip_image_blocks(content)}
             changed = True
         out.append(message)
     return out, changed
@@ -149,16 +146,18 @@ def _materialize(result: Any) -> Tuple[Any, bool]:
     return _rejoined(), True
 
 
-def create_with_vision_fallback(create: Callable[..., Any],
-                                *,
-                                base_url: Any,
-                                model: str,
-                                messages: Any,
-                                sent_images: bool,
-                                max_edge: int = 0,
-                                on_degrade: Optional[Callable[[str], None]] = None,
-                                logger_: Any = None,
-                                **kwargs) -> Any:
+def create_with_vision_fallback(
+    create: Callable[..., Any],
+    *,
+    base_url: Any,
+    model: str,
+    messages: Any,
+    sent_images: bool,
+    max_edge: int = 0,
+    on_degrade: Optional[Callable[[str], None]] = None,
+    logger_: Any = None,
+    **kwargs,
+) -> Any:
     """Call ``create(messages=..., **kwargs)``, recovering along the ladder.
 
     ``create`` must accept ``messages`` as a keyword so each rung can hand it a
@@ -186,9 +185,7 @@ def create_with_vision_fallback(create: Callable[..., Any],
     def _moves(diag) -> List[Tuple[str, Any]]:
         """Ordered recovery attempts for a diagnosis."""
         if diag.failure is ImageFailure.TOO_LARGE:
-            return [('shrink', edge)
-                    for edge in edge_ladder(diag.max_edge, current_edge)
-                    ] + [('strip', None)]
+            return [('shrink', edge) for edge in edge_ladder(diag.max_edge, current_edge)] + [('strip', None)]
         if diag.failure is ImageFailure.SHAPE_REJECTED:
             return [('keep_last', 1), ('strip', None)]
         return [('strip', None)]
@@ -207,19 +204,20 @@ def create_with_vision_fallback(create: Callable[..., Any],
 
         log.warning(
             '%s failed on a request carrying images (%s: %s); recovering: %s',
-            model, diag.failure.value, diag.detail,
-            ' -> '.join(m for m, _ in _moves(diag)))
+            model,
+            diag.failure.value,
+            diag.detail,
+            ' -> '.join(m for m, _ in _moves(diag)),
+        )
 
         for move, arg in _moves(diag):
             candidate, changed = _apply(move, arg)
             if not changed:
                 continue
             try:
-                result, produced = _materialize(
-                    create(messages=candidate, **kwargs))
+                result, produced = _materialize(create(messages=candidate, **kwargs))
             except Exception as retry_exc:  # noqa: BLE001
-                log.debug('[vision] recovery move %r did not help: %s', move,
-                          retry_exc)
+                log.debug('[vision] recovery move %r did not help: %s', move, retry_exc)
                 continue
             if move == 'strip':
                 _degraded(_degrade_code(diag.failure))
@@ -239,10 +237,7 @@ def create_with_vision_fallback(create: Callable[..., Any],
     return retry_on_first_chunk(result, _repair)
 
 
-def resolve_supports_vision(config: Any,
-                            spec: Any = None,
-                            model: str = '',
-                            base_url: Any = '') -> bool:
+def resolve_supports_vision(config: Any, spec: Any = None, model: str = '', base_url: Any = '') -> bool:
     """Whether to attach pixels for this model. See the module docstring.
 
     ``config.llm.supports_vision`` is the explicit per-model switch and the only

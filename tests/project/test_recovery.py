@@ -1,4 +1,5 @@
 """Explicit recovery preserves existing data and refuses unsafe replacements."""
+
 import json
 import shutil
 from concurrent.futures import ThreadPoolExecutor

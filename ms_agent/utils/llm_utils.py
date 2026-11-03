@@ -3,8 +3,7 @@ import asyncio
 import functools
 import re
 import time
-from typing import (Any, AsyncGenerator, Callable, Optional, Tuple, Type,
-                    TypeVar, Union)
+from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Type, TypeVar, Union
 
 from .logger import get_logger
 
@@ -20,8 +19,7 @@ _RETRYABLE_CLIENT_STATUSES = frozenset({408, 409, 425, 429})
 # Providers surface the status inconsistently: the openai/anthropic SDKs expose
 # `status_code`, while gateways often only put it in the message
 # ("APIError: <400> ...", "Error code: 400 - {...}").
-_STATUS_IN_TEXT = re.compile(r'<(\d{3})>|(?:error\s+)?code[:=]?\s*(\d{3})\b',
-                             re.IGNORECASE)
+_STATUS_IN_TEXT = re.compile(r'<(\d{3})>|(?:error\s+)?code[:=]?\s*(\d{3})\b', re.IGNORECASE)
 
 
 def http_status_of(exc: BaseException) -> Optional[int]:
@@ -54,11 +52,12 @@ def is_retryable_error(exc: BaseException) -> bool:
     return True
 
 
-def retry(max_attempts: int = 3,
-          delay: float = 1.0,
-          backoff_factor: float = 2.0,
-          exceptions: Union[Type[Exception], Tuple[Type[Exception],
-                                                   ...]] = Exception):
+def retry(
+    max_attempts: int = 3,
+    delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+):
     """Retry doing something"""
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
@@ -73,6 +72,7 @@ def retry(max_attempts: int = 3,
                     return func(*args, **kwargs)
                 except exceptions as e:
                     import traceback
+
                     logger.warning(traceback.format_exc())
                     last_exception = e
                     if attempt < max_attempts:
@@ -85,7 +85,8 @@ def retry(max_attempts: int = 3,
                     else:
                         logger.error(
                             f'Attempt to call {func.__name__} over {max_attempts} times. '
-                            f'The last exception message: {e}')
+                            f'The last exception message: {e}'
+                        )
             raise last_exception
 
         return wrapper
@@ -93,12 +94,13 @@ def retry(max_attempts: int = 3,
     return decorator
 
 
-def async_retry(max_attempts: int = 3,
-                delay: float = 1.0,
-                backoff_factor: float = 2.0,
-                exceptions: Union[Type[Exception], Tuple[Type[Exception],
-                                                         ...]] = Exception,
-                retry_if: Optional[Callable[[BaseException], bool]] = None):
+def async_retry(
+    max_attempts: int = 3,
+    delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+    retry_if: Optional[Callable[[BaseException], bool]] = None,
+):
     """Retry doing something.
 
     ``retry_if`` short-circuits the loop for exceptions that cannot succeed on
@@ -120,13 +122,15 @@ def async_retry(max_attempts: int = 3,
                     return
                 except exceptions as e:
                     import traceback
+
                     logger.warning(traceback.format_exc())
                     last_exception = e
                     if retry_if is not None and not retry_if(e):
                         logger.error(
                             f'{func.__name__} failed unrecoverably on attempt '
                             f'{attempt}/{max_attempts}; not retrying. '
-                            f'Exception message: {e}')
+                            f'Exception message: {e}'
+                        )
                         break
                     if attempt < max_attempts:
                         logger.warning(
@@ -138,7 +142,8 @@ def async_retry(max_attempts: int = 3,
                     else:
                         logger.error(
                             f'Attempt to call {func.__name__} over {max_attempts} times. '
-                            f'The last exception message: {e}')
+                            f'The last exception message: {e}'
+                        )
             raise last_exception
 
         return wrapper

@@ -30,7 +30,6 @@ from ms_agent.llm.utils import Message
 
 
 class TestToolArgParsing:
-
     def test_parse_valid_json(self):
         args = _parse_tool_args('{"path": "/src/main.py", "content": "hello"}')
         assert args['path'] == '/src/main.py'
@@ -48,7 +47,6 @@ class TestToolArgParsing:
 
 
 class TestKindInference:
-
     def test_known_tools(self):
         assert _infer_kind_from_args('code_executor', {}) == 'execute'
         assert _infer_kind_from_args('web_search', {}) == 'search'
@@ -56,14 +54,10 @@ class TestKindInference:
         assert _infer_kind_from_args('todo', {}) == 'think'
 
     def test_filesystem_method_dispatch(self):
-        assert _infer_kind_from_args(
-            'filesystem', {'method': 'write_file'}) == 'edit'
-        assert _infer_kind_from_args(
-            'filesystem', {'method': 'read_file'}) == 'read'
-        assert _infer_kind_from_args(
-            'filesystem', {'method': 'list_files'}) == 'read'
-        assert _infer_kind_from_args(
-            'filesystem', {'method': 'replace_file_contents'}) == 'edit'
+        assert _infer_kind_from_args('filesystem', {'method': 'write_file'}) == 'edit'
+        assert _infer_kind_from_args('filesystem', {'method': 'read_file'}) == 'read'
+        assert _infer_kind_from_args('filesystem', {'method': 'list_files'}) == 'read'
+        assert _infer_kind_from_args('filesystem', {'method': 'replace_file_contents'}) == 'edit'
 
     def test_name_heuristic(self):
         assert _infer_kind_from_args('my_custom_write_tool', {}) == 'edit'
@@ -79,7 +73,6 @@ class TestKindInference:
 
 
 class TestTitleBuilding:
-
     def test_edit_with_path(self):
         title = _build_title('file_write', {'path': '/src/main.py'}, 'edit')
         assert title == 'Edit /src/main.py'
@@ -89,8 +82,7 @@ class TestTitleBuilding:
         assert title == 'Read /src/config.json'
 
     def test_execute_with_code(self):
-        title = _build_title('code_executor',
-                             {'code': 'print("hello world")\nprint("done")'}, 'execute')
+        title = _build_title('code_executor', {'code': 'print("hello world")\nprint("done")'}, 'execute')
         assert 'print("hello world")' in title
         assert title.startswith('Run:')
 
@@ -104,7 +96,6 @@ class TestTitleBuilding:
 
 
 class TestLocationExtraction:
-
     def test_extract_from_path(self):
         locs = _extract_locations({'path': '/src/main.py'})
         assert locs is not None
@@ -126,7 +117,6 @@ class TestLocationExtraction:
 
 
 class TestDiffExtraction:
-
     def test_write_file(self):
         diff = _try_parse_diff_from_result(
             'file_write',
@@ -158,13 +148,11 @@ class TestDiffExtraction:
         assert diff['new_text'] == 'data'
 
     def test_no_path_returns_none(self):
-        diff = _try_parse_diff_from_result(
-            'file_write', {}, 'OK')
+        diff = _try_parse_diff_from_result('file_write', {}, 'OK')
         assert diff is None
 
     def test_no_matching_method_returns_none(self):
-        diff = _try_parse_diff_from_result(
-            'file_read', {'path': '/src/main.py', 'method': 'read'}, 'content')
+        diff = _try_parse_diff_from_result('file_read', {'path': '/src/main.py', 'method': 'read'}, 'content')
         assert diff is None
 
 
@@ -176,17 +164,21 @@ class TestTranslatorEdits:
         tc = {
             'id': 'tc_write_1',
             'tool_name': 'file_write',
-            'arguments': json.dumps({
-                'path': '/src/main.py',
-                'content': 'def hello(): pass',
-            }),
+            'arguments': json.dumps(
+                {
+                    'path': '/src/main.py',
+                    'content': 'def hello(): pass',
+                }
+            ),
         }
         msgs = [Message(role='assistant', content='', tool_calls=[tc])]
         updates = t.messages_to_updates(msgs)
 
-        tool_starts = [u for u in updates if hasattr(u, 'tool_call_id')
-                       and hasattr(u, 'session_update')
-                       and u.session_update == 'tool_call']
+        tool_starts = [
+            u
+            for u in updates
+            if hasattr(u, 'tool_call_id') and hasattr(u, 'session_update') and u.session_update == 'tool_call'
+        ]
         assert len(tool_starts) == 1
         start = tool_starts[0]
         assert start.tool_call_id == 'tc_write_1'
@@ -203,8 +195,9 @@ class TestTranslatorEdits:
         msgs = [Message(role='assistant', content='', tool_calls=[tc])]
         updates = t.messages_to_updates(msgs)
 
-        tool_starts = [u for u in updates if hasattr(u, 'tool_call_id')
-                       and getattr(u, 'session_update', '') == 'tool_call']
+        tool_starts = [
+            u for u in updates if hasattr(u, 'tool_call_id') and getattr(u, 'session_update', '') == 'tool_call'
+        ]
         assert len(tool_starts) == 1
         start = tool_starts[0]
         assert start.kind == 'read'
@@ -220,8 +213,7 @@ class TestTranslatorEdits:
         msgs = [Message(role='assistant', content='', tool_calls=[tc])]
         updates = t.messages_to_updates(msgs)
 
-        tool_starts = [u for u in updates
-                       if getattr(u, 'session_update', '') == 'tool_call']
+        tool_starts = [u for u in updates if getattr(u, 'session_update', '') == 'tool_call']
         assert len(tool_starts) == 1
         start = tool_starts[0]
         assert start.kind == 'execute'
@@ -237,8 +229,7 @@ class TestTranslatorEdits:
         msgs = [Message(role='assistant', content='', tool_calls=[tc])]
         updates = t.messages_to_updates(msgs)
 
-        tool_starts = [u for u in updates
-                       if getattr(u, 'session_update', '') == 'tool_call']
+        tool_starts = [u for u in updates if getattr(u, 'session_update', '') == 'tool_call']
         assert len(tool_starts) == 1
         start = tool_starts[0]
         assert start.kind == 'search'
@@ -253,28 +244,23 @@ class TestTranslatorToolResults:
         tc = {
             'id': 'tc_w1',
             'tool_name': 'file_write',
-            'arguments': json.dumps({
-                'path': '/src/main.py', 'content': 'def hello(): pass'
-            }),
+            'arguments': json.dumps({'path': '/src/main.py', 'content': 'def hello(): pass'}),
         }
         msgs_assistant = [Message(role='assistant', content='', tool_calls=[tc])]
         t.messages_to_updates(msgs_assistant)
 
         msgs_tool = [
             Message(role='assistant', content='', tool_calls=[tc]),
-            Message(role='tool', content='Save file successfully',
-                    tool_call_id='tc_w1', name='file_write'),
+            Message(role='tool', content='Save file successfully', tool_call_id='tc_w1', name='file_write'),
         ]
         updates = t.messages_to_updates(msgs_tool)
 
-        tool_updates = [u for u in updates
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
+        tool_updates = [u for u in updates if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(tool_updates) == 1
         tu = tool_updates[0]
         assert tu.status == 'completed'
         assert tu.content is not None
-        has_diff = any(
-            getattr(c, 'type', '') == 'diff' for c in tu.content)
+        has_diff = any(getattr(c, 'type', '') == 'diff' for c in tu.content)
         assert has_diff, 'File write should produce a diff content item'
 
     def test_error_result_sets_failed_status(self):
@@ -289,13 +275,15 @@ class TestTranslatorToolResults:
 
         msgs2 = [
             Message(role='assistant', content='', tool_calls=[tc]),
-            Message(role='tool',
-                    content='Error: Traceback (most recent call last)...',
-                    tool_call_id='tc_err', name='code_executor'),
+            Message(
+                role='tool',
+                content='Error: Traceback (most recent call last)...',
+                tool_call_id='tc_err',
+                name='code_executor',
+            ),
         ]
         updates = t.messages_to_updates(msgs2)
-        tool_updates = [u for u in updates
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
+        tool_updates = [u for u in updates if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(tool_updates) == 1
         assert tool_updates[0].status == 'failed'
 
@@ -311,13 +299,10 @@ class TestTranslatorToolResults:
 
         msgs2 = [
             Message(role='assistant', content='', tool_calls=[tc]),
-            Message(role='tool',
-                    content='Found 5 results about test...',
-                    tool_call_id='tc_ok', name='web_search'),
+            Message(role='tool', content='Found 5 results about test...', tool_call_id='tc_ok', name='web_search'),
         ]
         updates = t.messages_to_updates(msgs2)
-        tool_updates = [u for u in updates
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
+        tool_updates = [u for u in updates if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(tool_updates) == 1
         assert tool_updates[0].status == 'completed'
 
@@ -327,77 +312,60 @@ class TestMultiMessageTracking:
 
     def test_processes_multiple_tool_results(self):
         t = ACPTranslator()
-        tc1 = {'id': 'tc_a', 'tool_name': 'web_search',
-               'arguments': '{"query":"a"}'}
-        tc2 = {'id': 'tc_b', 'tool_name': 'web_search',
-               'arguments': '{"query":"b"}'}
+        tc1 = {'id': 'tc_a', 'tool_name': 'web_search', 'arguments': '{"query":"a"}'}
+        tc2 = {'id': 'tc_b', 'tool_name': 'web_search', 'arguments': '{"query":"b"}'}
 
         msgs = [
-            Message(role='assistant', content='Searching...',
-                    tool_calls=[tc1, tc2]),
+            Message(role='assistant', content='Searching...', tool_calls=[tc1, tc2]),
         ]
         u1 = t.messages_to_updates(msgs)
-        assert len([u for u in u1
-                    if getattr(u, 'session_update', '') == 'tool_call']) == 2
+        assert len([u for u in u1 if getattr(u, 'session_update', '') == 'tool_call']) == 2
 
-        msgs.append(Message(role='tool', content='Result A',
-                            tool_call_id='tc_a', name='web_search'))
-        msgs.append(Message(role='tool', content='Result B',
-                            tool_call_id='tc_b', name='web_search'))
+        msgs.append(Message(role='tool', content='Result A', tool_call_id='tc_a', name='web_search'))
+        msgs.append(Message(role='tool', content='Result B', tool_call_id='tc_b', name='web_search'))
         u2 = t.messages_to_updates(msgs)
 
-        tool_updates = [u for u in u2
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
-        assert len(tool_updates) == 2, (
-            f'Expected 2 tool_call_updates, got {len(tool_updates)}')
+        tool_updates = [u for u in u2 if getattr(u, 'session_update', '') == 'tool_call_update']
+        assert len(tool_updates) == 2, f'Expected 2 tool_call_updates, got {len(tool_updates)}'
 
     def test_assistant_deltas_tracked_across_chunks(self):
         t = ACPTranslator()
         msgs = [Message(role='assistant', content='He')]
         u1 = t.messages_to_updates(msgs)
-        text_updates_1 = [u for u in u1
-                          if getattr(u, 'session_update', '') == 'agent_message_chunk']
+        text_updates_1 = [u for u in u1 if getattr(u, 'session_update', '') == 'agent_message_chunk']
         assert len(text_updates_1) == 1
 
         msgs[0] = Message(role='assistant', content='Hello world')
         u2 = t.messages_to_updates(msgs)
-        text_updates_2 = [u for u in u2
-                          if getattr(u, 'session_update', '') == 'agent_message_chunk']
+        text_updates_2 = [u for u in u2 if getattr(u, 'session_update', '') == 'agent_message_chunk']
         assert len(text_updates_2) == 1
 
     def test_no_duplicate_tool_call_starts(self):
         t = ACPTranslator()
-        tc = {'id': 'tc_dup', 'tool_name': 'web_search',
-              'arguments': '{"query": "test"}'}
+        tc = {'id': 'tc_dup', 'tool_name': 'web_search', 'arguments': '{"query": "test"}'}
 
         msgs = [Message(role='assistant', content='', tool_calls=[tc])]
         u1 = t.messages_to_updates(msgs)
-        starts_1 = [u for u in u1
-                    if getattr(u, 'session_update', '') == 'tool_call']
+        starts_1 = [u for u in u1 if getattr(u, 'session_update', '') == 'tool_call']
         assert len(starts_1) == 1
 
         u2 = t.messages_to_updates(msgs)
-        starts_2 = [u for u in u2
-                    if getattr(u, 'session_update', '') == 'tool_call']
+        starts_2 = [u for u in u2 if getattr(u, 'session_update', '') == 'tool_call']
         assert len(starts_2) == 0
 
     def test_no_duplicate_tool_completions(self):
         t = ACPTranslator()
-        tc = {'id': 'tc_nodupe', 'tool_name': 'web_search',
-              'arguments': '{}'}
+        tc = {'id': 'tc_nodupe', 'tool_name': 'web_search', 'arguments': '{}'}
         msgs = [
             Message(role='assistant', content='', tool_calls=[tc]),
-            Message(role='tool', content='result',
-                    tool_call_id='tc_nodupe', name='web_search'),
+            Message(role='tool', content='result', tool_call_id='tc_nodupe', name='web_search'),
         ]
         u1 = t.messages_to_updates(msgs)
-        completions_1 = [u for u in u1
-                         if getattr(u, 'session_update', '') == 'tool_call_update']
+        completions_1 = [u for u in u1 if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(completions_1) == 1
 
         u2 = t.messages_to_updates(msgs)
-        completions_2 = [u for u in u2
-                         if getattr(u, 'session_update', '') == 'tool_call_update']
+        completions_2 = [u for u in u2 if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(completions_2) == 0
 
 
@@ -407,28 +375,28 @@ class TestPlanUpdates:
     def test_extract_from_todo_write_output(self):
         from ms_agent.acp.server import MSAgentACPServer
 
-        todo_result = json.dumps({
-            'status': 'ok',
-            'plan_path': 'plan.json',
-            'todos': [
-                {'id': 'T1', 'content': 'Search papers', 'status': 'in_progress',
-                 'priority': 'high'},
-                {'id': 'T2', 'content': 'Analyze results', 'status': 'pending',
-                 'priority': 'medium'},
-                {'id': 'T3', 'content': 'Write report', 'status': 'pending',
-                 'priority': 'medium'},
-            ],
-        })
+        todo_result = json.dumps(
+            {
+                'status': 'ok',
+                'plan_path': 'plan.json',
+                'todos': [
+                    {'id': 'T1', 'content': 'Search papers', 'status': 'in_progress', 'priority': 'high'},
+                    {'id': 'T2', 'content': 'Analyze results', 'status': 'pending', 'priority': 'medium'},
+                    {'id': 'T3', 'content': 'Write report', 'status': 'pending', 'priority': 'medium'},
+                ],
+            }
+        )
 
         session = MagicMock()
         session.agent.runtime = None
         session.messages = [
             Message(role='user', content='Research quantum computing'),
-            Message(role='assistant', content='', tool_calls=[
-                {'id': 'tc_todo', 'tool_name': 'todo_write', 'arguments': '{}'}
-            ]),
-            Message(role='tool', content=todo_result,
-                    tool_call_id='tc_todo', name='todo_write'),
+            Message(
+                role='assistant',
+                content='',
+                tool_calls=[{'id': 'tc_todo', 'tool_name': 'todo_write', 'arguments': '{}'}],
+            ),
+            Message(role='tool', content=todo_result, tool_call_id='tc_todo', name='todo_write'),
         ]
 
         translator = ACPTranslator()
@@ -458,23 +426,23 @@ class TestPermissionSchema:
     """Test permission response format matches ACP schema."""
 
     def test_auto_approve_returns_valid_response(self):
-        from ms_agent.acp.client import _CollectorClient
         from acp.schema import (
-            PermissionOption, RequestPermissionResponse,
-            AllowedOutcome, DeniedOutcome,
+            AllowedOutcome,
+            DeniedOutcome,
+            PermissionOption,
+            RequestPermissionResponse,
         )
+
+        from ms_agent.acp.client import _CollectorClient
 
         client = _CollectorClient(permission_policy='auto_approve')
         options = [
-            PermissionOption(option_id='allow_once', name='Allow',
-                             kind='allow_once'),
-            PermissionOption(option_id='deny_once', name='Deny',
-                             kind='reject_once'),
+            PermissionOption(option_id='allow_once', name='Allow', kind='allow_once'),
+            PermissionOption(option_id='deny_once', name='Deny', kind='reject_once'),
         ]
         tool_call = MagicMock()
 
-        result = asyncio.get_event_loop().run_until_complete(
-            client.request_permission(options, 'ses_1', tool_call))
+        result = asyncio.get_event_loop().run_until_complete(client.request_permission(options, 'ses_1', tool_call))
 
         assert isinstance(result, RequestPermissionResponse)
         assert isinstance(result.outcome, AllowedOutcome)
@@ -482,22 +450,23 @@ class TestPermissionSchema:
         assert result.outcome.option_id == 'allow_once'
 
     def test_deny_returns_cancelled(self):
-        from ms_agent.acp.client import _CollectorClient
         from acp.schema import (
-            PermissionOption, RequestPermissionResponse, DeniedOutcome,
+            DeniedOutcome,
+            PermissionOption,
+            RequestPermissionResponse,
         )
+
+        from ms_agent.acp.client import _CollectorClient
 
         client = _CollectorClient(permission_policy='deny_all')
         options = [
-            PermissionOption(option_id='allow_once', name='Allow',
-                             kind='allow_once'),
+            PermissionOption(option_id='allow_once', name='Allow', kind='allow_once'),
         ]
         tool_call = MagicMock()
 
         result = asyncio.get_event_loop().run_until_complete(
-            client.request_permission(
-                [o for o in options if 'deny' in o.kind],
-                'ses_1', tool_call))
+            client.request_permission([o for o in options if 'deny' in o.kind], 'ses_1', tool_call)
+        )
 
         assert isinstance(result, RequestPermissionResponse)
         assert isinstance(result.outcome, DeniedOutcome)
@@ -517,8 +486,7 @@ class TestFullMessageFlow:
         msgs[0] = Message(role='assistant', content='Let me search for that.')
         all_updates.extend(t.messages_to_updates(msgs))
 
-        tc = {'id': 'tc_search', 'tool_name': 'web_search',
-              'arguments': '{"query": "test topic"}'}
+        tc = {'id': 'tc_search', 'tool_name': 'web_search', 'arguments': '{"query": "test topic"}'}
         msgs[0] = Message(
             role='assistant',
             content='Let me search for that.',
@@ -526,18 +494,19 @@ class TestFullMessageFlow:
         )
         all_updates.extend(t.messages_to_updates(msgs))
 
-        msgs.append(Message(
-            role='tool', content='Found 3 results...',
-            tool_call_id='tc_search', name='web_search',
-        ))
+        msgs.append(
+            Message(
+                role='tool',
+                content='Found 3 results...',
+                tool_call_id='tc_search',
+                name='web_search',
+            )
+        )
         all_updates.extend(t.messages_to_updates(msgs))
 
-        msg_chunks = [u for u in all_updates
-                      if getattr(u, 'session_update', '') == 'agent_message_chunk']
-        tool_starts = [u for u in all_updates
-                       if getattr(u, 'session_update', '') == 'tool_call']
-        tool_updates = [u for u in all_updates
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
+        msg_chunks = [u for u in all_updates if getattr(u, 'session_update', '') == 'agent_message_chunk']
+        tool_starts = [u for u in all_updates if getattr(u, 'session_update', '') == 'tool_call']
+        tool_updates = [u for u in all_updates if getattr(u, 'session_update', '') == 'tool_call_update']
 
         assert len(msg_chunks) >= 2, 'Should have streamed text incrementally'
         assert len(tool_starts) == 1, 'Should have exactly one tool_call start'
@@ -548,66 +517,60 @@ class TestFullMessageFlow:
     def test_full_file_edit_flow(self):
         t = ACPTranslator()
 
-        tc = {'id': 'tc_edit', 'tool_name': 'file_write',
-              'arguments': json.dumps({
-                  'path': '/project/src/app.py',
-                  'content': 'def main():\n    print("hello")\n',
-              })}
+        tc = {
+            'id': 'tc_edit',
+            'tool_name': 'file_write',
+            'arguments': json.dumps(
+                {
+                    'path': '/project/src/app.py',
+                    'content': 'def main():\n    print("hello")\n',
+                }
+            ),
+        }
 
         msgs = [
-            Message(role='assistant',
-                    content='I will create the file for you.',
-                    tool_calls=[tc]),
+            Message(role='assistant', content='I will create the file for you.', tool_calls=[tc]),
         ]
         u1 = t.messages_to_updates(msgs)
 
-        msgs.append(Message(
-            role='tool', content='Save file <src/app.py> successfully.',
-            tool_call_id='tc_edit', name='file_write',
-        ))
+        msgs.append(
+            Message(
+                role='tool',
+                content='Save file <src/app.py> successfully.',
+                tool_call_id='tc_edit',
+                name='file_write',
+            )
+        )
         u2 = t.messages_to_updates(msgs)
 
-        tool_starts = [u for u in u1
-                       if getattr(u, 'session_update', '') == 'tool_call']
+        tool_starts = [u for u in u1 if getattr(u, 'session_update', '') == 'tool_call']
         assert len(tool_starts) == 1
         assert tool_starts[0].kind == 'edit'
         assert 'Edit' in tool_starts[0].title
 
-        tool_updates = [u for u in u2
-                        if getattr(u, 'session_update', '') == 'tool_call_update']
+        tool_updates = [u for u in u2 if getattr(u, 'session_update', '') == 'tool_call_update']
         assert len(tool_updates) == 1
         assert tool_updates[0].status == 'completed'
 
-        has_diff = any(
-            getattr(c, 'type', '') == 'diff'
-            for c in (tool_updates[0].content or []))
+        has_diff = any(getattr(c, 'type', '') == 'diff' for c in (tool_updates[0].content or []))
         assert has_diff, 'File write should produce diff content'
 
 
 class TestErrorDetection:
-
     def test_error_markers(self):
-        assert ACPTranslator._looks_like_error(
-            'Error: file not found') is True
-        assert ACPTranslator._looks_like_error(
-            'Traceback (most recent call last)...') is True
-        assert ACPTranslator._looks_like_error(
-            '{"success": false, "error": "timeout"}') is True
-        assert ACPTranslator._looks_like_error(
-            'Operation failed due to timeout') is True
+        assert ACPTranslator._looks_like_error('Error: file not found') is True
+        assert ACPTranslator._looks_like_error('Traceback (most recent call last)...') is True
+        assert ACPTranslator._looks_like_error('{"success": false, "error": "timeout"}') is True
+        assert ACPTranslator._looks_like_error('Operation failed due to timeout') is True
 
     def test_success_messages(self):
-        assert ACPTranslator._looks_like_error(
-            'Save file successfully.') is False
-        assert ACPTranslator._looks_like_error(
-            'Found 5 results about quantum computing') is False
+        assert ACPTranslator._looks_like_error('Save file successfully.') is False
+        assert ACPTranslator._looks_like_error('Found 5 results about quantum computing') is False
         assert ACPTranslator._looks_like_error('') is False
-        assert ACPTranslator._looks_like_error(
-            '{"success": true, "output": "hello"}') is False
+        assert ACPTranslator._looks_like_error('{"success": true, "output": "hello"}') is False
 
 
 class TestResetTurn:
-
     def test_reset_clears_all_state(self):
         t = ACPTranslator()
         t._last_content_len = 100
@@ -630,7 +593,6 @@ class TestResetTurn:
 
 
 class TestPromptToMessages:
-
     def test_resource_block(self):
         block = MagicMock()
         block.type = 'resource'

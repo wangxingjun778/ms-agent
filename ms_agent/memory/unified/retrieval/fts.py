@@ -3,6 +3,7 @@
 Supports CJK character splitting (QwenPaw-style ``tokenize_query``) and
 returns ranked snippets that can be LLM-summarised before injection.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ms_agent.utils.logger import get_logger
+
 from ..config import MemoryConfig
 from ..protocols import MemoryEntry
 
@@ -77,8 +79,7 @@ class FTSRetriever:
     ) -> List[MemoryEntry]:
         if not query or not query.strip():
             return []
-        fts_query = tokenize_query(
-            query, max_tokens=self.config.max_search_results)
+        fts_query = tokenize_query(query, max_tokens=self.config.max_search_results)
         if not fts_query:
             return []
         conn = self._get_conn()
@@ -102,11 +103,9 @@ class FTSRetriever:
                     category='context',
                     confidence=min(1.0, max(0.0, 1.0 + rank)),
                     source=session_key,
-                    metadata={
-                        'role': role,
-                        'fts_rank': rank
-                    },
-                ))
+                    metadata={'role': role, 'fts_rank': rank},
+                )
+            )
         return results
 
     # ------------------------------------------------------------------
@@ -116,8 +115,7 @@ class FTSRetriever:
     def index_session(self, session_key: str, messages: List[Dict]) -> int:
         """(Re-)index all messages from a session JSONL file."""
         conn = self._get_conn()
-        conn.execute('DELETE FROM session_messages WHERE session_key = ?',
-                     (session_key, ))
+        conn.execute('DELETE FROM session_messages WHERE session_key = ?', (session_key,))
         count = 0
         for msg in messages:
             if msg.get('_type') == 'metadata':
@@ -127,8 +125,9 @@ class FTSRetriever:
             if not content or not isinstance(content, str):
                 continue
             conn.execute(
-                'INSERT INTO session_messages (content, session_key, role) '
-                'VALUES (?, ?, ?)', (content, session_key, role))
+                'INSERT INTO session_messages (content, session_key, role) VALUES (?, ?, ?)',
+                (content, session_key, role),
+            )
             count += 1
         conn.commit()
         return count

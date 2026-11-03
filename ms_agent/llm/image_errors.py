@@ -35,6 +35,7 @@ with no memory written. So a provider re-wording its errors costs us one extra
 round-trip, never a wrong persistent belief. That property is what makes prose
 matching acceptable at all, and it is asserted by the tests.
 """
+
 from __future__ import annotations
 
 import re
@@ -87,50 +88,55 @@ def _compile(pairs: List[Tuple[str, str]]) -> List[Tuple[Pattern[str], str]]:
 #: else so that stripping images can never look like the cure for them —
 #: dropping media may incidentally make an over-long request fit, but that is a
 #: coincidence, not a learned capability.
-_VETO = _compile([
-    (r'\bcontent[_\s-]?filter\b', 'content filter'),
-    (r'\bmoderation\b', 'moderation'),
-    (r'\bsafety\b.*\b(policy|violat)', 'safety policy'),
-    (r'\bcontext[_\s-]?length\b', 'context length'),
-    (r'\bmaximum context\b', 'context length'),
-    (r'\btoken[s]?\s+limit\b', 'token limit'),
-    (r'\breduce the length of the messages\b', 'context length'),
-    # The asset itself is broken. Shrinking or dropping every image would hide
-    # which file is at fault, so this is not an image-capability question.
-    (r'\bcorrupt(ed)?\b', 'corrupt asset'),
-    (r'\b(could not|failed to|cannot)\s+decode\b', 'undecodable asset'),
-    (r'\binvalid image\b', 'invalid asset'),
-    (r'\bunsupported image (format|type)\b', 'unsupported format'),
-])
+_VETO = _compile(
+    [
+        (r'\bcontent[_\s-]?filter\b', 'content filter'),
+        (r'\bmoderation\b', 'moderation'),
+        (r'\bsafety\b.*\b(policy|violat)', 'safety policy'),
+        (r'\bcontext[_\s-]?length\b', 'context length'),
+        (r'\bmaximum context\b', 'context length'),
+        (r'\btoken[s]?\s+limit\b', 'token limit'),
+        (r'\breduce the length of the messages\b', 'context length'),
+        # The asset itself is broken. Shrinking or dropping every image would hide
+        # which file is at fault, so this is not an image-capability question.
+        (r'\bcorrupt(ed)?\b', 'corrupt asset'),
+        (r'\b(could not|failed to|cannot)\s+decode\b', 'undecodable asset'),
+        (r'\binvalid image\b', 'invalid asset'),
+        (r'\bunsupported image (format|type)\b', 'unsupported format'),
+    ]
+)
 
 #: The provider is complaining about SIZE. Recovery is to re-encode smaller;
 #: this says nothing about whether the model can see.
 #: Provenance: `input size exceed limit 2048x2048, current input:(1183,2560)`
 #: — ModelScope api-inference, Qwen3-VL-8B-Instruct, 2026-08-21.
-_SIZE = _compile([
-    (r'\bsize exceed\b', 'image too large'),
-    (r'\bexceed(s)?\s+limit\b', 'image too large'),
-    (r'\bimage\b[^.]{0,40}\bexceeds\b', 'image too large'),
-    (r'\bdimensions?\b[^.]{0,40}\bexceed', 'image too large'),
-    (r'\bmax(imum)?\s+allowed\s+size\b', 'image too large'),
-    (r'\b(image|file)\b[^.]{0,30}\b(too large|larger than)\b', 'image too large'),
-    (r'\b(width|height)\b[^.]{0,30}\b(exceed|too large|larger than)\b',
-     'image too large'),
-    (r'\bmega\s?pixel', 'image too large'),
-])
+_SIZE = _compile(
+    [
+        (r'\bsize exceed\b', 'image too large'),
+        (r'\bexceed(s)?\s+limit\b', 'image too large'),
+        (r'\bimage\b[^.]{0,40}\bexceeds\b', 'image too large'),
+        (r'\bdimensions?\b[^.]{0,40}\bexceed', 'image too large'),
+        (r'\bmax(imum)?\s+allowed\s+size\b', 'image too large'),
+        (r'\b(image|file)\b[^.]{0,30}\b(too large|larger than)\b', 'image too large'),
+        (r'\b(width|height)\b[^.]{0,30}\b(exceed|too large|larger than)\b', 'image too large'),
+        (r'\bmega\s?pixel', 'image too large'),
+    ]
+)
 
 #: The provider is complaining about the SHAPE of this batch — how many images,
 #: whether they animate, their proportions. Recovery is to change the batch.
-_SHAPE = _compile([
-    (r'\bmultiple images?\b', 'too many images'),
-    (r'\bmore than one image\b', 'too many images'),
-    (r'\bimage count\b', 'too many images'),
-    (r'\bat most\s+\d+\s+image', 'too many images'),
-    (r'\bper image\b', 'per-image limit'),
-    (r'\banimated\b', 'animation unsupported'),
-    (r'\bframe rate\b', 'animation unsupported'),
-    (r'\baspect ratio\b', 'aspect ratio'),
-])
+_SHAPE = _compile(
+    [
+        (r'\bmultiple images?\b', 'too many images'),
+        (r'\bmore than one image\b', 'too many images'),
+        (r'\bimage count\b', 'too many images'),
+        (r'\bat most\s+\d+\s+image', 'too many images'),
+        (r'\bper image\b', 'per-image limit'),
+        (r'\banimated\b', 'animation unsupported'),
+        (r'\bframe rate\b', 'animation unsupported'),
+        (r'\baspect ratio\b', 'aspect ratio'),
+    ]
+)
 
 #: The model states it does not take images at all. **The only class that may
 #: write a lasting conclusion**, so the wording here is deliberately narrow.
@@ -141,27 +147,32 @@ _SHAPE = _compile([
 #:     is exactly why a generic keyword list is not enough on its own.
 #:   - `messages.content.type 参数非法，取值范围 ['text']` — Zhipu open.bigmodel.cn,
 #:     glm-5.2, 2026-08-21.
-_CAPABILITY = _compile([
-    (r'\btext[- ]only\b', 'model is text-only'),
-    (r"\b(does not|doesn't|do not|cannot|can't|not)\s+support\b[^.]{0,40}"
-     r'\b(image|multimodal|vision|media)\b', 'model does not accept images'),
-    (r'\bmultimodal\b[^.]{0,40}\bnot (enabled|supported|available)\b',
-     'multimodal not enabled'),
-    (r'\bvision\b[^.]{0,30}\bnot (enabled|supported|available)\b',
-     'vision not enabled'),
-    (r'\bunexpected item type in content\b', 'endpoint rejects image blocks'),
-    (r"content\.type\s*参数非法", 'endpoint rejects image blocks'),
-    (r'\bonly\s+(accepts?|supports?)\b[^.]{0,20}\btext\b',
-     'endpoint accepts text only'),
-])
+_CAPABILITY = _compile(
+    [
+        (r'\btext[- ]only\b', 'model is text-only'),
+        (
+            r"\b(does not|doesn't|do not|cannot|can't|not)\s+support\b[^.]{0,40}"
+            r'\b(image|multimodal|vision|media)\b',
+            'model does not accept images',
+        ),
+        (r'\bmultimodal\b[^.]{0,40}\bnot (enabled|supported|available)\b', 'multimodal not enabled'),
+        (r'\bvision\b[^.]{0,30}\bnot (enabled|supported|available)\b', 'vision not enabled'),
+        (r'\bunexpected item type in content\b', 'endpoint rejects image blocks'),
+        (r'content\.type\s*参数非法', 'endpoint rejects image blocks'),
+        (r'\bonly\s+(accepts?|supports?)\b[^.]{0,20}\btext\b', 'endpoint accepts text only'),
+    ]
+)
 
 #: Provider ceilings, most explicit first. Each must capture the LIMIT, not the
 #: offending input — hence the anchoring words.
 _EDGE_PATTERNS = [
     re.compile(r'exceed(?:s)?\s+limit\s+(\d{3,5})\s*[x×]\s*(\d{3,5})', re.I),
     re.compile(r'max(?:imum)?\s+allowed\s+size:?\s*(\d{3,5})', re.I),
-    re.compile(r'max(?:imum)?\s+(?:width|height|dimension)\s*(?:is|:|=)?\s*'
-               r'(\d{3,5})', re.I),
+    re.compile(
+        r'max(?:imum)?\s+(?:width|height|dimension)\s*(?:is|:|=)?\s*'
+        r'(\d{3,5})',
+        re.I,
+    ),
     re.compile(r'must be\s*(?:at most|<=|≤)\s*(\d{3,5})\s*(?:px|pixels)', re.I),
 ]
 
@@ -214,8 +225,7 @@ def parse_max_edge(text: str) -> Optional[int]:
     return None
 
 
-def _first_match(text: str,
-                 table: List[Tuple[Pattern[str], str]]) -> Optional[str]:
+def _first_match(text: str, table: List[Tuple[Pattern[str], str]]) -> Optional[str]:
     for pattern, why in table:
         if pattern.search(text):
             return why
@@ -225,13 +235,11 @@ def _first_match(text: str,
 def classify(exc: BaseException, *, sent_images: bool) -> ImageDiagnosis:
     """Diagnose a failed request. See the module docstring for the ordering."""
     if not sent_images:
-        return ImageDiagnosis(ImageFailure.NOT_IMAGE_RELATED,
-                              detail='no images in this request')
+        return ImageDiagnosis(ImageFailure.NOT_IMAGE_RELATED, detail='no images in this request')
 
     status = status_of(exc)
     if status is not None and status not in (400, 413, 422):
-        return ImageDiagnosis(ImageFailure.NOT_IMAGE_RELATED,
-                              detail=f'HTTP {status}')
+        return ImageDiagnosis(ImageFailure.NOT_IMAGE_RELATED, detail=f'HTTP {status}')
 
     text = _text_of(exc)
 
@@ -242,15 +250,11 @@ def classify(exc: BaseException, *, sent_images: bool) -> ImageDiagnosis:
     if status == 413:
         # The body was too big, which says nothing about whether the model
         # accepts images. Shrinking is worth a try; remembering is not.
-        return ImageDiagnosis(
-            ImageFailure.TOO_LARGE,
-            max_edge=parse_max_edge(text),
-            detail='request body too large')
+        return ImageDiagnosis(ImageFailure.TOO_LARGE, max_edge=parse_max_edge(text), detail='request body too large')
 
     size = _first_match(text, _SIZE)
     if size:
-        return ImageDiagnosis(
-            ImageFailure.TOO_LARGE, max_edge=parse_max_edge(text), detail=size)
+        return ImageDiagnosis(ImageFailure.TOO_LARGE, max_edge=parse_max_edge(text), detail=size)
 
     shape = _first_match(text, _SHAPE)
     if shape:
@@ -258,8 +262,7 @@ def classify(exc: BaseException, *, sent_images: bool) -> ImageDiagnosis:
 
     capability = _first_match(text, _CAPABILITY)
     if capability:
-        return ImageDiagnosis(
-            ImageFailure.MODEL_NO_VISION, remember=True, detail=capability)
+        return ImageDiagnosis(ImageFailure.MODEL_NO_VISION, remember=True, detail=capability)
 
     return ImageDiagnosis(ImageFailure.UNKNOWN, detail='unrecognised')
 

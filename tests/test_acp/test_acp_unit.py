@@ -3,9 +3,10 @@
 import asyncio
 import io
 import sys
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ms_agent.acp.errors import (
     ACPError,
@@ -16,17 +17,16 @@ from ms_agent.acp.errors import (
     SessionNotFoundError,
     wrap_agent_error,
 )
-from ms_agent.acp.translator import ACPTranslator
 from ms_agent.acp.session_store import ACPSessionStore
+from ms_agent.acp.translator import ACPTranslator
 from ms_agent.llm.utils import Message
-
 
 # ======================================================================
 # Error mapping tests
 # ======================================================================
 
-class TestErrorMapping:
 
+class TestErrorMapping:
     def test_session_not_found(self):
         err = SessionNotFoundError('ses_abc')
         assert err.code == -32001
@@ -59,8 +59,8 @@ class TestErrorMapping:
 # Translator tests
 # ======================================================================
 
-class TestTranslator:
 
+class TestTranslator:
     def test_prompt_to_messages_text(self):
         block = MagicMock()
         block.type = 'text'
@@ -176,8 +176,8 @@ class TestTranslator:
 # Session store tests
 # ======================================================================
 
-class TestSessionStore:
 
+class TestSessionStore:
     def test_get_nonexistent_raises(self):
         store = ACPSessionStore()
         with pytest.raises(SessionNotFoundError):
@@ -203,16 +203,15 @@ class TestSessionStore:
     @pytest.mark.asyncio
     async def test_create_disables_stream_stdout_output(self):
         from omegaconf import OmegaConf
+
         config = OmegaConf.create({'llm': {'model': 'test'}})
         agent = MagicMock(spec=[])
 
-        with patch(
-                'ms_agent.acp.session_store.os.path.exists',
-                return_value=True), patch(
-                    'ms_agent.acp.session_store.Config.from_task',
-                    return_value=config), patch(
-                        'ms_agent.acp.session_store.AgentLoader.build',
-                        return_value=agent):
+        with (
+            patch('ms_agent.acp.session_store.os.path.exists', return_value=True),
+            patch('ms_agent.acp.session_store.Config.from_task', return_value=config),
+            patch('ms_agent.acp.session_store.AgentLoader.build', return_value=agent),
+        ):
             store = ACPSessionStore()
             try:
                 entry = await store.create(
@@ -228,14 +227,13 @@ class TestSessionStore:
 # ACP Server tests
 # ======================================================================
 
-class TestACPServer:
 
+class TestACPServer:
     @pytest.mark.asyncio
     async def test_concurrent_prompts_keep_stdout_open(self, monkeypatch):
         from ms_agent.acp.server import MSAgentACPServer
 
         class FakeAgent:
-
             async def run(self, messages, **kwargs):
 
                 async def chunks():
@@ -280,15 +278,17 @@ class TestACPServer:
 # ACP Client Manager tests
 # ======================================================================
 
-class TestACPClientManager:
 
+class TestACPClientManager:
     def test_list_agents_empty(self):
         from ms_agent.acp.client import ACPClientManager
+
         mgr = ACPClientManager()
         assert mgr.list_agents() == []
 
     def test_list_agents_from_config(self):
         from ms_agent.acp.client import ACPClientManager
+
         cfg = {
             'openclaw': {'command': 'openclaw', 'args': ['acp'], 'description': 'test'},
             'claude': {'command': 'claude', 'args': [], 'description': 'test2'},
@@ -299,6 +299,7 @@ class TestACPClientManager:
     @pytest.mark.asyncio
     async def test_call_unconfigured_agent(self):
         from ms_agent.acp.client import ACPClientManager
+
         mgr = ACPClientManager()
         result = await mgr.call_agent('nonexistent', 'hello')
         assert 'not configured' in result
@@ -308,51 +309,64 @@ class TestACPClientManager:
 # ACP Agent Tool tests
 # ======================================================================
 
-class TestACPAgentTool:
 
+class TestACPAgentTool:
     def test_from_config_none(self):
-        from ms_agent.tools.acp_agent_tool import ACPAgentTool
         from omegaconf import OmegaConf
+
+        from ms_agent.tools.acp_agent_tool import ACPAgentTool
+
         config = OmegaConf.create({'llm': {'model': 'test'}})
         assert ACPAgentTool.from_config(config) is None
 
     def test_from_config_with_agents(self):
-        from ms_agent.tools.acp_agent_tool import ACPAgentTool
         from omegaconf import OmegaConf
-        config = OmegaConf.create({
-            'llm': {'model': 'test'},
-            'acp_agents': {
-                'openclaw': {
-                    'command': 'openclaw',
-                    'args': ['acp'],
-                    'description': 'OpenClaw agent',
+
+        from ms_agent.tools.acp_agent_tool import ACPAgentTool
+
+        config = OmegaConf.create(
+            {
+                'llm': {'model': 'test'},
+                'acp_agents': {
+                    'openclaw': {
+                        'command': 'openclaw',
+                        'args': ['acp'],
+                        'description': 'OpenClaw agent',
+                    },
                 },
-            },
-        })
+            }
+        )
         tool = ACPAgentTool.from_config(config)
         assert tool is not None
 
     @pytest.mark.asyncio
     async def test_get_tools(self):
-        from ms_agent.tools.acp_agent_tool import ACPAgentTool
         from omegaconf import OmegaConf
-        config = OmegaConf.create({
-            'llm': {'model': 'test'},
-            'acp_agents': {
+
+        from ms_agent.tools.acp_agent_tool import ACPAgentTool
+
+        config = OmegaConf.create(
+            {
+                'llm': {'model': 'test'},
+                'acp_agents': {
+                    'openclaw': {
+                        'command': 'openclaw',
+                        'args': ['acp'],
+                        'description': 'OpenClaw coding agent',
+                    },
+                },
+            }
+        )
+        tool = ACPAgentTool(
+            config,
+            acp_agents_config={
                 'openclaw': {
                     'command': 'openclaw',
                     'args': ['acp'],
                     'description': 'OpenClaw coding agent',
                 },
             },
-        })
-        tool = ACPAgentTool(config, acp_agents_config={
-            'openclaw': {
-                'command': 'openclaw',
-                'args': ['acp'],
-                'description': 'OpenClaw coding agent',
-            },
-        })
+        )
         tools = await tool._get_tools_inner()
         assert 'acp_openclaw' in tools
         assert len(tools['acp_openclaw']) == 1
@@ -363,11 +377,13 @@ class TestACPAgentTool:
 # Config options tests
 # ======================================================================
 
-class TestConfigOptions:
 
+class TestConfigOptions:
     def test_build_config_options_with_model(self):
-        from ms_agent.acp.config import build_config_options
         from omegaconf import OmegaConf
+
+        from ms_agent.acp.config import build_config_options
+
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
         opts = build_config_options(cfg)
         assert opts is not None
@@ -375,23 +391,29 @@ class TestConfigOptions:
         assert opts[0].id == 'model'
 
     def test_build_config_options_without_model(self):
-        from ms_agent.acp.config import build_config_options
         from omegaconf import OmegaConf
+
+        from ms_agent.acp.config import build_config_options
+
         cfg = OmegaConf.create({})
         opts = build_config_options(cfg)
         assert opts is None
 
     def test_apply_config_option_model(self):
-        from ms_agent.acp.config import apply_config_option
         from omegaconf import OmegaConf
+
+        from ms_agent.acp.config import apply_config_option
+
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
         result = apply_config_option(cfg, 'model', 'gpt-4o')
         assert result is True
         assert cfg.llm.model == 'gpt-4o'
 
     def test_apply_config_option_unknown(self):
-        from ms_agent.acp.config import apply_config_option
         from omegaconf import OmegaConf
+
+        from ms_agent.acp.config import apply_config_option
+
         cfg = OmegaConf.create({'llm': {'model': 'qwen-max'}})
         result = apply_config_option(cfg, 'unknown_option', 'value')
         assert result is False
@@ -401,22 +423,25 @@ class TestConfigOptions:
 # Permission policy tests
 # ======================================================================
 
-class TestPermissionPolicy:
 
+class TestPermissionPolicy:
     def test_auto_approve_never_asks(self):
         from ms_agent.acp.permissions import PermissionPolicy
+
         p = PermissionPolicy('auto_approve')
         assert p.should_ask('any_tool') is False
         assert p.auto_decision('any_tool') == 'allow_once'
 
     def test_always_ask(self):
         from ms_agent.acp.permissions import PermissionPolicy
+
         p = PermissionPolicy('always_ask')
         assert p.should_ask('web_search') is True
         assert p.auto_decision('web_search') is None
 
     def test_remember_choice(self):
         from ms_agent.acp.permissions import PermissionPolicy
+
         p = PermissionPolicy('remember_choice')
         assert p.should_ask('web_search') is True
         p.record_choice('web_search', True)
@@ -425,12 +450,14 @@ class TestPermissionPolicy:
 
     def test_remember_deny(self):
         from ms_agent.acp.permissions import PermissionPolicy
+
         p = PermissionPolicy('remember_choice')
         p.record_choice('dangerous_tool', False)
         assert 'deny' in p.auto_decision('dangerous_tool')
 
     def test_reset(self):
         from ms_agent.acp.permissions import PermissionPolicy
+
         p = PermissionPolicy('remember_choice')
         p.record_choice('tool_a', True)
         p.reset()
@@ -441,10 +468,11 @@ class TestPermissionPolicy:
 # Registry tests
 # ======================================================================
 
-class TestRegistry:
 
+class TestRegistry:
     def test_generate_manifest(self):
         from ms_agent.acp.registry import generate_agent_manifest
+
         manifest = generate_agent_manifest(
             config_path='/path/to/config.yaml',
             output_path=None,
@@ -458,5 +486,6 @@ class TestRegistry:
 
     def test_generate_manifest_without_config(self):
         from ms_agent.acp.registry import generate_agent_manifest
+
         manifest = generate_agent_manifest(output_path=None)
         assert manifest['transport']['args'] == ['acp']

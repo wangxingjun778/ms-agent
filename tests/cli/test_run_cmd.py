@@ -26,13 +26,15 @@ def test_run_output_dir_cli_override_adds_missing_field():
 
 
 def test_run_output_dir_cli_override_wins_over_config():
-    config = DictConfig({
-        'output_dir': 'from-yaml',
-        'llm': {
-            'service': 'openai',
-            'model': 'gpt',
-        },
-    })
+    config = DictConfig(
+        {
+            'output_dir': 'from-yaml',
+            'llm': {
+                'service': 'openai',
+                'model': 'gpt',
+            },
+        }
+    )
     args = SimpleNamespace(output_dir='from-cli')
 
     result = RunCMD._apply_cli_overrides(config, args)

@@ -35,7 +35,7 @@ class WorkspacePolicyKernel:
                 if p not in self._roots:
                     self._roots.append(p)
         if deny_globs is None or len(tuple(deny_globs)) == 0:
-            self._deny_globs: tuple[str, ...] = ('**/.git/**', )
+            self._deny_globs: tuple[str, ...] = ('**/.git/**',)
         else:
             self._deny_globs = tuple(deny_globs)
         self.shell_default_mode = shell_default_mode
@@ -68,11 +68,9 @@ class WorkspacePolicyKernel:
             except ValueError:
                 continue
         else:
-            raise WorkspacePolicyError(
-                f'Path is outside allowed workspace roots: {resolved}')
+            raise WorkspacePolicyError(f'Path is outside allowed workspace roots: {resolved}')
         if self._is_denied(resolved):
-            raise WorkspacePolicyError(
-                f'Path matches a deny_globs pattern: {resolved}')
+            raise WorkspacePolicyError(f'Path matches a deny_globs pattern: {resolved}')
         return resolved
 
     def _is_denied(self, path: Path) -> bool:
@@ -108,18 +106,14 @@ class WorkspacePolicyKernel:
         if not command or not command.strip():
             raise WorkspacePolicyError('Empty shell command')
         if len(command) > self.max_command_chars:
-            raise WorkspacePolicyError(
-                f'Shell command exceeds max length ({self.max_command_chars})')
+            raise WorkspacePolicyError(f'Shell command exceeds max length ({self.max_command_chars})')
 
         mode = self.shell_default_mode
         if mode == 'read_only':
             if _shell_looks_mutating_or_network(command, allow_network=False):
-                raise WorkspacePolicyError(
-                    'Shell is in read_only mode: mutating or network commands are not allowed'
-                )
+                raise WorkspacePolicyError('Shell is in read_only mode: mutating or network commands are not allowed')
         elif mode == 'workspace_write':
-            if not self.shell_network_enabled and _shell_looks_network(
-                    command):
+            if not self.shell_network_enabled and _shell_looks_network(command):
                 raise WorkspacePolicyError(
                     'Network commands are disabled for shell (enable tools.code_executor.shell.network_enabled)'
                 )
@@ -146,15 +140,13 @@ def _shell_looks_network(command: str) -> bool:
     return any(t in lowered for t in tokens)
 
 
-def _shell_looks_mutating_or_network(command: str, *,
-                                     allow_network: bool) -> bool:
+def _shell_looks_mutating_or_network(command: str, *, allow_network: bool) -> bool:
     if not allow_network and _shell_looks_network(command):
         return True
     # redirection that creates/overwrites files
     if re.search(r'[>]{1,2}\s*[^\s]', command):
         return True
-    if re.search(r'\b(rm|rmdir|mv|cp|chmod|chown|chgrp|mkdir|touch|tee)\b',
-                 command):
+    if re.search(r'\b(rm|rmdir|mv|cp|chmod|chown|chgrp|mkdir|touch|tee)\b', command):
         return True
     return False
 
@@ -180,14 +172,12 @@ def iter_files_under(
                 return True
             parts = rel.split('/')
             for i in range(len(parts)):
-                sub = '/'.join(parts[:i + 1])
-                if fnmatch.fnmatch(sub, pat.rstrip('/')) or fnmatch.fnmatch(
-                        sub + '/', pat):
+                sub = '/'.join(parts[: i + 1])
+                if fnmatch.fnmatch(sub, pat.rstrip('/')) or fnmatch.fnmatch(sub + '/', pat):
                     return True
         return False
 
-    for dirpath, dirnames, filenames in os.walk(
-            root, topdown=True, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
         dp = Path(dirpath)
         if dir_skipped(dp):
             dirnames[:] = []

@@ -1,29 +1,43 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Unit tests for the data-driven provider layer (no network)."""
+
 import os
 import unittest
 from unittest.mock import patch
+
+from modelscope.utils.test_utils import test_level
+from omegaconf import OmegaConf
 
 from ms_agent.llm.adapter import ResponseAdapter
 from ms_agent.llm.credentials import CredentialResolver
 from ms_agent.llm.retry import ErrorCategory, classify_error, smart_retry
 from ms_agent.llm.spec import ProviderSpec, get_registry
-from ms_agent.llm.types import (LLMResponse, ProviderCapabilities,
-                                ProviderCapability, TextBlock, ThinkingBlock,
-                                ToolUseBlock, UsageInfo)
+from ms_agent.llm.types import (
+    LLMResponse,
+    ProviderCapabilities,
+    ProviderCapability,
+    TextBlock,
+    ThinkingBlock,
+    ToolUseBlock,
+    UsageInfo,
+)
 from ms_agent.llm.utils import Message, ToolCall
-from omegaconf import OmegaConf
-
-from modelscope.utils.test_utils import test_level
 
 EXPECTED_PROVIDERS = {
-    'openai', 'anthropic', 'google', 'modelscope', 'zhipu', 'deepseek',
-    'dashscope', 'minimax', 'openrouter', 'kimi'
+    'openai',
+    'anthropic',
+    'google',
+    'modelscope',
+    'zhipu',
+    'deepseek',
+    'dashscope',
+    'minimax',
+    'openrouter',
+    'kimi',
 }
 
 
 class FakeAPIError(Exception):
-
     def __init__(self, message, status_code=None, retry_after=None):
         super().__init__(message)
         self.status_code = status_code
@@ -31,7 +45,6 @@ class FakeAPIError(Exception):
 
 
 class TestProviderRegistry(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_builtins_registered(self):
         names = {p.name for p in get_registry().list_providers()}
@@ -45,13 +58,9 @@ class TestProviderRegistry(unittest.TestCase):
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_builtin_display_names_match_product_copy(self):
-        display_names = {
-            provider.name: provider.display_name
-            for provider in get_registry().list_providers()
-        }
+        display_names = {provider.name: provider.display_name for provider in get_registry().list_providers()}
         self.assertEqual('Kimi (Moonshot AI)', display_names['kimi'])
-        self.assertEqual('Alibaba (DashScope)',
-                         display_names['dashscope'])
+        self.assertEqual('Alibaba (DashScope)', display_names['dashscope'])
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_get_is_case_insensitive(self):
@@ -114,32 +123,34 @@ class TestFromConfigRouting(unittest.TestCase):
 
     def _make(self, **llm):
         from omegaconf import OmegaConf
+
         return OmegaConf.create({'llm': llm})
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_new_provider_auto_routes_without_flag(self):
         from ms_agent.llm import LLM
         from ms_agent.llm.router import LLMProvider
-        obj = LLM.from_config(
-            self._make(service='deepseek', model='m', deepseek_api_key='x'))
+
+        obj = LLM.from_config(self._make(service='deepseek', model='m', deepseek_api_key='x'))
         self.assertIsInstance(obj, LLMProvider)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_alias_auto_routes_without_flag(self):
         from ms_agent.llm import LLM
         from ms_agent.llm.router import LLMProvider
-        obj = LLM.from_config(
-            self._make(service='glm', model='m', zhipu_api_key='x'))
+
+        obj = LLM.from_config(self._make(service='glm', model='m', zhipu_api_key='x'))
         self.assertIsInstance(obj, LLMProvider)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_legacy_service_stays_legacy(self):
         from ms_agent.llm import LLM
-        from ms_agent.llm.router import LLMProvider
         from ms_agent.llm.modelscope_llm import ModelScope
+        from ms_agent.llm.router import LLMProvider
+
         obj = LLM.from_config(
-            self._make(service='modelscope', model='m',
-                       modelscope_api_key='x', modelscope_base_url=None))
+            self._make(service='modelscope', model='m', modelscope_api_key='x', modelscope_base_url=None)
+        )
         self.assertIsInstance(obj, ModelScope)
         self.assertNotIsInstance(obj, LLMProvider)
 
@@ -147,18 +158,18 @@ class TestFromConfigRouting(unittest.TestCase):
     def test_explicit_false_opts_out(self):
         from ms_agent.llm import LLM
         from ms_agent.llm.router import LLMProvider
-        obj = LLM.from_config(
-            self._make(service='deepseek', model='m',
-                       use_provider_router=False, openai_api_key='x'))
+
+        obj = LLM.from_config(self._make(service='deepseek', model='m', use_provider_router=False, openai_api_key='x'))
         self.assertNotIsInstance(obj, LLMProvider)
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_explicit_true_forces_router(self):
         from ms_agent.llm import LLM
         from ms_agent.llm.router import LLMProvider
+
         obj = LLM.from_config(
-            self._make(service='modelscope', model='m',
-                       use_provider_router=True, modelscope_api_key='x'))
+            self._make(service='modelscope', model='m', use_provider_router=True, modelscope_api_key='x')
+        )
         self.assertIsInstance(obj, LLMProvider)
 
 
@@ -171,48 +182,40 @@ class TestCustomServiceRouting(unittest.TestCase):
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_custom_service_keeps_its_name_and_endpoint(self):
         from ms_agent.llm.router import ProviderRouter
-        config = OmegaConf.create({
-            'llm': {
-                'service': 'ms-test',
-                # Vendor keyword in the model name must not hijack the spec.
-                'model': 'deepseek-v4-flash',
-                'ms-test_api_key': 'sk-custom',
-                'ms-test_base_url': 'https://gateway.invalid/compatible-mode/v1',
+
+        config = OmegaConf.create(
+            {
+                'llm': {
+                    'service': 'ms-test',
+                    # Vendor keyword in the model name must not hijack the spec.
+                    'model': 'deepseek-v4-flash',
+                    'ms-test_api_key': 'sk-custom',
+                    'ms-test_base_url': 'https://gateway.invalid/compatible-mode/v1',
+                }
             }
-        })
+        )
         provider = ProviderRouter().create(config)
         self.assertEqual('ms-test', provider.spec.name)
+        self.assertEqual('sk-custom', CredentialResolver.resolve_api_key(provider.spec, config))
         self.assertEqual(
-            'sk-custom',
-            CredentialResolver.resolve_api_key(provider.spec, config))
-        self.assertEqual(
-            'https://gateway.invalid/compatible-mode/v1',
-            CredentialResolver.resolve_base_url(provider.spec, config))
+            'https://gateway.invalid/compatible-mode/v1', CredentialResolver.resolve_base_url(provider.spec, config)
+        )
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_model_inference_still_applies_without_service(self):
         from ms_agent.llm.router import ProviderRouter
-        config = OmegaConf.create(
-            {'llm': {
-                'model': 'deepseek-v4-flash',
-                'deepseek_api_key': 'sk-x'
-            }})
+
+        config = OmegaConf.create({'llm': {'model': 'deepseek-v4-flash', 'deepseek_api_key': 'sk-x'}})
         self.assertEqual('deepseek', ProviderRouter().create(config).spec.name)
 
 
 class TestCredentialResolver(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_config_field_priority(self):
         spec = get_registry().get('openai')
-        config = OmegaConf.create(
-            {'llm': {
-                'model': 'gpt-4o',
-                'openai_api_key': 'from-config'
-            }})
+        config = OmegaConf.create({'llm': {'model': 'gpt-4o', 'openai_api_key': 'from-config'}})
         with patch.dict(os.environ, {'OPENAI_API_KEY': 'from-env'}):
-            self.assertEqual('from-config',
-                             CredentialResolver.resolve_api_key(spec, config))
+            self.assertEqual('from-config', CredentialResolver.resolve_api_key(spec, config))
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_env_chain_fallback(self):
@@ -221,8 +224,7 @@ class TestCredentialResolver(unittest.TestCase):
         env = {'GEMINI_API_KEY': 'gem-key'}
         with patch.dict(os.environ, env, clear=False):
             os.environ.pop('GOOGLE_API_KEY', None)
-            self.assertEqual('gem-key',
-                             CredentialResolver.resolve_api_key(spec, config))
+            self.assertEqual('gem-key', CredentialResolver.resolve_api_key(spec, config))
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_base_url_default_from_spec(self):
@@ -233,34 +235,30 @@ class TestCredentialResolver(unittest.TestCase):
         # (correctly) override the spec default we assert here.
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop('DEEPSEEK_BASE_URL', None)
-            self.assertEqual(
-                'https://api.deepseek.com/v1',
-                CredentialResolver.resolve_base_url(spec, config))
+            self.assertEqual('https://api.deepseek.com/v1', CredentialResolver.resolve_base_url(spec, config))
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_missing_key_returns_none(self):
         spec = ProviderSpec(
-            name='nope', display_name='Nope', transport='openai_compat',
-            api_key_env=['DEFINITELY_MISSING_ENV_VAR_XYZ'])
+            name='nope', display_name='Nope', transport='openai_compat', api_key_env=['DEFINITELY_MISSING_ENV_VAR_XYZ']
+        )
         config = OmegaConf.create({'llm': {'model': 'x'}})
         self.assertIsNone(CredentialResolver.resolve_api_key(spec, config))
 
 
 class TestResponseAdapter(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_message_to_response(self):
         msg = Message(
             role='assistant',
             content='hello',
             reasoning_content='thinking...',
-            tool_calls=[
-                ToolCall(
-                    id='c1', index=0, type='function', tool_name='mkdir',
-                    arguments='{"dir_name": "a"}')
-            ],
-            prompt_tokens=10, completion_tokens=5, cached_tokens=3,
-            reasoning_tokens=2)
+            tool_calls=[ToolCall(id='c1', index=0, type='function', tool_name='mkdir', arguments='{"dir_name": "a"}')],
+            prompt_tokens=10,
+            completion_tokens=5,
+            cached_tokens=3,
+            reasoning_tokens=2,
+        )
         resp = ResponseAdapter.to_response(msg)
         self.assertEqual('hello', resp.text)
         self.assertEqual('thinking...', resp.thinking)
@@ -276,10 +274,10 @@ class TestResponseAdapter(unittest.TestCase):
             content_blocks=[
                 ThinkingBlock(thinking='t'),
                 TextBlock(text='answer'),
-                ToolUseBlock(id='c1', name='mkdir',
-                             arguments={'dir_name': 'a'}),
+                ToolUseBlock(id='c1', name='mkdir', arguments={'dir_name': 'a'}),
             ],
-            usage=UsageInfo(prompt_tokens=7, completion_tokens=4))
+            usage=UsageInfo(prompt_tokens=7, completion_tokens=4),
+        )
         msg = ResponseAdapter.to_message(resp)
         self.assertEqual('answer', msg.content)
         self.assertEqual('t', msg.reasoning_content)
@@ -292,11 +290,11 @@ class TestResponseAdapter(unittest.TestCase):
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_round_trip_preserves_core_fields(self):
         msg = Message(
-            role='assistant', content='hi', reasoning_content='r',
-            tool_calls=[
-                ToolCall(id='1', index=0, type='function', tool_name='f',
-                         arguments='{"x": 1}')
-            ])
+            role='assistant',
+            content='hi',
+            reasoning_content='r',
+            tool_calls=[ToolCall(id='1', index=0, type='function', tool_name='f', arguments='{"x": 1}')],
+        )
         back = ResponseAdapter.to_message(ResponseAdapter.to_response(msg))
         self.assertEqual(msg.content, back.content)
         self.assertEqual(msg.reasoning_content, back.reasoning_content)
@@ -304,24 +302,15 @@ class TestResponseAdapter(unittest.TestCase):
 
 
 class TestRetry(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_classify(self):
-        self.assertEqual(ErrorCategory.TRANSIENT,
-                         classify_error(FakeAPIError('x', status_code=429)))
-        self.assertEqual(ErrorCategory.TRANSIENT,
-                         classify_error(FakeAPIError('x', status_code=503)))
-        self.assertEqual(ErrorCategory.TRANSIENT,
-                         classify_error(FakeAPIError('connection timeout')))
-        self.assertEqual(ErrorCategory.TRANSIENT,
-                         classify_error(FakeAPIError('Overloaded')))
-        self.assertEqual(ErrorCategory.AUTH,
-                         classify_error(FakeAPIError('x', status_code=401)))
-        self.assertEqual(
-            ErrorCategory.QUOTA,
-            classify_error(FakeAPIError('insufficient balance')))
-        self.assertEqual(ErrorCategory.CLIENT,
-                         classify_error(FakeAPIError('x', status_code=400)))
+        self.assertEqual(ErrorCategory.TRANSIENT, classify_error(FakeAPIError('x', status_code=429)))
+        self.assertEqual(ErrorCategory.TRANSIENT, classify_error(FakeAPIError('x', status_code=503)))
+        self.assertEqual(ErrorCategory.TRANSIENT, classify_error(FakeAPIError('connection timeout')))
+        self.assertEqual(ErrorCategory.TRANSIENT, classify_error(FakeAPIError('Overloaded')))
+        self.assertEqual(ErrorCategory.AUTH, classify_error(FakeAPIError('x', status_code=401)))
+        self.assertEqual(ErrorCategory.QUOTA, classify_error(FakeAPIError('insufficient balance')))
+        self.assertEqual(ErrorCategory.CLIENT, classify_error(FakeAPIError('x', status_code=400)))
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_auth_not_retried(self):
@@ -352,15 +341,13 @@ class TestRetry(unittest.TestCase):
 
 
 class TestOpenAICompatHelpers(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_normalize_base_url_strips_endpoint(self):
         from ms_agent.llm.transport.openai_compat import OpenAICompatTransport
+
         n = OpenAICompatTransport._normalize_base_url
-        self.assertEqual('https://openrouter.ai/api/v1',
-                         n('https://openrouter.ai/api/v1/chat/completions'))
-        self.assertEqual('https://openrouter.ai/api/v1',
-                         n('https://openrouter.ai/api/v1/chat/completions/'))
+        self.assertEqual('https://openrouter.ai/api/v1', n('https://openrouter.ai/api/v1/chat/completions'))
+        self.assertEqual('https://openrouter.ai/api/v1', n('https://openrouter.ai/api/v1/chat/completions/'))
         self.assertEqual('https://api.x.com/v1', n('https://api.x.com/v1'))
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
@@ -382,6 +369,7 @@ class TestOpenAICompatHelpers(unittest.TestCase):
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_split_think(self):
         from ms_agent.llm.transport.openai_compat import OpenAICompatTransport
+
         split = OpenAICompatTransport._split_think
         # closed block
         r, c = split('<think>reasoning here</think>\nThe answer')
@@ -398,7 +386,6 @@ class TestOpenAICompatHelpers(unittest.TestCase):
 
 
 class TestTypes(unittest.TestCase):
-
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_capabilities(self):
         caps = ProviderCapabilities.from_list(['tool_call', 'streaming'])
@@ -407,8 +394,7 @@ class TestTypes(unittest.TestCase):
 
     @unittest.skipUnless(test_level() >= 0, 'skip test in current test level')
     def test_usage_total(self):
-        self.assertEqual(
-            15, UsageInfo(prompt_tokens=10, completion_tokens=5).total_tokens)
+        self.assertEqual(15, UsageInfo(prompt_tokens=10, completion_tokens=5).total_tokens)
 
 
 if __name__ == '__main__':

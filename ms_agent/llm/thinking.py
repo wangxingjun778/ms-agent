@@ -71,6 +71,7 @@ Four things follow, and they are the whole design:
    So this module translates the knob faithfully and does not pretend to know
    what the model will do with it.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -78,8 +79,7 @@ from urllib.parse import urlparse
 
 #: Wire keys that carry a thinking request, in any vendor's spelling. Used both
 #: to strip a request back down and to recognise a refusal.
-THINKING_PARAM_KEYS = ('enable_thinking', 'thinking_budget', 'thinking',
-                       'reasoning_effort', 'reasoning')
+THINKING_PARAM_KEYS = ('enable_thinking', 'thinking_budget', 'thinking', 'reasoning_effort', 'reasoning')
 
 #: The canonical knob callers set, in ``generation_config``.
 EFFORT_KEY = 'reasoning_effort'
@@ -226,7 +226,7 @@ FAMILY_EXTRA_HINTS = {
 #: rejects the pair outright ("'reasoning_effort' and 'thinking_budget' cannot
 #: be set simultaneously") — and ``thinking_budget`` is precisely what we invite
 #: people to add by hand above, so the two suggestions would collide.
-_EFFORT_CONFLICTS = ('thinking_budget', )
+_EFFORT_CONFLICTS = ('thinking_budget',)
 
 
 def offered_tiers(family: str) -> Tuple[str, ...]:
@@ -244,8 +244,7 @@ def offered_tiers(family: str) -> Tuple[str, ...]:
         # `on` is an alias of the single thinking tier, and it is the honest
         # word for a knob with two positions.
         return ('auto', 'off', 'on')
-    return ('auto', ) + tuple(
-        sorted(supported, key=lambda t: EFFORT_RANKS[t]))
+    return ('auto',) + tuple(sorted(supported, key=lambda t: EFFORT_RANKS[t]))
 
 
 def normalize_effort(raw: Any) -> Optional[str]:
@@ -333,11 +332,7 @@ def lower_effort(tier: str, family: str) -> Dict[str, Any]:
     elif family == 'minimax':
         # `adaptive` rather than `enabled`: M3 decides per request whether the
         # reasoning is worth it, which is what "on" should mean for an agent.
-        _merge_extra_body(
-            params,
-            {'thinking': {
-                'type': 'disabled' if tier == 'off' else 'adaptive'
-            }})
+        _merge_extra_body(params, {'thinking': {'type': 'disabled' if tier == 'off' else 'adaptive'}})
     elif family in ('deepseek', 'zhipu'):
         if tier == 'off':
             # NOT `reasoning_effort: none`, even though the newer models accept
@@ -357,12 +352,7 @@ def lower_effort(tier: str, family: str) -> Dict[str, Any]:
         params[EFFORT_KEY] = 'none' if tier == 'off' else tier
     elif family == 'openrouter':
         # OpenRouter's own unified object; `enabled: false` is how it says off.
-        _merge_extra_body(
-            params, {'reasoning': {
-                'enabled': False
-            } if tier == 'off' else {
-                'effort': tier
-            }})
+        _merge_extra_body(params, {'reasoning': {'enabled': False} if tier == 'off' else {'effort': tier}})
     else:  # openai, unknown
         params[EFFORT_KEY] = 'none' if tier == 'off' else tier
     return params
@@ -412,8 +402,7 @@ def auto_params(family: str) -> Dict[str, Any]:
     return {}
 
 
-def _drop_conflicts(params: Dict[str, Any],
-                    existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _drop_conflicts(params: Dict[str, Any], existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Yield to whatever the caller wrote by hand.
 
     Two degrees of yielding, because the raw keys mean different things:
@@ -440,11 +429,7 @@ def _drop_conflicts(params: Dict[str, Any],
     return {k: v for k, v in params.items() if k != EFFORT_KEY}
 
 
-def plan(effort: Any,
-         *,
-         base_url: str = '',
-         protocol: str = '',
-         existing: Optional[Dict[str, Any]] = None) -> dict:
+def plan(effort: Any, *, base_url: str = '', protocol: str = '', existing: Optional[Dict[str, Any]] = None) -> dict:
     """Resolve a canonical effort into a wire plan, without sending anything.
 
     Returns ``{'family', 'requested', 'effective', 'params', 'extra_hint'}``.
@@ -461,8 +446,7 @@ def plan(effort: Any,
     if requested == 'auto':
         effective, wire = 'auto', auto_params(family)
     else:
-        effective = clamp_effort(
-            requested, _FAMILY_TIERS.get(family, _FAMILY_TIERS['unknown']))
+        effective = clamp_effort(requested, _FAMILY_TIERS.get(family, _FAMILY_TIERS['unknown']))
         wire = lower_effort(effective, family)
     # Where the reasoning is delivered is a separate question from how much of
     # it to do, so it survives `auto` and rides along with every tier.
@@ -480,8 +464,7 @@ def plan(effort: Any,
     }
 
 
-def apply_effort(kwargs: Dict[str, Any], *, base_url: str,
-                 protocol: str = '') -> Dict[str, Any]:
+def apply_effort(kwargs: Dict[str, Any], *, base_url: str, protocol: str = '') -> Dict[str, Any]:
     """Replace the canonical knob in ``kwargs`` with this endpoint's wire shape.
 
     Runs even when no knob was set, because "unset" IS ``auto`` and on two
@@ -494,11 +477,9 @@ def apply_effort(kwargs: Dict[str, Any], *, base_url: str,
     the raw form is the escape hatch and a user who reached for it means it.
     """
     effort = kwargs.get(EFFORT_KEY, 'auto')
-    resolved = plan(effort,
-                    base_url=base_url,
-                    protocol=protocol,
-                    existing={k: v
-                              for k, v in kwargs.items() if k != EFFORT_KEY})
+    resolved = plan(
+        effort, base_url=base_url, protocol=protocol, existing={k: v for k, v in kwargs.items() if k != EFFORT_KEY}
+    )
     if EFFORT_KEY not in kwargs and not resolved['params']:
         return kwargs  # nothing to say and nothing to strip
     out = dict(kwargs)
@@ -531,8 +512,13 @@ def _is_bad_request(exc: Exception) -> bool:
 
 
 #: Phrases an endpoint uses to say thinking is not optional here.
-_MANDATORY_MARKERS = ('mandatory', 'cannot be disabled', 'can not be disabled',
-                      'must be enabled', 'cannot be turned off')
+_MANDATORY_MARKERS = (
+    'mandatory',
+    'cannot be disabled',
+    'can not be disabled',
+    'must be enabled',
+    'cannot be turned off',
+)
 
 
 def is_thinking_refusal(exc: Exception) -> bool:
@@ -567,8 +553,7 @@ def asks_to_disable(kwargs: Dict[str, Any]) -> bool:
     """
     extra = kwargs.get('extra_body')
     extra = extra if isinstance(extra, dict) else {}
-    if extra.get('enable_thinking') is False or kwargs.get(
-            'enable_thinking') is False:
+    if extra.get('enable_thinking') is False or kwargs.get('enable_thinking') is False:
         return True
     for source in (extra, kwargs):
         thinking = source.get('thinking')
@@ -587,16 +572,12 @@ def strip_thinking(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     stop. Returns the SAME object when there was nothing to strip.
     """
     extra = kwargs.get('extra_body')
-    in_extra = isinstance(extra, dict) and any(k in extra
-                                               for k in THINKING_PARAM_KEYS)
+    in_extra = isinstance(extra, dict) and any(k in extra for k in THINKING_PARAM_KEYS)
     if not in_extra and not any(k in kwargs for k in THINKING_PARAM_KEYS):
         return kwargs
     cleaned = {k: v for k, v in kwargs.items() if k not in THINKING_PARAM_KEYS}
     if in_extra:
-        pruned = {
-            k: v
-            for k, v in extra.items() if k not in THINKING_PARAM_KEYS
-        }
+        pruned = {k: v for k, v in extra.items() if k not in THINKING_PARAM_KEYS}
         if pruned:
             cleaned['extra_body'] = pruned
         else:
@@ -618,8 +599,7 @@ def without_thinking(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     somebody else's problem) from "we just turned it off" (worth a retry).
     """
     extra = kwargs.get('extra_body')
-    in_extra = isinstance(extra, dict) and any(k in extra
-                                               for k in THINKING_PARAM_KEYS)
+    in_extra = isinstance(extra, dict) and any(k in extra for k in THINKING_PARAM_KEYS)
     in_top = any(k in kwargs for k in THINKING_PARAM_KEYS)
     if not in_extra and not in_top:
         return kwargs
@@ -627,10 +607,7 @@ def without_thinking(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     for key in THINKING_PARAM_KEYS:
         cleaned.pop(key, None)
     if in_extra:
-        new_extra = {
-            k: v
-            for k, v in extra.items() if k not in THINKING_PARAM_KEYS
-        }
+        new_extra = {k: v for k, v in extra.items() if k not in THINKING_PARAM_KEYS}
         new_extra['enable_thinking'] = False
         cleaned['extra_body'] = new_extra
     else:
@@ -638,8 +615,7 @@ def without_thinking(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
-def create_with_thinking_fallback(create, client, model: str, logger,
-                                  **kwargs) -> Any:
+def create_with_thinking_fallback(create, client, model: str, logger, **kwargs) -> Any:
     """Call ``create(**kwargs)``, retrying once with thinking off on a refusal.
 
     ``create`` must be the completions factory itself; it is called with the
@@ -672,7 +648,8 @@ def create_with_thinking_fallback(create, client, model: str, logger,
             logger.warning(
                 f'{model} does not allow thinking to be switched off; '
                 f'retrying without any thinking parameter (it stays that way '
-                f'for this model): {e}')
+                f'for this model): {e}'
+            )
             return create(**retry_kwargs)
         if not is_thinking_refusal(e):
             raise e
@@ -681,8 +658,8 @@ def create_with_thinking_fallback(create, client, model: str, logger,
             raise e
         MODELS_REFUSING_THINKING.add(key)
         logger.warning(
-            f'{model} rejected the thinking parameters; retrying with '
-            f'thinking off (it stays off for this model): {e}')
+            f'{model} rejected the thinking parameters; retrying with thinking off (it stays off for this model): {e}'
+        )
         return create(**retry_kwargs)
 
     try:
