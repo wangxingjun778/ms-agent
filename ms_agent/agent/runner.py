@@ -25,6 +25,7 @@ from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ms_agent.agent.context import RunContext
+from ms_agent.agent.control import InteractionTimeout
 from ms_agent.agent.schema import (
     AgentResponse,
     EventType,
@@ -81,10 +82,20 @@ class AgentRunner:
 
         try:
             # 1. Load session history
-            history = await ctx.session_store.load_history(ctx.session_id)
+            history = self._history_window(
+                await ctx.session_store.load_history(ctx.session_id), ctx.config.get('history', {})
+            )
 
             # 2. Recall relevant memories
-            memory_entries = await ctx.memory_service.recall(history + ctx.messages) if ctx.memory_enabled else []
+            memory_entries = (
+                await ctx.memory_service.recall(
+                    history + ctx.messages,
+                    top_k=ctx.config.get('memory_top_k', 5),
+                    exclude_messages=history + ctx.messages,
+                )
+                if ctx.memory_enabled
+                else []
+            )
 
             # 3. Build system prompt
             system_prompt = self._build_system_prompt(ctx, memory_entries)
@@ -101,6 +112,7 @@ class AgentRunner:
                     'execution_context',
                     {
                         'messages': llm_messages,
+                        'history_count': len(history),
                         'memories': memory_entries,
                         'skills': ctx.skill_service.get_active_skills() if ctx.skill_service else [],
                     },
@@ -330,6 +342,27 @@ class AgentRunner:
         messages.extend(history)
         messages.extend(current_messages)
         return messages
+
+    @staticmethod
+    def _history_window(history: list[dict], config: dict) -> list[dict]:
+        limit = config.get('max_messages', 0)
+        if not limit:
+            return history
+        # 按用户回合整体裁剪，不拆开 assistant.tool_calls 和相应 tool 结果。
+        groups = []
+        for message in history:
+            if message.get('role') == 'user' or not groups:
+                groups.append([])
+            groups[-1].append(message)
+        selected, count, chars = [], 0, 0
+        char_limit = config.get('max_chars', 0)
+        for group in reversed(groups):
+            size = sum(len(json.dumps(m, ensure_ascii=False)) for m in group)
+            if count + len(group) > limit or (char_limit and chars + size > char_limit):
+                break
+            selected.append(group)
+            count, chars = count + len(group), chars + size
+        return [m for group in reversed(selected) for m in group]
 
     @staticmethod
     def _format_memory_section(entries: List[Dict[str, Any]]) -> str:
@@ -650,7 +683,7 @@ class AgentRunner:
                     (time.monotonic() - start) * 1000,
                 )
                 return result
-            except (PersistenceError, ExternalTaskUnresolved):
+            except (PersistenceError, ExternalTaskUnresolved, InteractionTimeout):
                 raise
             except KeyError:
                 return ToolResult.from_error(

@@ -29,12 +29,14 @@ import logging
 import os
 import re
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from ms_agent.session.locking import PersistenceError
 from ms_agent.tools.schema import ToolInvocationContext, ToolResult
+from ms_agent.utils.limiter import retry_delay
 
 try:
     import aiohttp  # type: ignore
@@ -45,6 +47,8 @@ except ImportError:  # pragma: no cover — aiohttp is in requirements/framework
     _HAS_AIOHTTP = False
 
 logger = logging.getLogger(__name__)
+_CONNECTOR_ERRORS = (aiohttp.ClientConnectorError,) if _HAS_AIOHTTP else (ConnectionRefusedError,)
+_POLL_ERRORS = (OSError, asyncio.TimeoutError) + ((aiohttp.ClientError,) if _HAS_AIOHTTP else ())
 
 __all__ = [
     'AuthConfig',
@@ -125,6 +129,8 @@ class APIConfig:
     poll_timeout: float = 600.0
     headers: Dict[str, str] = field(default_factory=dict)
     timeout: float = 120.0
+    poll_max_interval: float = 5.0
+    poll_factor: float = 1.0
 
 
 @dataclass
@@ -208,6 +214,42 @@ class APIToolAdapter:
         self._base_url = base_url.rstrip('/')
         self._auth = spec.auth or default_auth
         self._client = http_client
+        self.poll_client = None
+        self.limiters = {}
+        self.upstreams = {}
+
+    @asynccontextmanager
+    async def _slot(self, method):
+        limiter = self.limiters.get('poll' if method.upper() == 'GET' else 'submit')
+        if limiter:
+            async with limiter:
+                yield
+        else:
+            yield
+
+    async def _submit(self, url, headers, args):
+        policy = self.upstreams.get('submit', {}).get('retry', {'attempts': 1})
+
+        async def send():
+            for attempt in range(policy['attempts']):
+                try:
+                    data = await self._request(
+                        self._spec.api_config.method,
+                        url,
+                        headers,
+                        json_body=args,
+                        timeout=self._spec.api_config.timeout,
+                    )
+                    if data.get('_http_status', 200) != 429 or attempt + 1 == policy['attempts']:
+                        return data
+                    retry_headers = {'Retry-After': data.get('_retry_after', '')}
+                except _CONNECTOR_ERRORS:
+                    if attempt + 1 == policy['attempts']:
+                        raise
+                    retry_headers = {}
+                await asyncio.sleep(retry_delay(retry_headers, attempt, policy))
+
+        return await asyncio.wait_for(send(), policy.get('budget', self._spec.api_config.timeout))
 
     # ---- Public spec surface -------------------------------------------------
 
@@ -286,15 +328,18 @@ class APIToolAdapter:
         submit_url = self._build_url(self._spec.api_config.path)
         headers = self._build_headers(context)
         try:
-            submit_resp = await self._request(
-                self._spec.api_config.method, submit_url, headers, json_body=args, timeout=self._spec.api_config.timeout
-            )
+            submit_resp = await self._submit(submit_url, headers, args)
         except BaseException as exc:
             if context is not None:
                 await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
             if isinstance(exc, asyncio.CancelledError):
                 raise
             return ToolResult.from_error(self.name, '外部提交结果未确认', delivery_unknown=True)
+        http_status = submit_resp.get('_http_status', 200)
+        if http_status >= 500 or http_status == 408:
+            if context is not None:
+                await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
+            return ToolResult.from_error(self.name, '外部提交结果未确认', raw=submit_resp, delivery_unknown=True)
         if (
             submit_resp.get('_http_status', 200) >= 400
             or self._extract_value(submit_resp, self._spec.output_mapping.status_path)
@@ -355,48 +400,48 @@ class APIToolAdapter:
         # Poll endpoints are almost always GET; a few schemes use POST but
         # the ``method`` field describes the *submit* call, not the poll —
         # keep polling GET-only unless/until a real counterexample shows up.
-        deadline = time.monotonic() + self._spec.api_config.poll_timeout
+        policy = self.upstreams.get('poll', {}).get('retry', {'initial': 1, 'maximum': 30})
+        deadline = time.monotonic() + min(
+            self._spec.api_config.poll_timeout, policy.get('budget', self._spec.api_config.poll_timeout)
+        )
         interval = max(0.1, float(self._spec.api_config.poll_interval))
-        last = {}
-        while True:
-            for attempt in range(3):
-                try:
-                    data = await self._request(
-                        'GET',
-                        url,
-                        headers,
-                        json_body=None,
-                        timeout=min(self._spec.api_config.timeout, max(0.1, deadline - time.monotonic())),
-                    )
-                    if data.get('_http_status', 200) < 500 and data.get('_http_status') != 429:
-                        break
-                except (OSError, asyncio.TimeoutError):
-                    if attempt == 2:
-                        raise
-                if attempt < 2:
-                    await asyncio.sleep(min(2**attempt, max(0, deadline - time.monotonic())))
-            last = data if isinstance(data, dict) else {'raw': data}
-            if last.get('_http_status', 200) >= 400 or self._extract_value(last, self._spec.output_mapping.error_path):
-                return last
-            status = self._extract_value(last, self._spec.output_mapping.status_path)
-            if status not in [
-                *self._spec.output_mapping.success_statuses,
-                *self._spec.output_mapping.failure_statuses,
-                'PENDING',
-                'PROCESSING',
-                'RUNNING',
-            ]:
-                last['_invalid_status'] = True
-                return last
-            if status in self._spec.output_mapping.success_statuses:
-                return last
-            if status in self._spec.output_mapping.failure_statuses:
-                return last
+        last, failures = {}, 0
+        while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                last['_poll_timeout'] = True
-                return last
-            await asyncio.sleep(min(interval, remaining))
+            try:
+                last = await asyncio.wait_for(
+                    self._request(
+                        'GET', url, headers, json_body=None, timeout=min(self._spec.api_config.timeout, remaining)
+                    ),
+                    remaining,
+                )
+                status_code = last.get('_http_status', 200)
+            except _POLL_ERRORS:
+                status_code = 503
+                last = {}
+            if status_code == 429 or status_code >= 500:
+                delay = retry_delay({'Retry-After': last.get('_retry_after', '')}, min(failures, 10), policy)
+                failures += 1
+            else:
+                failures = 0
+                if status_code >= 400 or self._extract_value(last, self._spec.output_mapping.error_path):
+                    return last
+                status = self._extract_value(last, self._spec.output_mapping.status_path)
+                if (
+                    status in self._spec.output_mapping.success_statuses
+                    or status in self._spec.output_mapping.failure_statuses
+                ):
+                    return last
+                if status not in ('PENDING', 'PROCESSING', 'RUNNING'):
+                    last['_invalid_status'] = True
+                    return last
+                delay = interval
+                interval = min(
+                    max(self._spec.api_config.poll_max_interval, interval), interval * self._spec.api_config.poll_factor
+                )
+            await asyncio.sleep(min(delay, max(0, deadline - time.monotonic())))
+        last['_poll_timeout'] = True
+        return last
 
     # ---- HTTP plumbing -------------------------------------------------------
 
@@ -414,11 +459,19 @@ class APIToolAdapter:
         downstream can still surface them via ``error_path`` instead of
         crashing on a parse error.
         """
-        if self._client is not None and _HAS_AIOHTTP:
-            tmo = aiohttp.ClientTimeout(total=timeout)
-            async with self._client.request(method.upper(), url, headers=headers, json=json_body, timeout=tmo) as resp:
-                text = await resp.text()
-                return _parse_json_or_wrap(text, resp.status)
+        client = self.poll_client if method.upper() == 'GET' and self.poll_client is not None else self._client
+        if client is not None and _HAS_AIOHTTP:
+            options = self.upstreams.get('poll' if method.upper() == 'GET' else 'submit', {})
+            tmo = aiohttp.ClientTimeout(
+                total=timeout, connect=options.get('connect_timeout'), sock_read=options.get('read_timeout')
+            )
+            async with self._slot(method):
+                async with client.request(method.upper(), url, headers=headers, json=json_body, timeout=tmo) as resp:
+                    text = await resp.text()
+                    data = _parse_json_or_wrap(text, resp.status)
+                    if 'Retry-After' in resp.headers:
+                        data['_retry_after'] = resp.headers['Retry-After']
+                    return data
         # Fallback path: no shared aiohttp client. Keep the signature async
         # by delegating a blocking urllib call to a worker thread so the
         # event loop isn't stalled on sockets.

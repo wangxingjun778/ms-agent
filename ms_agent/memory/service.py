@@ -41,6 +41,7 @@ class MemoryService:
         session_id: Optional[str] = None,
         locks: Optional[PathLocks] = None,
         strict: bool = False,
+        projection: bool = True,
     ) -> None:
         """Configure the service; backend and directories are initialized lazily."""
         self.user_id = self._validate_user_id(user_id)
@@ -51,21 +52,27 @@ class MemoryService:
         self._parts = parts
         self.memory_dir = safe_path(self._root, *parts)
         self.llm_client = llm_client
-        self._lock = (locks or PathLocks()).for_path(self.memory_dir)
+        self._path_locks = locks or PathLocks()
+        self._lock = self._path_locks.for_path(self.memory_dir)
         self._strict = strict
         self._closed = False
+        self._projection = projection
+
+    async def _io(self, function, *args, **kwargs):
+        return await durable_io(function, *args, _executor=self._path_locks.executor, **kwargs)
 
     async def _ensure_backend(self) -> None:
         """只创建文件目录，不初始化 unified/FTS 或其他可选集成。"""
         async with self._lock:
             if self._closed:
                 raise RuntimeError('MemoryService is closed')
-            await durable_io(safe_path(self._root, *self._parts).mkdir, parents=True, exist_ok=True)
+            await self._io(safe_path(self._root, *self._parts).mkdir, parents=True, exist_ok=True)
 
     async def recall(
         self,
         messages: List[Dict[str, Any]],
         top_k: int = 5,
+        exclude_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Recall memories matching the most recent conversational messages."""
         if self._closed or top_k <= 0 or not self.memory_dir.exists():
@@ -80,7 +87,14 @@ class MemoryService:
         query = ' '.join(reversed(recent)).strip()
         if not query:
             return []
-        return await self.search(query, top_k=top_k)
+        if exclude_messages is None:
+            return await self.search(query, top_k=top_k)
+        await self._ensure_backend()
+        async with self._lock:
+            entries = await self._io(self._read_entries_sync)
+        excluded = {self._message_text(m) for m in exclude_messages}
+        entries = [e for e in entries if str(e.get('content', '')) not in excluded]
+        return await self._io(self._rank_entries, query, entries, top_k)
 
     async def ingest(
         self,
@@ -98,8 +112,8 @@ class MemoryService:
         await self._ensure_backend()
         async with self._lock:
             try:
-                entries = await durable_io(self._read_entries_sync)
-                state = await durable_io(self._read_state_sync)
+                entries = await self._io(self._read_entries_sync)
+                state = await self._io(self._read_state_sync)
                 ledger = list(state.get('hashes') or [])
                 seen: Set[str] = set(str(item) for item in ledger)
                 seen.update(
@@ -134,13 +148,13 @@ class MemoryService:
                     )
 
                 if new_entries:
-                    await durable_io(self._append_entries_sync, new_entries)
+                    await self._io(self._append_entries_sync, new_entries)
                     entries.extend(new_entries)
 
                 if not batch_hashes:
                     return
 
-                await durable_io(self._write_memory_markdown_sync, entries)
+                await self._io(self._write_memory_markdown_sync, entries)
                 for content_hash in new_hashes:
                     if content_hash not in seen:
                         ledger.append(content_hash)
@@ -154,7 +168,7 @@ class MemoryService:
                     'hashes': new_hashes,
                     'updated_at': self._now(),
                 }
-                await durable_io(
+                await self._io(
                     atomic_write_json,
                     self._state_path,
                     {
@@ -180,8 +194,8 @@ class MemoryService:
             return []
         await self._ensure_backend()
         async with self._lock:
-            entries = await durable_io(self._read_entries_sync)
-        return self._rank_entries(query, entries, top_k)
+            entries = await self._io(self._read_entries_sync)
+        return await self._io(self._rank_entries, query, entries, top_k)
 
     async def add(
         self,
@@ -200,9 +214,9 @@ class MemoryService:
             metadata=dict(metadata or {}),
         )
         async with self._lock:
-            await durable_io(self._append_entries_sync, [entry])
-            entries = await durable_io(self._read_entries_sync)
-            await durable_io(self._write_memory_markdown_sync, entries)
+            await self._io(self._append_entries_sync, [entry])
+            entries = await self._io(self._read_entries_sync)
+            await self._io(self._write_memory_markdown_sync, entries)
 
     async def close(self) -> None:
         """Close backend resources; closing is idempotent and terminal."""
@@ -277,6 +291,8 @@ class MemoryService:
         self,
         entries: List[Dict[str, Any]],
     ) -> None:
+        if not self._projection:
+            return
         grouped: Dict[str, List[str]] = {}
         for entry in entries:
             content = str(entry.get('content', '')).strip()

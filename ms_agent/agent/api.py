@@ -21,6 +21,7 @@ Or for non-streaming::
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import uuid4
@@ -36,8 +37,9 @@ from ms_agent.agent.schema import (
 from ms_agent.llm.http_client import HTTPLLMClient
 from ms_agent.memory.service import MemoryService
 from ms_agent.session.locking import PathLocks
-from ms_agent.session.store import SessionStore
+from ms_agent.session.store import HistoryCache, SessionStore
 from ms_agent.tools.api_registry import APIToolRegistry
+from ms_agent.utils.limiter import UpstreamLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,10 @@ class AgentService:
         self._runner = AgentRunner()
         self._tool_registry: Optional[APIToolRegistry] = None
         self._initialized = False
+        self._sessions: list = []
+        self.limiters: dict = {}
+        self._session_stores: OrderedDict[str, SessionStore] = OrderedDict()
+        self._history_cache = HistoryCache()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -87,9 +93,32 @@ class AgentService:
 
         import aiohttp
 
-        self._http_session = aiohttp.ClientSession()
-        self._tool_registry = APIToolRegistry(self._http_session, strict=bool(self._config.get('strict')))
-        if api_config_path:
+        upstreams = {'llm': self._config.get('llm', {}).get('upstream', {}), **tools_config.get('upstreams', {})}
+        sessions = {}
+        for name in ('llm', 'submit', 'poll'):
+            options = upstreams.get(name, {})
+            sessions[name] = aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(
+                    limit=options.get('connections', 100), limit_per_host=options.get('connections', 100)
+                )
+            )
+            self._sessions.append(sessions[name])
+            self.limiters[name] = UpstreamLimiter(options.get('concurrency', 32), options.get('rpm', 0))
+        self._http_session = sessions['llm']
+        self._tool_registry = APIToolRegistry(
+            sessions['submit'],
+            strict=bool(self._config.get('strict')),
+            poll_client=sessions['poll'],
+            limiters=self.limiters,
+            upstreams=upstreams,
+        )
+        if tools_config.get('api'):
+            try:
+                await self._tool_registry.load_from_dict(tools_config['api'])
+            except BaseException:
+                await self.shutdown()
+                raise
+        elif api_config_path:
             try:
                 await self._tool_registry.load_from_config(api_config_path)
             except FileNotFoundError:
@@ -127,9 +156,12 @@ class AgentService:
         """Graceful shutdown.  Close shared resources."""
         if self._tool_registry is not None:
             await self._tool_registry.close()
-        if self._http_session is not None:
-            await self._http_session.close()
-            self._http_session = None
+        for session in self._sessions:
+            await session.close()
+        self._sessions.clear()
+        self._http_session = None
+        self._session_stores.clear()
+        self._history_cache.clear()
         self._initialized = False
 
     async def __aenter__(self) -> 'AgentService':
@@ -169,9 +201,23 @@ class AgentService:
                 '/tmp/ms_agent/sessions',
             ),
         )
-        session_store = SessionStore(
-            session_base, request.user_id, self._locks, strict=bool(self._config.get('strict'))
-        )
+        session_store = self._session_stores.get(request.user_id)
+        if session_store is None:
+            session_store = SessionStore(
+                session_base,
+                request.user_id,
+                self._locks,
+                strict=bool(self._config.get('strict')),
+                optimized=bool(self._config.get('session', {}).get('optimized')),
+                cache=self._history_cache,
+                cache_entries=self._config.get('session', {}).get('cache_entries', 256),
+                cache_bytes=self._config.get('session', {}).get('cache_bytes', 67108864),
+            )
+            self._session_stores[request.user_id] = session_store
+            if len(self._session_stores) > self._config.get('session', {}).get('cache_entries', 256):
+                self._session_stores.popitem(last=False)
+        else:
+            self._session_stores.move_to_end(request.user_id)
         await session_store.create_session(session_id)
 
         # Per-user memory service
@@ -188,6 +234,7 @@ class AgentService:
             session_id=session_id if memory_config.get('scope') == 'session' else None,
             locks=self._locks,
             strict=bool(self._config.get('strict')),
+            projection=memory_config.get('projection', True),
         )
 
         # Skill service (optional)
@@ -223,7 +270,9 @@ class AgentService:
             self._apply_overrides(ctx, request.config_overrides)
 
         if ctx.llm_config.get('transport') == 'http':
-            ctx.llm_client = self._llm_client or HTTPLLMClient(ctx.llm_config, self._http_session)
+            ctx.llm_client = self._llm_client or HTTPLLMClient(
+                ctx.llm_config, self._http_session, limiter=self.limiters['llm']
+            )
 
         # Delegate to runner
         try:

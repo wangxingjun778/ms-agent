@@ -9,9 +9,14 @@ from uuid import uuid4
 from jsonschema import Draft202012Validator, ValidationError
 
 
+class InteractionTimeout(RuntimeError):
+    """交互期限耗尽，未提交新的外部副作用。"""
+
+
 class RunControl:
-    def __init__(self, record: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
+    def __init__(self, record: Callable[[str, dict[str, Any]], Awaitable[None]], *, permit=None, timeout=0) -> None:
         self.record = record
+        self.permit, self.timeout = permit, timeout
         self.pending: dict[str, Any] | None = None
         self.answer: asyncio.Future | None = None
         self.interventions: list[tuple[str, str]] = []
@@ -27,7 +32,14 @@ class RunControl:
         self.pending = {'interaction_id': str(uuid4()), 'kind': kind, **data}
         try:
             await self.record('interaction_requested', self.pending)
-            command = await self.answer
+            if self.permit:
+                self.permit.release()
+            try:
+                command = await asyncio.wait_for(self.answer, self.timeout) if self.timeout else await self.answer
+            except asyncio.TimeoutError as exc:
+                raise InteractionTimeout('等待交互超时') from exc
+            if self.permit:
+                await self.permit.resume()
             await self.record('command_applied', {'command_id': command['command_id'], 'clear_interaction': True})
             return command
         finally:

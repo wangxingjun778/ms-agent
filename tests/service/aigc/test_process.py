@@ -45,6 +45,7 @@ async def test_process_restart_does_not_repeat_run(tmp_path, shutdown_signal):
         'AIGC_SERVICE_TOKEN': 'test-service',
         'LLM_API_KEY': 'test-llm',
         'API_TOKEN': 'test-image',
+        'AIGC_DRAIN_TIMEOUT': '0',
         'LLM_BASE_URL': f'http://127.0.0.1:{mock_port}/v1',
         'API_BASE_URL': 'http://127.0.0.1:1',
         'PYTHONDONTWRITEBYTECODE': '1',

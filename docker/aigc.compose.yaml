@@ -12,13 +12,14 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     cpus: 2
-    mem_limit: 1g
+    mem_limit: 4g
     pids_limit: 128
-    stop_grace_period: 45s
+    stop_grace_period: 120s
     ports:
       - "127.0.0.1:${AIGC_PORT:-8000}:8000"
     volumes:
       - aigc_data:/data
+      - ${AIGC_CONFIG_PATH:-../service/aigc/configs/service.yaml}:/app/service/aigc/configs/service.yaml:ro
     tmpfs:
       - /tmp:size=64m,mode=1777
     environment:

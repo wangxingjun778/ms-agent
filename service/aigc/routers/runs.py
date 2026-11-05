@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from ms_agent.agent.run_service import RunError
 from ms_agent.session.locking import PersistenceError
+from ms_agent.session.run_store import digest
 from service.aigc.dependencies import Runs, User
 from service.aigc.schemas import (
     CommandReceipt,
@@ -25,8 +26,8 @@ router = APIRouter(prefix='/runs', tags=['Runs'])
 _ERRORS = {code: {'model': ErrorResponse} for code in (400, 401, 404, 409, 422, 429, 503)}
 
 
-def with_links(view: dict) -> dict:
-    prefix = f'/v1/aigc/runs/{view["run_uuid"]}'
+def with_links(view: dict, path_prefix: str = '') -> dict:
+    prefix = f'{path_prefix}/v1/aigc/runs/{view["run_uuid"]}'
     return {
         **view,
         'links': {
@@ -39,15 +40,27 @@ def with_links(view: dict) -> dict:
 
 
 @router.post('', response_model=RunView, operation_id='StartRun', status_code=202, responses=_ERRORS)
-async def start_run(body: StartRunRequest, response: Response, user: User, runs: Runs) -> dict:
+async def start_run(body: StartRunRequest, request: Request, response: Response, user: User, runs: Runs) -> dict:
+    request.state.run_uuid = body.run_uuid
     view, created = await runs.start(user, body.sdk_input())
     response.status_code = 202 if created and view['status'] == 'queued' else 200
-    return with_links(view)
+    return with_links(view, request.app.root_path)
 
 
 @router.get('/{run_uuid}', response_model=RunView, operation_id='GetRun', responses=_ERRORS)
-async def get_run(run_uuid: UUID, user: User, runs: Runs) -> dict:
-    return with_links(await runs.get(user, str(run_uuid)))
+async def get_run(run_uuid: UUID, request: Request, response: Response, user: User, runs: Runs):
+    view = with_links(await runs.get(user, str(run_uuid)), request.app.root_path)
+    # 完整 view 摘要而非 agent_seq：无事件提交的状态变化也不能被 304 隐藏。
+    etag = '"' + digest(view) + '"'
+    response.headers['ETag'] = etag
+    response.headers['Cache-Control'] = 'private, no-cache'
+    response.headers['Vary'] = 'X-User-Id'
+    tags = {tag.strip().removeprefix('W/') for tag in request.headers.get('If-None-Match', '').split(',')}
+    if etag in tags or '*' in tags:
+        return Response(
+            status_code=304, headers={'ETag': etag, 'Cache-Control': 'private, no-cache', 'Vary': 'X-User-Id'}
+        )
+    return view
 
 
 @router.post('/{run_uuid}/commands', response_model=CommandReceipt, operation_id='ControlRun', responses=_ERRORS)
@@ -87,10 +100,12 @@ async def subscribe_run_events(
     view = await runs.get(user, str(run_uuid))
     if not 0 <= cursor <= view['last_agent_seq']:
         raise RunError('EVENT_CURSOR_INVALID', 400)
+    runs.reserve_subscription()
 
     async def stream():
+        source = runs.events(user, str(run_uuid), cursor, managed=False)
         try:
-            async for event in runs.events(user, str(run_uuid), cursor):
+            async for event in source:
                 if await request.is_disconnected():
                     break
                 if event is None:
@@ -100,6 +115,11 @@ async def subscribe_run_events(
         except PersistenceError:
             # 已发送响应头后不可伪造成功终态；关闭连接让调用方重连查询。
             return
+        finally:
+            try:
+                await source.aclose()
+            finally:
+                runs.subscribers -= 1
 
     return StreamingResponse(
         stream(),

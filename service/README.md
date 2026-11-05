@@ -82,7 +82,9 @@ AIGC 服务将 MS-Agent 的轻量执行能力封装为 HTTP 接口，供可信�
 - `200 OK` 表示 HTTP 请求成功，也可能返回仍在运行的已有 Run，或失败/中断的 Recipe 构建记录。必须继续检查响应体的 `status`。
 - Run 按 `(X-User-Id, run_uuid)` 幂等；命令按 `(X-User-Id, run_uuid, command_id)` 幂等；配方构建按 `(X-User-Id, recipe_request_id)` 幂等。
 - 同一幂等键、相同语义输入返回原记录；同一幂等键、不同输入返回 `409`。请求超时或回执丢失时，应先查询或使用原幂等键重试。
-- 相同用户和会话的 Run 按受理顺序串行执行；不同会话可受控并发。会话历史和 memory 按用户/会话隔离。
+- 相同用户和会话的 Run 按受理顺序串行执行；不同会话可受控并发。用户间采用轮询公平调度，并设每用户活跃/在途上限。会话历史和 memory 按用户/会话隔离。
+- 等待授权或补充输入时归还活跃执行槽，仍计入在途容量；默认 1800 秒超时后进入 `failed / INTERACTION_TIMEOUT`。配置为 0 可关闭超时。
+- 默认上下文只保留最近 40 条消息、最多 60,000 字符的完整用户回合，不拆开 tool call 与结果；会话文件仍保存完整历史。memory 只召回窗口之外的内容，默认不生成 MEMORY.md 投影。
 - 本地文件与 Docker 持久卷保存执行台账、事件、回执和结果。持久卷丢失后无法保持原幂等和回放保证。
 - 服务重启后，未完成的 Run/Recipe 标记为 `interrupted`，不自动续跑或重新提交图片任务。确需新的执行时使用新的 `run_uuid`，确需新的配方生成时使用新的 `recipe_request_id`。
 - 外部图片 API 没有已确认的幂等键或取消接口，本服务不承诺外部副作用 exactly-once，也不承诺停止后远端已取消生成或扣费。
@@ -91,9 +93,13 @@ AIGC 服务将 MS-Agent 的轻量执行能力封装为 HTTP 接口，供可信�
 
 | 项目 | 默认值 / 限制 |
 |---|---|
-| JSON 请求体大小 | 最大 2 MiB；超出返回 413，可由服务配置调整 |
-| Run 并发 | 4，可配置；等待交互的执行仍可能占用并发资源 |
-| Run 等待容量 | 配置值 100；受理还受服务当前任务总量限制 |
+| JSON 请求体大小 | 最大 1 MiB；超出返回 413；EAS 网关可能先行拒绝 |
+| Run 活跃并发 | 64，可配置；等待交互不占活跃槽 |
+| Run 在途容量 | 500，含排队、执行和等待交互 |
+| 每用户活跃 / 在途容量 | 4 / 20，同一用户不同 session 共用配额 |
+| LLM 并发 | 32，Run 与 Recipe 共用；RPM 必须按实际账户配额配置 |
+| 图片提交 / 轮询并发 | 8 / 32，分别限流 |
+| SSE 订阅上限 | 512，单流默认最长 540 秒，心跳 15 秒 |
 | 单次 messages 数量 | 1～20 |
 | 单条 content 长度 | 1～20,000 字符 |
 | 单条消息图片附件数 | 最多 4 |
@@ -378,6 +384,8 @@ Run 不存在或不属于当前用户时返回 404：
 
 GetRun 不调用模型、不启动执行、不自动重提或查询外部任务。适用于启动回执丢失、服务重启、轮询状态及命令回执核对。
 
+响应携带 `ETag`（完整公开视图的摘要）。同用户查询可传 `If-None-Match`；视图未变化时返回无正文的 `304 Not Modified`。调用方按用户/Run 隔离缓存，不能跨用户复用；命令回执变化也会使 ETag 变化。
+
 ## 7. SubscribeRunEvents：订阅与回放事件
 
 ### 7.1 请求参数
@@ -457,7 +465,7 @@ SSE 的每个事件以空行结束。`data` 是完整 EventEnvelope JSON，不�
 2. 断流后使用最后已处理序号重新订阅；客户端按 `(run_uuid, agent_seq)` 去重。
 3. 未提供游标会从 0 开始回放，可能再次收到历史事件。心跳是 SSE 注释，不占用事件序号。
 4. 订阅断开不会取消 Run；停止执行必须调用 ControlRun。
-5. 当前实现周期性读取台账，空闲时约每 10 秒发送心跳，不承诺零延迟推送。
+5. 当前实现由持久提交唤醒订阅者，默认每 15 秒心跳，不做 250ms 全量读盘轮询。单条连接默认最长 540 秒，到时正常关闭，Run 继续；调用方按最后已处理序号重连。慢订阅者不阻塞提交，缓存淘汰时可从 journal 回放。
 6. 对已终态 Run，发送当前游标后的已存事件后关闭连接。终态后新的控制请求仍可能提交回执；若需核对最新回执，使用 GetRun 或重新订阅，不依赖已关闭的连接。
 7. 流已返回 200 后发生存储故障时会关闭连接，不能再返回普通 JSON 错误体，也不能仅凭 EOF 判定成功；应重新查询 Run。
 8. 网关须关闭响应缓冲，设置合适的 SSE 空闲超时。响应携带 `Cache-Control: no-cache` 和 `X-Accel-Buffering: no`。
@@ -771,10 +779,12 @@ variables 中的每项：
 | 409 | `RECIPE_INPUT_CONFLICT` | recipe_request_id 已绑定不同构建输入 |
 | 409 | `SOURCE_RUN_NOT_TERMINAL` | 来源 Run 尚未终态，稍后查询后再构建 |
 | 413 | `REQUEST_TOO_LARGE` | JSON 请求体超出服务大小限制 |
-| 429 | `RUN_QUEUE_FULL` | Run 受理容量已满，退避后使用原请求重试 |
+| 429 | `RUN_QUEUE_FULL` | 全局或每用户容量已满，`details.scope=global|user`；遵守 Retry-After 后用原请求重试 |
+| 429 | `EVENT_SUBSCRIBERS_FULL` | SSE 订阅容量已满，退避重连或改用 ETag 查询 |
 | 429 | `RECIPE_QUEUE_FULL` | 配方在途构建容量已满，退避后使用原请求重试 |
 | 503 | `SERVICE_UNAVAILABLE` | 服务当前不受理新执行/构建 |
 | 503 | `STORAGE_UNAVAILABLE` | 本地台账不可读写；停止自动重提并联系运维 |
+| 503 | `STORAGE_CORRUPTED` | 当前 Run/Recipe 的已提交日志损坏，不能清空原记录重新执行；其他健康记录仍可服务 |
 
 `profile_id` 当前在请求 schema 中限制为 `aigc_assistant`，其他值通常返回 422。SDK 还定义了 profile 查找失败的 `PROFILE_NOT_FOUND`，不应以此代替 HTTP 字段校验。
 
@@ -797,6 +807,7 @@ variables 中的每项：
 | error.code | 对象 / 状态 | 说明 |
 |---|---|---|
 | `EXECUTION_FAILED` | Run / failed | 模型调用或执行过程失败 |
+| `INTERACTION_TIMEOUT` | Run / failed | 等待授权或输入超过配置期限，未自动执行工具 |
 | `EXTERNAL_TASK_UNRESOLVED` | Run / failed | 外部提交/查询结果未确认，停止继续规划，不自动重提 |
 | `STORAGE_UNAVAILABLE` | Run / interrupted | 本地会话/记忆状态损坏或不可写，且台账仍能提交中断记录 |
 | `SERVICE_INTERRUPTED` | Run/Recipe / interrupted | 服务中断或重启恢复，未自动续跑 |
@@ -821,13 +832,63 @@ variables 中的每项：
 | 方法 | 路径 | 认证 | 正常响应 | 非就绪响应 |
 |---|---|---|---|---|
 | GET | `/health/live` | 无 | 200 `{"status":"live"}` | 进程未提供服务时可能连接失败 |
-| GET | `/health/ready` | 无 | 200 `{"status":"ready"}` | 503 `{"status":"unavailable"}` |
+| GET | `/health/ready` | 无 | 200 `{"status":"ready","config_digest":"..."}` | 503 `{"status":"unavailable","config_digest":"..."}` |
 
 ready 检查运行服务是否接受任务、台账是否健康以及协调器是否持有文件租约，不发送收费模型请求，也不证明远端图片 API 可用。
 
-- [服务配置](aigc/configs/service.yaml)：并发、模型调用与本地 skills。
-- [工具配置](aigc/configs/api_tools.yaml)：首版图片生成/单图编辑/多图编辑的 HTTP API schema 与模型白名单。
+- [统一服务配置](aigc/configs/service.yaml)：server、auth、storage、runtime、events、upstreams、agent、recipe、observability、eas、tools.api、secrets。图片工具 schema 和白名单也在该文件。
+- `API_TOOLS_CONFIG` 已移除并在启动时拒绝；旧 api_tools.yaml 不再参与服务加载。只通过 `AIGC_CONFIG` 选择配置文件。
 - [Dockerfile](../docker/aigc.Dockerfile)、[Compose](../docker/aigc.compose.yaml)：Python 3.12、单协调器、非 root、只读根文件系统、本地数据卷。
 - [中文启动说明](../README_ZH.md#aigc-轻量服务)：镜像构建、部署凭据与本地调试。
 
-首版不支持多副本共享写入、网络文件系统或自动数据清理。部署时保护 `/data` 和服务凭据；保留持久卷以维护幂等、墓碑和事件回放记录。
+当前服务保持单进程、单协调器，不支持同一数据目录多副本写入。本地 POSIX 文件系统可用；NAS 必须验证 NFSv4 跨客户端 flock，生产锁策略 require 会拒绝 NFSv3/本地锁退化及对象存储/FUSE。epoch 仅作意外接管检测，不能替代互斥或提供分布式 fencing。存储故障会停止新副作用并使探针失败；日志损坏只隔离对应记录。
+
+journal 是唯一事实来源，内存缓存只缓存已持久提交的状态和事件；缓存按条数/序列化大小限额淘汰，冷查询会读盘。热提交不重读 journal，常规事件做 journal 与目录各一次 fsync；受理、快照、终态投影和索引变更会有额外同步。活跃索引先于首次 journal 提交写入、终态提交后清理；旧数据首次启动仍需全量扫描，后续只恢复活跃项。不提供自动删除历史数据；清理必须另行授权，不能删除仍需保持幂等的记录。
+
+## 13. 配置、单 Pod 调优与 EAS 部署
+
+### 13.1 配置生效规则
+
+唯一运行配置是 `service/aigc/configs/service.yaml`，由类型化 Settings 校验。所有环境覆盖在 YAML 的 `${VAR:default}` 中显式列出；凭据名由 `secrets` 声明，读取 `NAME` 或 `NAME_FILE`，凭据不进入冻结快照、部署 JSON 或日志。`AIGC_MAX_RUNS` 控制活跃槽，`AIGC_MAX_INFLIGHT` 控制总在途容量；兼容 `AIGC_QUEUE_LIMIT` 的等待容量，但不能同时设置两种总容量覆盖。
+
+修改配置后重启生效，不提供热更新。可通过 `/health/ready` 与受服务凭据保护的 `/internal/stats` 核对 `config_digest`。初始 64 活跃槽 / 32 LLM 并发不是压测保证，须按上游 RPM/TPM、响应时长、RSS 和 p95 排队时间校准。RPM=0 表示不做本地 RPM 限制，不表示远端无限额。上游连接池、IO 线程数、重试次数/总预算、交互超时、SSE 时长、keep-alive 和 drain 都集中在此文件。
+
+LLM 对明确 429/502/503/504 及连接建立失败做有界重试；图片提交仅对明确 429 和未发出请求的连接建立失败重试，超时和 5xx 不重提。图片轮询在 poll_timeout 内容忍暂态 429/5xx/网络故障，按 Retry-After/退避等待；终态失败、非法状态或期限耗尽仍会失败。不能据此宣称 exactly-once。
+
+### 13.2 EAS 部署流程
+
+1. 使用 `docker/aigc.Dockerfile` 构建匹配目标 CPU 架构的镜像；常见 EAS x86 实例用 `--platform linux/amd64`。推送到同地域 ACR 内网仓库。应用端口 8000，避开平台的 8080/9090。
+2. 在同一份 YAML 填写 `eas.image`、`eas.nas_server`、`eas.nas_path` 和网关类型；生产推荐同地域 VPC 的 MSE 专属网关，需填写 `eas.gateway_id`。ALB 的实际请求超时必须在网关配置和实测中确认，不能通过 rpc.keepalive 修改。
+3. 在 NAS 预建 `shard-N`、`config`、`secrets` 子目录。数据目录给 UID/GID 10001 写权限；将该份 service.yaml 放入 `config/service.yaml`，凭据文件名分别为 secrets 中声明的环境变量名。配置和密钥目录只读挂载，与各分片可写目录分离。确认 NFSv4 跨客户端锁，不满足时不要绕过 require。
+4. 生成部署 JSON（不创建云资源）：
+
+   ```bash
+   AIGC_CONFIG=/absolute/path/service.yaml python -m service.aigc.deploy eas --shard 0 --output eas-service.json
+   ```
+
+   用控制台自定义镜像部署或 eascmd 提交该 JSON。生成器固定 `instance=1`，使用 `metadata.rpc` 嵌套结构、探针、SIGTERM 和先停后起策略；不设置仅适用于 processor 的 worker_threads 或异步队列 max_queue_size。不依赖 Docker HEALTHCHECK 替代 EAS 探针。
+5. 配置 VPC/安全组、ACR 内网拉取权限、到 DashScope/ModelScope 的 NAT 或私网出路。验证 DNS、TLS、SNAT 和远端账户配额；镜像已预装依赖，不在启动时安装。
+6. backend 的调用地址为 `<EAS_ENDPOINT>/v1/aigc/...`。网关凭据用 `Authorization: <EAS_TOKEN>`，应用凭据用 `X-AIGC-Service-Token: <service-token>`，再传可信 `X-User-Id`。不要向终端用户泄露任一服务凭据。服务 links 和 /docs 使用配置的公开路径前缀。
+7. 开启 EAS startup/readiness/liveness 探针。SIGTERM 到达时停止受理、关闭 SSE、取消排队或等待交互的 Run；执行中 Run 最多等待 drain_timeout，剩余任务中断并释放租约。控制命令在摘流量后不保证可达。SSE EOF 不表示 Run 成功，重连查询。
+
+生成器只生成配置，没有执行云部署或平台验证。部署 JSON 中的资源、挂载和指标仍需真实 EAS 验收。先停后起更新会短暂不可用，backend 应保留原幂等键并退避重试，不能期待无损热升级。
+
+### 13.3 压测与扩容操作指引
+
+本地 mock 压测不访问收费上游：
+
+```bash
+python .dev_scripts/aigc/loadtest.py --users 10 --sessions 2 --runs 3 --image-ratio 0.3 --output baseline.json
+```
+
+压测报告包含成功吞吐、受理/执行时延、CPU/RSS、fsync 和 journal 读取计数。健康请求时延不是事件循环延迟；后者应读取 `/internal/stats` 的 loop_lag_ms_p99。生产吞吐必须用目标 Pod 规格和实际配额复测。EAS 平台验证脚本 `.dev_scripts/aigc/eas_probe.py` 的 serve/client 两种模式分别部署和调用，验证头透传、请求体、SSE、keep-alive、挂载与跨副本 flock；仅在隔离测试服务运行，报告不返回原始凭据。
+
+先调单 Pod：分别观察排队、waiting_input、LLM/图片在途、RSS 和事件循环延迟，再调整活跃槽/IO 线程/连接池与限流；不能只看 HTTP QPS，因为 StartRun 的执行发生在 202 之后。LLM 的 token 消耗也受历史窗口影响。
+
+人工横向扩容：生成 aigc_0、aigc_1 等独立 EAS 服务，每个固定一个 Pod、独立 NAS shard 子目录。backend 维护稳定 user→shard 表，新用户分配低负载分片，现有用户不因分片数量变化自动重映射。迁移时停止该用户所有 session 的新受理、等待在途任务清零、经授权迁移整个用户目录，再原子切换路由。禁止直接用 hash(user)%N 扩容重映射在途用户。
+
+上游限流器是 Pod 内限流，不是模型账户的全局配额。多个分片共用凭据时，backend 需要统一控制账户 RPM/TPM，或给各分片静态分配 RPM 并预留余量；重启会清空本地速率窗口。当前不提供分布式 TPM 限流，不能把各 Pod 的配置直接乘以副本数当作账户可用吞吐。
+
+不在同一服务启用多副本自动扩缩容；新增副本不会获得正在执行的内存控制对象。自动弹性需要单独批准的共享状态与执行认领设计，不能仅靠共享 NAS 或粘性路由。当前自定义指标仅用于监控与人工扩容决策。
+
+平台事实参见官方[镜像部署](https://help.aliyun.com/zh/pai/deploy-a-model-service-by-using-a-custom-image)、[参数说明](https://help.aliyun.com/zh/pai/parameters-of-model-services)、[优雅退出](https://help.aliyun.com/zh/pai/scrolling-updates-with-graceful-exit)、[网关超时](https://help.aliyun.com/zh/pai/dedicated-gateway-timeout-best-practices)。

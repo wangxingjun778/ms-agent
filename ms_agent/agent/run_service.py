@@ -9,10 +9,11 @@ from typing import Any, AsyncIterator
 from jsonschema import Draft202012Validator, ValidationError
 
 from ms_agent.agent.api import AgentService
-from ms_agent.agent.control import RunControl
+from ms_agent.agent.control import InteractionTimeout, RunControl
+from ms_agent.agent.scheduler import FairScheduler
 from ms_agent.agent.schema import AgentRequest, AgentResponse
 from ms_agent.session.locking import PersistenceError, validate_id
-from ms_agent.session.run_store import TERMINAL, FileRunStore, digest, now, without_secrets
+from ms_agent.session.run_store import TERMINAL, FileRunStore, StorageCorrupted, digest, now, without_secrets
 from ms_agent.tools.schema import ExternalTaskUnresolved
 
 
@@ -31,11 +32,24 @@ class RunService:
         profile_id: str = 'aigc_assistant',
         max_runs: int = 4,
         queue_limit: int = 100,
+        runtime_config: dict | None = None,
+        event_config: dict | None = None,
     ) -> None:
         self.store, self.agent, self.profile_id = store, agent, profile_id
         self.max_runs, self.queue_limit = max_runs, queue_limit
-        self._semaphore = asyncio.Semaphore(max_runs)
-        self._capacity = asyncio.Lock()
+        options = runtime_config or {}
+        self._scheduler = FairScheduler(max_runs, options.get('per_user_active', max_runs))
+        self._limit = options.get('max_inflight_runs', max_runs + queue_limit)
+        self._user_limit = options.get('per_user_inflight', self._limit)
+        self._interaction_timeout = options.get('interaction_timeout', 0)
+        self._reservations: set[tuple[str, str]] = set()
+        self._event_config = event_config or {
+            'heartbeat_seconds': 15,
+            'max_stream_seconds': 540,
+            'max_subscribers': 512,
+        }
+        self.subscribers = 0
+        self.draining = asyncio.Event()
         self._tasks: dict[tuple[str, str], asyncio.Task] = {}
         self._tails: dict[tuple[str, str], asyncio.Task] = {}
         self._controls: dict[tuple[str, str], RunControl] = {}
@@ -43,8 +57,12 @@ class RunService:
         self.accepting = False
 
     async def initialize(self) -> None:
-        self.store.lease.acquire()
         try:
+            from ms_agent.session.locking import durable_io
+
+            await durable_io(self.store.lease.acquire, getattr(self.store, 'lease_wait', 0))
+            if self.store.optimized:
+                await self.store.initialize_epoch()
             await self.store.recover()
             await self.agent.initialize()
         except BaseException:
@@ -74,8 +92,8 @@ class RunService:
         validate_id(user_id, 'user_id')
         validate_id(request['session_id'], 'session_id')
         request_digest = digest(request)
-        async with self._capacity, self.store.lock(user_id, 'runs', run_uuid):
-            existing, _ = await self.store.read(user_id, 'runs', run_uuid)
+        async with self.store.lock(user_id, 'runs', run_uuid):
+            existing = await self.store.read_state(user_id, 'runs', run_uuid)
             if existing and existing.get('request_digest'):
                 if existing['request_digest'] != request_digest:
                     raise RunError('RUN_INPUT_CONFLICT')
@@ -84,66 +102,90 @@ class RunService:
                 raise RunError('SERVICE_UNAVAILABLE', 503)
             if request['profile_id'] != self.profile_id:
                 raise RunError('PROFILE_NOT_FOUND', 404)
-            if len(self._tasks) >= self.max_runs + self.queue_limit and not existing:
-                raise RunError('RUN_QUEUE_FULL', 429)
-            registry = self.agent._tool_registry
-            snapshot = without_secrets(
-                {
-                    'request': request,
-                    'profile_id': self.profile_id,
-                    'config': self.agent._config,
-                    'tools': registry.get_tool_specs(),
-                    'skills': self.agent._skill_service.get_active_skills() if self.agent._skill_service else [],
-                }
-            )
-            await self.store.snapshot(user_id, 'runs', run_uuid, 'input_snapshot.json', snapshot)
-            cancelled_before_start = bool(existing and existing['status'] == 'cancelled')
-            status = 'cancelled' if cancelled_before_start else 'queued'
-            state = await self.store.commit(
-                user_id,
-                'runs',
-                run_uuid,
-                {
-                    'run_uuid': run_uuid,
-                    'user_id': user_id,
-                    'session_id': request['session_id'],
-                    'profile_id': self.profile_id,
-                    'status': status,
-                    'request_digest': request_digest,
-                    'snapshot_digest': digest(snapshot),
-                    'created_at': existing.get('created_at') if existing else now(),
-                    'pending_interaction': None,
-                    'result': None,
-                    'artifacts': [],
-                    'external_tasks': [],
-                    'tool_records': [],
-                    'commands': existing.get('commands', {}) if existing else {},
-                    'error': None,
-                    'requires_reconciliation': False,
-                },
-                'run_cancelled' if cancelled_before_start else 'run_accepted',
-                {'status': status},
-            )
-            if status == 'queued':
-                session_key = (user_id, request['session_id'])
-                predecessor = self._tails.get(session_key)
-                task = asyncio.create_task(self._execute(user_id, request, predecessor))
-                self._tasks[(user_id, run_uuid)] = task
-                self._tails[session_key] = task
-                task.add_done_callback(lambda t: self._finished(user_id, run_uuid, session_key, t))
-            return self.view(state), True
+            key = (user_id, run_uuid)
+            in_flight = set(self._tasks) | self._reservations
+            if not (existing and existing['status'] == 'cancelled'):
+                scope = 'global' if len(in_flight) >= self._limit else 'user'
+                if len(in_flight) >= self._limit or sum(k[0] == user_id for k in in_flight) >= self._user_limit:
+                    raise RunError('RUN_QUEUE_FULL', 429, {'scope': scope})
+            self._reservations.add(key)
+            try:
+                return await self._bind_start(user_id, request, existing, request_digest)
+            finally:
+                self._reservations.discard(key)
+
+    async def _bind_start(self, user_id, request, existing, request_digest):
+        run_uuid = request['run_uuid']
+        registry = self.agent._tool_registry
+        snapshot = without_secrets(
+            {
+                'request': request,
+                'profile_id': self.profile_id,
+                'config': self.agent._config,
+                'tools': registry.get_tool_specs(),
+                'skills': self.agent._skill_service.get_active_skills() if self.agent._skill_service else [],
+            }
+        )
+        await self.store.snapshot(user_id, 'runs', run_uuid, 'input_snapshot.json', snapshot)
+        cancelled_before_start = bool(existing and existing['status'] == 'cancelled')
+        status = 'cancelled' if cancelled_before_start else 'queued'
+        state = await self.store.commit(
+            user_id,
+            'runs',
+            run_uuid,
+            {
+                'run_uuid': run_uuid,
+                'user_id': user_id,
+                'session_id': request['session_id'],
+                'profile_id': self.profile_id,
+                'status': status,
+                'request_digest': request_digest,
+                'snapshot_digest': digest(snapshot),
+                'created_at': existing.get('created_at') if existing else now(),
+                'pending_interaction': None,
+                'result': None,
+                'artifacts': [],
+                'external_tasks': [],
+                'tool_records': [],
+                'commands': existing.get('commands', {}) if existing else {},
+                'error': None,
+                'requires_reconciliation': False,
+            },
+            'run_cancelled' if cancelled_before_start else 'run_accepted',
+            {'status': status},
+        )
+        if status == 'queued':
+            session_key = (user_id, request['session_id'])
+            predecessor = self._tails.get(session_key)
+            task = asyncio.create_task(self._execute(user_id, request, predecessor))
+            task._aigc_predecessor = predecessor
+            self._tasks[(user_id, run_uuid)] = task
+            self._tails[session_key] = task
+            task.add_done_callback(lambda t: self._finished(user_id, run_uuid, session_key, t))
+        return self.view(state), True
 
     def _finished(self, user_id, run_uuid, session_key, task) -> None:
         self._tasks.pop((user_id, run_uuid), None)
         self._controls.pop((user_id, run_uuid), None)
+        predecessor = getattr(task, '_aigc_predecessor', None)
         if self._tails.get(session_key) is task:
-            self._tails.pop(session_key, None)
+            previous = predecessor
+            while previous is not None and previous.done():
+                previous = getattr(previous, '_aigc_predecessor', None)
+            if previous is None:
+                self._tails.pop(session_key, None)
+            else:
+                self._tails[session_key] = previous
+        if task.cancelled() and predecessor is not None and not predecessor.done():
+            predecessor.add_done_callback(lambda _: setattr(task, '_aigc_predecessor', None))
+        else:
+            task._aigc_predecessor = None
         if not task.cancelled():
             task.exception()
 
     async def get(self, user_id: str, run_uuid: str) -> dict[str, Any]:
         async with self.store.lock(user_id, 'runs', run_uuid):
-            state, _ = await self.store.read(user_id, 'runs', run_uuid)
+            state = await self.store.read_state(user_id, 'runs', run_uuid)
             if state is None:
                 raise RunError('RUN_NOT_FOUND', 404)
             return self.view(state)
@@ -172,7 +214,7 @@ class RunService:
 
     async def record(self, user_id: str, run_uuid: str, event_type: str, data: dict[str, Any]) -> None:
         async with self.store.lock(user_id, 'runs', run_uuid):
-            state, _ = await self.store.read(user_id, 'runs', run_uuid)
+            state = await self.store.read_state(user_id, 'runs', run_uuid)
             if state is None or state['status'] in TERMINAL:
                 return
             if state['status'] == 'stopping' and event_type not in {
@@ -264,17 +306,22 @@ class RunService:
         run_uuid = request['run_uuid']
         events = []
         try:
-            if predecessor is not None:
+            if self.draining.is_set():
+                raise asyncio.CancelledError
+            while predecessor is not None:
                 try:
                     await asyncio.shield(predecessor)
+                    break
                 except asyncio.CancelledError:
                     if asyncio.current_task().cancelling():
                         raise
+                    # 排队尾项被取消不能绕过仍在执行的更早 Run。
+                    predecessor = getattr(predecessor, '_aigc_predecessor', None)
                 except Exception:
-                    pass
-            async with self._semaphore:
+                    break
+            async with self._scheduler.permit(user_id) as permit:
                 async with self.store.lock(user_id, 'runs', run_uuid):
-                    state, _ = await self.store.read(user_id, 'runs', run_uuid)
+                    state = await self.store.read_state(user_id, 'runs', run_uuid)
                     if state['status'] != 'queued':
                         return
                     await self.store.commit(
@@ -284,7 +331,7 @@ class RunService:
                 async def record(kind, data):
                     await self.record(user_id, run_uuid, kind, data)
 
-                control = RunControl(record)
+                control = RunControl(record, permit=permit, timeout=self._interaction_timeout)
                 self._controls[(user_id, run_uuid)] = control
                 overrides = dict(request.get('parameters') or {})
                 if 'temperature' in overrides:
@@ -311,10 +358,25 @@ class RunService:
         except asyncio.CancelledError:
             try:
                 state = await self.get(user_id, run_uuid)
-                await self._terminal(user_id, run_uuid, 'cancelled' if state['status'] == 'stopping' else 'interrupted')
+                if state['status'] == 'stopping':
+                    await self._terminal(user_id, run_uuid, 'cancelled')
+                else:
+                    await self._terminal(
+                        user_id,
+                        run_uuid,
+                        'interrupted',
+                        requires_reconciliation=True,
+                        error={'code': 'SERVICE_INTERRUPTED', 'message': '服务中断，未自动续跑'},
+                    )
             except PersistenceError:
                 self.accepting = False
             raise
+        except StorageCorrupted:
+            return
+        except InteractionTimeout:
+            await self._terminal(
+                user_id, run_uuid, 'failed', error={'code': 'INTERACTION_TIMEOUT', 'message': '等待交互超时'}
+            )
         except PersistenceError:
             self.accepting = False
             if self.store.healthy:
@@ -345,7 +407,7 @@ class RunService:
 
     async def _terminal(self, user_id: str, run_uuid: str, status: str, **updates) -> None:
         async with self.store.lock(user_id, 'runs', run_uuid):
-            state, _ = await self.store.read(user_id, 'runs', run_uuid)
+            state = await self.store.read_state(user_id, 'runs', run_uuid)
             if state['status'] in TERMINAL:
                 return
             if state['status'] == 'stopping':
@@ -405,7 +467,7 @@ class RunService:
         command_id = validate_id(command['command_id'], 'command_id')
         command_digest = digest(command)
         async with self.store.lock(user_id, 'runs', run_uuid):
-            state, _ = await self.store.read(user_id, 'runs', run_uuid)
+            state = await self.store.read_state(user_id, 'runs', run_uuid)
             state = state or {
                 'run_uuid': run_uuid,
                 'user_id': user_id,
@@ -441,7 +503,13 @@ class RunService:
                 else:
                     updates.update(status='stopping')
             elif state['status'] in TERMINAL or state['status'] in {'missing', 'queued', 'stopping'}:
-                receipt.update(status='rejected', reason_code='RUN_NOT_CONTROLLABLE')
+                expired = (state.get('error') or {}).get('code') == 'INTERACTION_TIMEOUT'
+                reason = (
+                    'INTERACTION_EXPIRED'
+                    if expired and command['type'] in {'approve', 'skip', 'input'}
+                    else 'RUN_NOT_CONTROLLABLE'
+                )
+                receipt.update(status='rejected', reason_code=reason)
             elif command['type'] == 'intervene':
                 if control is None:
                     receipt.update(status='rejected', reason_code='RUN_NOT_CONTROLLABLE')
@@ -474,6 +542,9 @@ class RunService:
             await self.store.commit(user_id, 'runs', run_uuid, updates, 'command_receipt', receipt)
             if receipt['reason_code'] == 'CANCELLED_BEFORE_START':
                 await self.store.commit(user_id, 'runs', run_uuid, {}, 'run_terminal', {'status': 'cancelled'})
+                task = self._tasks.get((user_id, run_uuid))
+                if task:
+                    task.cancel()
             if receipt['status'] == 'accepted':
                 if command['type'] == 'stop':
                     task = self._tasks.get((user_id, run_uuid))
@@ -483,37 +554,70 @@ class RunService:
                     control.deliver(command)
             return deepcopy(receipt)
 
-    async def events(self, user_id: str, run_uuid: str, after_seq: int = 0) -> AsyncIterator[dict | None]:
+    def reserve_subscription(self) -> None:
+        if self.subscribers >= self._event_config['max_subscribers']:
+            raise RunError('EVENT_SUBSCRIBERS_FULL', 429)
+        self.subscribers += 1
+
+    async def events(
+        self, user_id: str, run_uuid: str, after_seq: int = 0, *, managed=True
+    ) -> AsyncIterator[dict | None]:
         first = True
-        idle = 0
-        while True:
-            async with self.store.lock(user_id, 'runs', run_uuid):
-                state, events = await self.store.read(user_id, 'runs', run_uuid)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._event_config['max_stream_seconds']
+        if managed:
+            self.reserve_subscription()
+        try:
+            while not self.draining.is_set() and loop.time() < deadline:
+                # 先注册通知，再读取状态，避免读与 wait 之间漏掉提交。
+                changed = self.store.change_event(user_id, 'runs', run_uuid)
+                async with self.store.lock(user_id, 'runs', run_uuid):
+                    state, events = await self.store.read_events(user_id, 'runs', run_uuid, after_seq)
                 if state is None:
                     raise RunError('RUN_NOT_FOUND', 404)
-                if first and (after_seq < 0 or after_seq > state.get('last_agent_seq', 0)):
+                if first and not 0 <= after_seq <= state.get('last_agent_seq', 0):
                     raise RunError('EVENT_CURSOR_INVALID', 400)
-            first = False
-            for event in events:
-                if event['agent_seq'] > after_seq:
+                first = False
+                for event in events:
                     after_seq = event['agent_seq']
                     yield event
-                    idle = 0
-            if state['status'] in TERMINAL:
-                return
-            await asyncio.sleep(0.25)
-            idle += 1
-            if idle >= 40:
-                yield None
-                idle = 0
+                if state['status'] in TERMINAL:
+                    return
+                waits = [asyncio.create_task(changed.wait()), asyncio.create_task(self.draining.wait())]
+                try:
+                    done, _ = await asyncio.wait(
+                        waits,
+                        timeout=min(self._event_config['heartbeat_seconds'], max(0, deadline - loop.time())),
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if not done:
+                        yield None
+                finally:
+                    for task in waits:
+                        task.cancel()
+                    await asyncio.gather(*waits, return_exceptions=True)
+        finally:
+            if managed:
+                self.subscribers -= 1
 
-    async def close(self) -> None:
+    def begin_drain(self) -> None:
         self.accepting = False
+        self.draining.set()
+        for key, task in list(self._tasks.items()):
+            control = self._controls.get(key)
+            if control is None or control.pending:
+                task.cancel()
+
+    async def close(self, drain_timeout: float = 0) -> None:
+        self.begin_drain()
         if self._operations:
             await asyncio.gather(*self._operations, return_exceptions=True)
         tasks = list(self._tasks.values())
+        if tasks and drain_timeout:
+            await asyncio.wait(tasks, timeout=drain_timeout)
         for task in tasks:
-            task.cancel()
+            if not task.done():
+                task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await self.agent.shutdown()
         self.store.lease.release()

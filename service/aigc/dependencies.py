@@ -19,8 +19,14 @@ async def authenticated_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     user_id: Annotated[str | None, Header(alias='X-User-Id')] = None,
 ) -> str:
-    token = request.app.state.settings.service_token.get_secret_value()
-    if credentials is None or not secrets.compare_digest(credentials.credentials, token):
+    settings = request.app.state.settings
+    token = settings.service_token.get_secret_value()
+    value = request.headers.get(settings.auth.header, '')
+    if settings.auth.scheme == 'bearer':
+        scheme, _, value = value.partition(' ')
+        if scheme.lower() != 'bearer':
+            raise RunError('UNAUTHORIZED', 401)
+    if not token or not secrets.compare_digest(value.encode(), token.encode()):
         raise RunError('UNAUTHORIZED', 401)
     try:
         return validate_id(user_id, 'user_id')

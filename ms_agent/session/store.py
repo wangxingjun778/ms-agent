@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 import uuid
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,6 +32,14 @@ _SPECIAL_RECORD_TYPES = {
 }
 
 
+class HistoryCache(OrderedDict):
+    """由 AgentService 生命周期共享的有界会话缓存。"""
+
+    def __init__(self):
+        super().__init__()
+        self.lock = threading.RLock()
+
+
 class SessionStore:
     """Persist append-only session history under a single user's directory.
 
@@ -44,6 +55,10 @@ class SessionStore:
         locks: Optional[PathLocks] = None,
         *,
         strict: bool = False,
+        optimized: bool = False,
+        cache=None,
+        cache_entries: int = 256,
+        cache_bytes: int = 67108864,
     ) -> None:
         """Initialize an isolated store without creating any session files."""
         self.user_id = self._validate_id(user_id, 'user_id')
@@ -51,6 +66,13 @@ class SessionStore:
         self.base_path = safe_path(self._root, 'users', self.user_id, 'sessions')
         self._locks = locks or PathLocks()
         self._strict = strict
+        self._optimized = optimized
+        self._cache = cache if cache is not None else OrderedDict()
+        self._cache_entries, self._cache_bytes = cache_entries, cache_bytes
+        self._cache_lock = getattr(self._cache, 'lock', threading.RLock())
+
+    async def _io(self, function, *args, **kwargs):
+        return await durable_io(function, *args, _executor=self._locks.executor, **kwargs)
 
     async def load_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Return conversational records from a session's append-only log.
@@ -62,12 +84,14 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            await durable_io(
+            await self._io(
                 self._session_dir(session_id).mkdir,
                 parents=True,
                 exist_ok=True,
             )
-            return await durable_io(self._read_history_sync, self._jsonl_path(session_id))
+            if self._optimized:
+                return deepcopy((await self._io(self._optimized_entry, session_id))['history'])
+            return await self._io(self._read_history_sync, self._jsonl_path(session_id))
 
     async def append(
         self,
@@ -81,7 +105,7 @@ class SessionStore:
         snapshot = [dict(message) for message in messages]
         lock = self._lock_for(session_id)
         async with lock:
-            await durable_io(
+            await self._io(
                 self._append_sync,
                 self._session_dir(session_id),
                 session_id,
@@ -93,7 +117,7 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            return await durable_io(
+            return await self._io(
                 self._read_metadata_sync,
                 self._meta_path(session_id),
                 session_id,
@@ -108,7 +132,7 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            await durable_io(
+            await self._io(
                 self._update_metadata_sync,
                 self._meta_path(session_id),
                 session_id,
@@ -117,8 +141,8 @@ class SessionStore:
 
     async def list_sessions(self) -> List[Dict[str, Any]]:
         """List metadata for every session directory owned by this user."""
-        await durable_io(self.base_path.mkdir, parents=True, exist_ok=True)
-        session_ids = await durable_io(self._list_session_ids_sync)
+        await self._io(self.base_path.mkdir, parents=True, exist_ok=True)
+        session_ids = await self._io(self._list_session_ids_sync)
         metadata = [await self.get_metadata(session_id) for session_id in session_ids]
         return sorted(
             metadata,
@@ -133,7 +157,7 @@ class SessionStore:
         async with lock:
             self._jsonl_path(session_id)
             self._meta_path(session_id)
-            await durable_io(self._create_sync, self._session_dir(session_id), session_id)
+            await self._io(self._create_sync, self._session_dir(session_id), session_id)
         return session_id
 
     def _session_dir(self, session_id: str) -> Path:
@@ -186,10 +210,84 @@ class SessionStore:
             raise PersistenceError('会话文件损坏') from exc
 
     def _create_sync(self, directory: Path, session_id: str) -> None:
+        if self._optimized:
+            if not self._jsonl_path(session_id).exists():
+                SessionLog(directory, session_key=session_id)
+                with self._jsonl_path(session_id).open('rb') as handle:
+                    os.fsync(handle.fileno())
+                from ms_agent.utils.atomic_file import fsync_directory
+
+                fsync_directory(directory)
+                fsync_directory(directory.parent)
+            self._optimized_entry(session_id)
+            return
         self._validate_session_files(directory, session_id)
         SessionLog(directory, session_key=session_id)
 
+    def _optimized_entry(self, session_id: str) -> dict:
+        path = self._jsonl_path(session_id)
+        signature = (path.stat().st_size, path.stat().st_mtime_ns)
+        key = str(path)
+        # 冷会话 IO 不占用全局缓存锁；相同会话由外层 PathLock 串行。
+        with self._cache_lock:
+            cached = self._cache.get(key)
+            if cached:
+                if cached['signature'] != signature:
+                    self._cache.pop(key, None)
+                    raise PersistenceError('会话文件被协调器之外的写者修改')
+                self._cache.move_to_end(key)
+                return cached
+        self._validate_session_files(self._session_dir(session_id), session_id)
+        records = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+        history = [r for r in records if r.get('role') and r.get('_type') not in _SPECIAL_RECORD_TYPES]
+        entry = {
+            'history': history,
+            'seq': max((r.get('seq', -1) for r in records), default=-1) + 1,
+            'signature': signature,
+            'bytes': signature[0],
+        }
+        with self._cache_lock:
+            self._cache[key] = entry
+            self._trim_cache()
+        return entry
+
+    def _trim_cache(self):
+        with self._cache_lock:
+            while self._cache and (
+                len(self._cache) > self._cache_entries
+                or sum(e['bytes'] for e in self._cache.values()) > self._cache_bytes
+            ):
+                self._cache.popitem(last=False)
+
     def _append_sync(self, directory: Path, session_id: str, messages: List[Dict[str, Any]]) -> None:
+        if self._optimized:
+            self._create_sync(directory, session_id)
+            entry = self._optimized_entry(session_id)
+            records = [
+                {
+                    **message,
+                    'seq': entry['seq'] + i,
+                    'timestamp': message.get('timestamp') or datetime.now(timezone.utc).isoformat(),
+                }
+                for i, message in enumerate(messages)
+            ]
+            payload = ''.join(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n' for record in records)
+            path = self._jsonl_path(session_id)
+            try:
+                with path.open('a', encoding='utf-8') as handle:
+                    handle.write(payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except OSError:
+                with self._cache_lock:
+                    self._cache.pop(str(path), None)
+                raise
+            entry['history'].extend(records)
+            entry['seq'] += len(records)
+            entry['signature'] = (path.stat().st_size, path.stat().st_mtime_ns)
+            entry['bytes'] = entry['signature'][0]
+            self._trim_cache()
+            return
         self._validate_session_files(directory, session_id)
         log = SessionLog(directory, session_key=session_id)
         log.append_messages(messages)

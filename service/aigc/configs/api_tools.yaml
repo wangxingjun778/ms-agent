@@ -1,3 +1,5 @@
+# 历史迁移参考，service/aigc 已不读取此文件，也不接受 API_TOOLS_CONFIG。
+# 当前唯一配置入口是同目录 service.yaml 的 tools.api 段。
 # 只启用已有文档契约的图片 API；不注册搜索、代码执行或本地工具。
 api_tools:
   base_url: "${API_BASE_URL:https://api-inference.modelscope.cn}"

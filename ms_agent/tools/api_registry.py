@@ -101,6 +101,8 @@ def _api_from_dict(data: Dict[str, Any]) -> APIConfig:
         poll_timeout=float(data.get('poll_timeout', 600.0)),
         headers=dict(data.get('headers') or {}),
         timeout=float(data.get('timeout', 120.0)),
+        poll_max_interval=float(data.get('poll_max_interval', data.get('poll_interval', 5.0))),
+        poll_factor=float(data.get('poll_factor', 1.0)),
     )
 
 
@@ -151,6 +153,9 @@ class APIToolRegistry:
         *,
         strict: bool = False,
         credential_provider: Optional[Callable[[ToolInvocationContext], Awaitable[Dict[str, str]]]] = None,
+        poll_client=None,
+        limiters=None,
+        upstreams=None,
     ) -> None:
         self._tools: Dict[str, APIToolAdapter] = {}
         self._http_client = http_client
@@ -158,6 +163,8 @@ class APIToolRegistry:
         self._loaded = False
         self._strict = strict
         self._credential_provider = credential_provider
+        self._poll_client, self._limiters, self._upstreams = poll_client, limiters or {}, upstreams or {}
+        self._validators = {}
 
     # ---- Loading ------------------------------------------------------------
 
@@ -241,11 +248,14 @@ class APIToolRegistry:
             default_auth=default_auth,
             http_client=self._http_client,
         )
+        adapter.poll_client, adapter.limiters, adapter.upstreams = self._poll_client, self._limiters, self._upstreams
         self._tools[spec.name] = adapter
+        self._validators[spec.name] = Draft202012Validator(spec.parameters)
 
     def unregister(self, tool_name: str) -> None:
         """Remove a tool from the registry; no-op if it isn't registered."""
         self._tools.pop(tool_name, None)
+        self._validators.pop(tool_name, None)
 
     # ---- Introspection ------------------------------------------------------
 
@@ -289,7 +299,7 @@ class APIToolRegistry:
         """
         if tool_name not in self._tools:
             raise KeyError(tool_name)
-        Draft202012Validator(self.parameters(tool_name)).validate(args)
+        self._validators[tool_name].validate(args)
         if context is not None and self._credential_provider is not None:
             from dataclasses import replace
 

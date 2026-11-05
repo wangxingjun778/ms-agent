@@ -361,7 +361,7 @@ export API_TOKEN_PATH=/absolute/path/image-api-token
 docker compose -f docker/aigc.compose.yaml up -d --build
 ```
 
-默认仅映射 `127.0.0.1:8000`。`LLM_MODEL`、`LLM_BASE_URL` 和 `API_BASE_URL` 可覆盖模型与接口地址；通过 `service/aigc/configs/service.yaml` 配置并发和本地 skills，通过 `api_tools.yaml` 配置允许的图片模型和参数。替换配置时只读挂载目录，并指定 `AIGC_CONFIG` / `API_TOOLS_CONFIG`。模型权限和真实接口可用性需部署方确认。
+默认仅映射 `127.0.0.1:8000`。运行、上游、图片工具/schema、凭据引用和 EAS 部署配置全部集中在 `service/aigc/configs/service.yaml`；环境覆盖在该 YAML 中显式列出。替换配置时只读挂载该文件，通过 `AIGC_CONFIG` 选择；`API_TOOLS_CONFIG` 已移除并在启动时拒绝。模型权限和真实接口可用性需部署方确认。
 
 源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `DATA_DIR`、`AIGC_SERVICE_TOKEN`、`LLM_API_KEY`、`API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
 
@@ -379,9 +379,13 @@ StartRun 示例：`{"run_uuid":"11111111-1111-4111-8111-111111111111","session_i
 
 受理返回 202，结果通过 GetRun / SSE 取得。Recipe 正在构建时返回 202，重复调用同一请求取得终态。停止先于启动时保存取消墓碑；停止本地轮询不意味着远端推理已取消，当前图片 API 不支持取消。相同会话串行，不同 user/session 的记忆隔离。公开事件不包含模型私有推理。
 
-重启保留已提交事件和产物，未终态标为 `interrupted`，**不自动续跑或重提图片任务**；新执行必须换 `run_uuid`。不要移除持久卷，否则幂等/回放记录会丢失。首版不自动清理数据，不支持多副本或共享网络文件系统。图片产物只保存远端 URL，不能保证 URL 永不过期。
+重启保留已提交事件和产物，未终态标为 `interrupted`，**不自动续跑或重提图片任务**；新执行必须换 `run_uuid`。不要移除持久卷，否则幂等/回放记录会丢失。当前不自动清理数据，不支持同目录多写者副本。NAS 需验证 NFSv4 跨客户端 flock；拒绝 NFSv3/本地锁退化及对象存储/FUSE 台账。epoch 检测只识别意外接管，不构成分布式 fencing。图片产物只保存远端 URL，不能保证 URL 永不过期。
 
-健康检查：`/health/live`、`/health/ready`；网关需要关闭 SSE 缓冲。开发测试：`python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`，需安装 pytest、pytest-asyncio、httpx。
+单 Pod 默认 64 活跃 / 500 在途 Run、每用户 4 活跃 / 20 在途、共享 LLM 并发 32；这些只是起步参数，不是压测保证。限流按 Pod 计算；共用上游凭据的分片需由 backend 统一管理账户 RPM/TPM，当前未实现分布式 TPM 限流。同 session 保持 FIFO，用户间公平调度；等待交互归还活跃槽，1800 秒超时（0 关闭）。上下文保留 40 条消息 / 60,000 字符以内的完整回合，文件保留完整历史。SSE 由提交驱动、心跳 15 秒、单连接最长 540 秒，断开后按游标重连；GetRun 支持 ETag/304。
+
+EAS x86 实例构建 `linux/amd64` 镜像并推送到同地域 ACR。填写 YAML 的 eas.image/NAS/网关字段后，运行 `python -m service.aigc.deploy eas --shard 0 --output eas-service.json` 生成部署配置，不会创建云资源。生成器固定每服务一个 Pod，分离可写分片目录与只读配置/密钥目录，配置 startup/readiness/liveness、SIGTERM 和先停后起更新。EAS 请求传 `Authorization: <EAS_TOKEN>`、`X-AIGC-Service-Token: <service-token>` 及可信 `X-User-Id`。人工横向扩容使用 backend 稳定的 user→shard 路由，不启用共享目录多副本。完整步骤见 [部署与调优说明](service/README.md#13-配置单-pod-调优与-eas-部署)。
+
+健康检查：`/health/live`、`/health/ready`（含 config_digest）；认证监控接口 `/internal/stats`；网关需要关闭 SSE 缓冲。开发测试：`python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`，需安装 pytest、pytest-asyncio、httpx。
 
 <a id="应用项目"></a>
 

@@ -72,9 +72,12 @@ class RecipeDocument:
 
 
 class RecipeService:
-    def __init__(self, runs: RunService, llm_client: Any, *, timeout: float = 120, concurrency: int = 1) -> None:
+    def __init__(
+        self, runs: RunService, llm_client: Any, *, timeout: float = 120, concurrency: int = 1, max_inflight: int = 100
+    ) -> None:
         self.runs, self.store, self.llm = runs, runs.store, llm_client
         self.timeout = timeout
+        self.max_inflight = max_inflight
         self._semaphore = asyncio.Semaphore(concurrency)
         self._tasks: dict[tuple[str, str], asyncio.Task] = {}
         self._capacity = asyncio.Lock()
@@ -93,7 +96,7 @@ class RecipeService:
                 return self.view(existing), False
             if not self.runs.accepting:
                 raise RunError('SERVICE_UNAVAILABLE', 503)
-            if len(self._tasks) >= 100:
+            if len(self._tasks) >= self.max_inflight:
                 raise RunError('RECIPE_QUEUE_FULL', 429)
             async with self.store.lock(user_id, 'runs', run_uuid):
                 source, _ = await self.store.read(user_id, 'runs', run_uuid)
@@ -126,6 +129,9 @@ class RecipeService:
                     run_uuid,
                     'execution_context.json',
                 )
+            context = fact['execution_context']
+            history_count = context.get('history_count', 0)
+            context['messages'] = context['messages'][:1] + context['messages'][1 + history_count :]
             await self.store.snapshot(user_id, 'recipes', identifier, 'request.json', fact)
             state = await self.store.commit(
                 user_id,
