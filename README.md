@@ -347,6 +347,47 @@ After your first conversation, choose another model, connect MCP tools, or load 
 
 For scheduled jobs with `ms-agent cron`, Agent Hub with `ms-agent agent`, and more commands, see the [CLI reference](docs/en/GetStarted/CLI.md).
 
+### AIGC lightweight service
+
+`service/aigc` exposes the lightweight SDK through FastAPI. Its default profile enables only the documented image-inference HTTP API, without local tools, sandbox, MCP, workflows, or databases. Docker uses Python 3.12, one coordinator, and a local persistent volume.
+
+Build from the repository root:
+
+```bash
+docker build -f docker/aigc.Dockerfile --build-arg GIT_SHA="$(git rev-parse --short HEAD)" -t ms-agent-aigc:dev .
+```
+
+Prepare three deployment-only credential files for service authentication, the LLM, and the image API, then start:
+
+```bash
+export AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
+export LLM_API_KEY_PATH=/absolute/path/llm-api-key
+export API_TOKEN_PATH=/absolute/path/image-api-token
+docker compose -f docker/aigc.compose.yaml up -d --build
+```
+
+The default binding is `127.0.0.1:8000`. Override `LLM_MODEL`, `LLM_BASE_URL`, and `API_BASE_URL` for your deployment. Configure concurrency/local skills in `service/aigc/configs/service.yaml`, and allowed image models/parameters in `api_tools.yaml`. Mount replacement configuration read-only and set `AIGC_CONFIG` / `API_TOOLS_CONFIG`. Model access and actual API availability must be verified by the deployment owner.
+
+For source-only local debugging, use Python 3.12 and install `requirements/aigc-lock.txt` with `--require-hashes`. Set `DATA_DIR`, `AIGC_SERVICE_TOKEN`, `LLM_API_KEY`, and `API_TOKEN`, then run `python -m service.aigc` from the repository root. Do not use `pip install .` for the minimal service environment: the SDK `[aigc]` extra still includes its base framework dependencies.
+
+Business requests require `Authorization: Bearer <service-token>` and `X-User-Id` supplied by a trusted backend. Never expose the service credential to browsers or allow untrusted clients to impersonate users. The prefix is `/v1/aigc`; complete schemas and errors are available at `/docs` and `/openapi.json`.
+
+| Operation | HTTP | Contract |
+|---|---|---|
+| StartRun | `POST /runs` | Required `run_uuid`, `session_id`, `messages`; identical input under the same ID is not executed twice; conflicting input returns 409 |
+| GetRun | `GET /runs/{run_uuid}` | Query status, command receipts, complete results, artifacts and external task IDs without starting execution |
+| SubscribeRunEvents | `GET /runs/{run_uuid}/events` | SSE with exclusive `after_seq` / `Last-Event-ID` replay; disconnecting does not stop a Run |
+| ControlRun | `POST /runs/{run_uuid}/commands` | Idempotent `command_id`; approve/skip/input/intervene/stop; pending interactions require their `interaction_id` |
+| GetOrBuildRecipe | `POST /runs/{run_uuid}/recipe` | `recipe_request_id`, `artifact_ids`, optional context; LLM-assisted editable JSON; repeat the request to retrieve its existing state/result |
+
+Example StartRun: `{"run_uuid":"11111111-1111-4111-8111-111111111111","session_id":"session-1","profile_id":"aigc_assistant","messages":[{"role":"user","content":"Generate an image of a cat"}]}`. Image calls wait for approval by default. Use `pending_interaction.interaction_id` from GetRun in `{"command_id":"approve-1","type":"approve","interaction_id":"<id>"}`.
+
+New Run acceptance returns 202; retrieve results through GetRun or SSE. Recipe returns 202 while building; repeat the same request to obtain its terminal result. A stop before StartRun creates a cancellation tombstone. Stopping local polling does not cancel remote inference; the documented image API does not support cancellation. Runs within a session are serialized, and memory is isolated by user/session. Public events do not expose private model reasoning.
+
+On restart, committed events/artifacts remain available; unfinished Runs become `interrupted` and **are not automatically resumed or resubmitted**. A new execution requires a new `run_uuid`. Removing the volume loses idempotency/replay records. Automatic cleanup, multiple writer replicas, and shared network filesystems are not supported. Image artifacts contain remote URLs, whose lifetime is not guaranteed.
+
+Health endpoints: `/health/live`, `/health/ready`. Disable SSE buffering in the gateway. Run tests with `python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`; install pytest, pytest-asyncio, and httpx for development.
+
 <a id="applications"></a>
 
 ## 🎯 Applications

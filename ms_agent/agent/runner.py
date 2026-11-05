@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ms_agent.agent.context import RunContext
@@ -30,6 +31,8 @@ from ms_agent.agent.schema import (
     StreamEvent,
     ToolResult,
 )
+from ms_agent.session.locking import PersistenceError
+from ms_agent.tools.schema import ExternalTaskUnresolved, ToolInvocationContext
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +84,7 @@ class AgentRunner:
             history = await ctx.session_store.load_history(ctx.session_id)
 
             # 2. Recall relevant memories
-            memory_entries = await ctx.memory_service.recall(
-                history + ctx.messages,
-            )
+            memory_entries = await ctx.memory_service.recall(history + ctx.messages) if ctx.memory_enabled else []
 
             # 3. Build system prompt
             system_prompt = self._build_system_prompt(ctx, memory_entries)
@@ -94,6 +95,19 @@ class AgentRunner:
                 history,
                 ctx.messages,
             )
+
+            if ctx.record is not None:
+                await ctx.record(
+                    'execution_context',
+                    {
+                        'messages': llm_messages,
+                        'memories': memory_entries,
+                        'skills': ctx.skill_service.get_active_skills() if ctx.skill_service else [],
+                    },
+                )
+            await ctx.session_store.append(ctx.session_id, ctx.messages)
+            persisted = len(llm_messages)
+            completed = False
 
             # 5. Function-calling loop
             tool_specs = ctx.tool_registry.get_tool_specs()
@@ -106,6 +120,10 @@ class AgentRunner:
             round_count = 0
 
             while round_count < ctx.max_rounds:
+                if ctx.control is not None:
+                    await ctx.control.boundary(llm_messages)
+                if ctx.record is not None:
+                    await ctx.record('llm_started', {'round': round_count})
                 # Call LLM
                 llm_response = await self._call_llm(
                     ctx,
@@ -132,7 +150,16 @@ class AgentRunner:
                     )
                     seq += 1
 
+                if not tool_calls and ctx.control is not None and ctx.control.interventions:
+                    llm_messages.append({'role': 'assistant', 'content': content})
+                    await ctx.control.boundary(llm_messages)
+                    await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
+                    persisted = len(llm_messages)
+                    round_count += 1
+                    continue
+
                 if not tool_calls:
+                    completed = True
                     # No tool calls — final response
                     yield StreamEvent(
                         event_type=EventType.LLM_COMPLETE,
@@ -182,7 +209,14 @@ class AgentRunner:
                         data={
                             'tool_name': result.tool_name,
                             'success': result.success,
-                            'content': result.content[:500],
+                            'content': result.content,
+                            'record': asdict(result)
+                            | {
+                                'result': asdict(result),
+                                'arguments': json.loads(tc['function']['arguments'])
+                                if isinstance(tc['function']['arguments'], str)
+                                else tc['function']['arguments'],
+                            },
                         },
                         seq=seq,
                     )
@@ -207,16 +241,21 @@ class AgentRunner:
                         }
                     )
 
+                await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
+                persisted = len(llm_messages)
                 round_count += 1
+
+            if not completed:
+                raise RuntimeError('MAX_ROUNDS_EXCEEDED')
 
             # 6. Persist session and ingest memories
             #    Compute new messages added during this run (after history +
             #    system prompt + request messages).
-            pre_run_len = 1 + len(history) + len(ctx.messages)
-            new_messages = llm_messages[pre_run_len:]
+            new_messages = llm_messages[persisted:]
             if new_messages:
                 await ctx.session_store.append(ctx.session_id, new_messages)
-            await ctx.memory_service.ingest(ctx.session_id, llm_messages)
+            if ctx.memory_enabled:
+                await ctx.memory_service.ingest(ctx.session_id, llm_messages[1 + len(history) :])
 
             # Emit stream end
             yield StreamEvent(
@@ -338,6 +377,9 @@ class AgentRunner:
                 }
             }
         """
+        if ctx.llm_client is not None:
+            return await ctx.llm_client.complete(messages, tools)
+
         # --- Primary path: ms_agent.llm ---
         try:
             return await self._call_llm_native(ctx, messages, tools)
@@ -563,9 +605,34 @@ class AgentRunner:
             else:
                 args = {}
 
+            func['arguments'] = json.dumps(args, ensure_ascii=False)
             start = time.monotonic()
             try:
-                result = await ctx.tool_registry.execute(name, args)
+                invocation_index = ctx.metadata.get('_invocation_index', 0)
+                ctx.metadata['_invocation_index'] = invocation_index + 1
+                invocation_id = f'{ctx.run_uuid}:tool:{invocation_index}'
+                if ctx.control is not None:
+                    args = await ctx.control.prepare_tool(
+                        invocation_id,
+                        name,
+                        args,
+                        ctx.tool_registry.parameters(name),
+                        ctx.tool_registry.requires_approval(name),
+                    )
+                    if args is None:
+                        return ToolResult.from_error(name, '工具调用已跳过', skipped=True)
+                func['arguments'] = json.dumps(args, ensure_ascii=False)
+                context = ToolInvocationContext(
+                    ctx.user_id, ctx.session_id, ctx.run_uuid, invocation_id, record=ctx.record
+                )
+                await context.emit('tool_started', {'tool_name': name, 'arguments': args})
+                result = await ctx.tool_registry.execute(name, args, context)
+                result.metadata['duration_ms'] = int((time.monotonic() - start) * 1000)
+                await context.emit('tool_completed', {'tool_name': name, 'arguments': args, 'result': asdict(result)})
+                if ctx.control is not None and (
+                    result.metadata.get('unresolved') or result.metadata.get('delivery_unknown')
+                ):
+                    raise ExternalTaskUnresolved('EXTERNAL_TASK_UNRESOLVED')
                 # Adapt from api_adapter.ToolResult to schema.ToolResult
                 # if they are different types.
                 if not isinstance(result, ToolResult):
@@ -583,6 +650,8 @@ class AgentRunner:
                     (time.monotonic() - start) * 1000,
                 )
                 return result
+            except (PersistenceError, ExternalTaskUnresolved):
+                raise
             except KeyError:
                 return ToolResult.from_error(
                     name,
@@ -592,4 +661,6 @@ class AgentRunner:
                 logger.warning('Tool %s failed: %s', name, exc, exc_info=True)
                 return ToolResult.from_error(name, str(exc))
 
+        if ctx.control is not None:
+            return [await _run_one(tc) for tc in tool_calls]
         return list(await asyncio.gather(*[_run_one(tc) for tc in tool_calls]))

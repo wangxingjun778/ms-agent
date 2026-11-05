@@ -1,0 +1,33 @@
+# 仅由服务端管理，不读取 ~/.ms_agent 的 MCP、plugin 或项目配置。
+service:
+  data_dir: /data
+  host: 0.0.0.0
+  port: 8000
+  max_runs: 4
+  queue_limit: 100
+  recipe_timeout: 120
+  recipe_concurrency: 1
+  shutdown_timeout: 30
+
+agent_config:
+  agent:
+    mode: lightweight
+    max_chat_round: 20
+    system_prompt: >-
+      你是 AIGC 助手。只使用已声明的 HTTP API 工具。
+      需要生成或编辑图片时保留参考图片 URL 的顺序，缺少参数时请求补充。
+      不执行本地代码、不使用 sandbox，不展示内部推理过程。
+  llm:
+    transport: http
+    model: "${LLM_MODEL:qwen-plus}"
+    base_url: "${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
+    timeout: 300
+  memory:
+    enabled: true
+    storage_backend: file
+    scope: session
+  skills:
+    enabled: true
+    dirs: []
+  tools:
+    builtin_enabled: false

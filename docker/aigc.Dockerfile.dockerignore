@@ -1,0 +1,16 @@
+# 使用白名单上下文，禁止凭据、用户数据与其他界面进入镜像。
+**
+!ms_agent/
+!ms_agent/**
+!service/
+!service/**
+!requirements/
+!requirements/aigc-lock.txt
+!docker/
+!docker/aigc.Dockerfile
+!docker/aigc.Dockerfile.dockerignore
+**/__pycache__/**
+**/*.pyc
+**/.env*
+**/*.log
+**/data/**

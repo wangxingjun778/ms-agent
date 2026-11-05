@@ -59,27 +59,19 @@ class SkillService:
             return
         self._initialized = True
         try:
-            from ms_agent.skill.catalog import SkillCatalog
-            from ms_agent.skill.prompt_injector import SkillPromptInjector
+            from pathlib import Path
 
-            catalog = SkillCatalog()
-            for skill_dir in self._skill_dirs:
-                try:
-                    catalog.scan_directory(skill_dir)
-                except Exception:  # noqa: BLE001
-                    logger.debug(
-                        'SkillService: failed to scan directory %s',
-                        skill_dir,
-                        exc_info=True,
-                    )
+            from ms_agent.skill.loader import SkillLoader
 
-            self._catalog = catalog
-            injection_mode = self._config.get('prompt_injection', 'all')
-            self._injector = SkillPromptInjector(
-                catalog,
-                prompt_injection=injection_mode,
-            )
+            if any(not Path(directory).is_dir() for directory in self._skill_dirs):
+                raise ValueError('指定的 skill 目录不存在')
+            self._catalog = SkillLoader().discover_skills(self._skill_dirs)
+            if self._skill_dirs and not self._catalog:
+                raise ValueError('指定目录没有有效的 SKILL.md')
         except Exception:  # noqa: BLE001
+            if self._config.get('strict'):
+                self._initialized = False
+                raise
             logger.debug(
                 'SkillService: skill infrastructure not available, degrading gracefully',
                 exc_info=True,
@@ -94,16 +86,15 @@ class SkillService:
         infrastructure is unavailable.
         """
         self._ensure_initialized()
-        if self._injector is None:
+        import re
+
+        if not self._catalog:
             return ''
-        try:
-            return self._injector.build_skill_prompt_section()
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                'SkillService: build_skill_prompt_section failed',
-                exc_info=True,
-            )
-            return ''
+        bodies = [
+            f'## {skill.name}\n' + re.sub(r'^---\s*\n.*?\n---\s*\n', '', skill.content, count=1, flags=re.DOTALL)
+            for skill in self._catalog.values()
+        ]
+        return '\n\n'.join(bodies)
 
     def get_active_skills(self) -> List[Dict[str, Any]]:
         """Return a list of active skill metadata dicts.
@@ -115,12 +106,14 @@ class SkillService:
         if self._catalog is None:
             return []
         try:
-            skills = self._catalog.get_enabled_skills()
+            skills = self._catalog or {}
             return [
                 {
                     'id': sid,
                     'name': getattr(skill, 'name', sid),
                     'description': getattr(skill, 'description', ''),
+                    'version': getattr(skill, 'version', 'latest'),
+                    'content': skill.content,
                 }
                 for sid, skill in skills.items()
             ]
@@ -169,3 +162,8 @@ class RunContext:
     llm_config: Dict[str, Any] = field(default_factory=dict)
     max_rounds: int = 20
     metadata: Dict[str, Any] = field(default_factory=dict)
+    run_uuid: str = ''
+    control: Any = None
+    record: Any = None
+    llm_client: Any = None
+    memory_enabled: bool = True

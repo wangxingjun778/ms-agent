@@ -1,13 +1,33 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from .catalog import SkillCatalog
-from .discovery import SkillDescriptor
-from .loader import SkillLoader, load_skills
-from .prompt_injector import SkillPromptInjector
-from .safety import SafetyFinding, SkillSafetyReport, SkillSafetyScanner
-from .schema import SkillFile, SkillSchema, SkillSchemaParser
-from .search import SkillSearchEngine
-from .skill_tools import SkillToolSet
-from .sources import SkillSource, SkillSourceType, parse_skill_source
+from importlib import import_module
+
+_EXPORTS = {
+    'SkillCatalog': 'catalog',
+    'SkillDescriptor': 'discovery',
+    'SkillLoader': 'loader',
+    'load_skills': 'loader',
+    'SkillPromptInjector': 'prompt_injector',
+    'SafetyFinding': 'safety',
+    'SkillSafetyReport': 'safety',
+    'SkillSafetyScanner': 'safety',
+    'SkillFile': 'schema',
+    'SkillSchema': 'schema',
+    'SkillSchemaParser': 'schema',
+    'SkillSearchEngine': 'search',
+    'SkillToolSet': 'skill_tools',
+    'SkillSource': 'sources',
+    'SkillSourceType': 'sources',
+    'parse_skill_source': 'sources',
+}
+
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    value = getattr(import_module(f'.{_EXPORTS[name]}', __name__), name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
     'SkillSchema',

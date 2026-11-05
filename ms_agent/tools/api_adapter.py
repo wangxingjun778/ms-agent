@@ -31,6 +31,10 @@ import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
+
+from ms_agent.session.locking import PersistenceError
+from ms_agent.tools.schema import ToolInvocationContext, ToolResult
 
 try:
     import aiohttp  # type: ignore
@@ -162,6 +166,7 @@ class APIToolSpec:
     parameters: Dict[str, Any]
     output_mapping: OutputMapping
     auth: Optional[AuthConfig] = None
+    requires_approval: bool = False
 
     def __post_init__(self) -> None:
         # Mirror ms_agent/tools/tool_manager.py's MAX_TOOL_NAME_LEN=64 contract
@@ -169,44 +174,6 @@ class APIToolSpec:
         # dropped by the dispatcher later.
         if len(self.name) > 64:
             raise ValueError(f'APIToolSpec.name must be <= 64 chars, got {len(self.name)}: {self.name!r}')
-
-
-@dataclass
-class ToolResult:
-    """Local tool-execution outcome for API tools.
-
-    See the module docstring for the relationship to
-    :class:`ms_agent.llm.utils.ToolResult`.
-    """
-
-    tool_name: str
-    success: bool
-    content: str
-    raw_data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_error(cls, tool_name: str, error_msg: str, **metadata: Any) -> 'ToolResult':
-        return cls(
-            tool_name=tool_name,
-            success=False,
-            content=error_msg,
-            error=error_msg,
-            metadata=metadata,
-        )
-
-    @classmethod
-    def from_success(
-        cls, tool_name: str, content: str, raw_data: Optional[Dict[str, Any]] = None, **metadata: Any
-    ) -> 'ToolResult':
-        return cls(
-            tool_name=tool_name,
-            success=True,
-            content=content,
-            raw_data=raw_data,
-            metadata=metadata,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -274,14 +241,16 @@ class APIToolAdapter:
 
     # ---- Execution -----------------------------------------------------------
 
-    async def execute(self, args: Dict[str, Any]) -> ToolResult:
+    async def execute(self, args: Dict[str, Any], context: Optional[ToolInvocationContext] = None) -> ToolResult:
         """Execute the API call. Routes to sync or async mode."""
         started = time.monotonic()
         try:
             if self._spec.api_config.async_mode:
-                result = await self._async_call(args)
+                result = await self._async_call(args, context)
             else:
-                result = await self._sync_call(args)
+                result = await self._sync_call(args, context)
+        except PersistenceError:
+            raise
         except asyncio.TimeoutError as exc:
             return ToolResult.from_error(
                 self._spec.name,
@@ -298,16 +267,16 @@ class APIToolAdapter:
         result.metadata.setdefault('duration', time.monotonic() - started)
         return result
 
-    async def _sync_call(self, args: Dict[str, Any]) -> ToolResult:
+    async def _sync_call(self, args: Dict[str, Any], context: Optional[ToolInvocationContext] = None) -> ToolResult:
         """Single HTTP request, extract success/error directly from body."""
         url = self._build_url(self._spec.api_config.path)
-        headers = self._build_headers()
+        headers = self._build_headers(context)
         data = await self._request(
             self._spec.api_config.method, url, headers, json_body=args, timeout=self._spec.api_config.timeout
         )
         return self._shape_result(data)
 
-    async def _async_call(self, args: Dict[str, Any]) -> ToolResult:
+    async def _async_call(self, args: Dict[str, Any], context: Optional[ToolInvocationContext] = None) -> ToolResult:
         """Submit task then poll until a terminal status is observed."""
         if not self._spec.api_config.poll_path:
             return ToolResult.from_error(
@@ -315,10 +284,23 @@ class APIToolAdapter:
                 'async_mode=true but api.poll_path is not configured',
             )
         submit_url = self._build_url(self._spec.api_config.path)
-        headers = self._build_headers()
-        submit_resp = await self._request(
-            self._spec.api_config.method, submit_url, headers, json_body=args, timeout=self._spec.api_config.timeout
-        )
+        headers = self._build_headers(context)
+        try:
+            submit_resp = await self._request(
+                self._spec.api_config.method, submit_url, headers, json_body=args, timeout=self._spec.api_config.timeout
+            )
+        except BaseException as exc:
+            if context is not None:
+                await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            return ToolResult.from_error(self.name, '外部提交结果未确认', delivery_unknown=True)
+        if (
+            submit_resp.get('_http_status', 200) >= 400
+            or self._extract_value(submit_resp, self._spec.output_mapping.status_path)
+            in self._spec.output_mapping.failure_statuses
+        ):
+            return self._shape_result(submit_resp)
 
         task_id = self._extract_value(submit_resp, self._spec.output_mapping.task_id_path)
         # Some task APIs put task_id at the top level instead of under
@@ -328,23 +310,48 @@ class APIToolAdapter:
             task_id = submit_resp.get('task_id')
         if not task_id:
             err = self._extract_value(submit_resp, self._spec.output_mapping.error_path)
+            if context is not None and not err:
+                await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
             return ToolResult.from_error(
                 self._spec.name,
                 f'Task submission did not return task_id: {err or submit_resp}',
                 raw=submit_resp,
+                delivery_unknown=not bool(err),
             )
 
-        logger.info('API tool %s submitted async task %s', self._spec.name, task_id)
-        final = await self._poll_task(str(task_id))
+        if context is not None:
+            await context.emit(
+                'task_submitted',
+                {
+                    'tool_name': self.name,
+                    'task_id': str(task_id),
+                    'request_id': submit_resp.get('request_id'),
+                    'task_status': submit_resp.get('task_status'),
+                    'remote_cancel_supported': False,
+                },
+            )
+        try:
+            final = await self._poll_task(str(task_id), context)
+        except Exception:
+            return ToolResult.from_error(self.name, '外部任务查询未完成', task_id=str(task_id), unresolved=True)
         result = self._shape_result(final)
         result.metadata['task_id'] = str(task_id)
+        result.metadata['unresolved'] = bool(
+            final.get('_poll_timeout')
+            or final.get('_invalid_status')
+            or (
+                final.get('_http_status', 200) >= 400
+                and self._extract_value(final, self._spec.output_mapping.status_path)
+                not in self._spec.output_mapping.failure_statuses
+            )
+        )
         return result
 
-    async def _poll_task(self, task_id: str) -> Dict[str, Any]:
+    async def _poll_task(self, task_id: str, context: Optional[ToolInvocationContext] = None) -> Dict[str, Any]:
         """Poll until status is terminal or ``poll_timeout`` elapses."""
         poll_path = self._spec.api_config.poll_path or ''
-        url = self._build_url(poll_path, task_id=task_id)
-        headers = self._build_headers()
+        url = self._build_url(poll_path, task_id=quote(task_id, safe=''))
+        headers = self._build_headers(context)
         # Poll endpoints are almost always GET; a few schemes use POST but
         # the ``method`` field describes the *submit* call, not the poll —
         # keep polling GET-only unless/until a real counterexample shows up.
@@ -352,9 +359,35 @@ class APIToolAdapter:
         interval = max(0.1, float(self._spec.api_config.poll_interval))
         last = {}
         while True:
-            data = await self._request('GET', url, headers, json_body=None, timeout=self._spec.api_config.timeout)
+            for attempt in range(3):
+                try:
+                    data = await self._request(
+                        'GET',
+                        url,
+                        headers,
+                        json_body=None,
+                        timeout=min(self._spec.api_config.timeout, max(0.1, deadline - time.monotonic())),
+                    )
+                    if data.get('_http_status', 200) < 500 and data.get('_http_status') != 429:
+                        break
+                except (OSError, asyncio.TimeoutError):
+                    if attempt == 2:
+                        raise
+                if attempt < 2:
+                    await asyncio.sleep(min(2**attempt, max(0, deadline - time.monotonic())))
             last = data if isinstance(data, dict) else {'raw': data}
+            if last.get('_http_status', 200) >= 400 or self._extract_value(last, self._spec.output_mapping.error_path):
+                return last
             status = self._extract_value(last, self._spec.output_mapping.status_path)
+            if status not in [
+                *self._spec.output_mapping.success_statuses,
+                *self._spec.output_mapping.failure_statuses,
+                'PENDING',
+                'PROCESSING',
+                'RUNNING',
+            ]:
+                last['_invalid_status'] = True
+                return last
             if status in self._spec.output_mapping.success_statuses:
                 return last
             if status in self._spec.output_mapping.failure_statuses:
@@ -399,6 +432,14 @@ class APIToolAdapter:
         ``task_status=FAILED`` + ``errors.message``, so trusting the HTTP
         status alone would surface a success for a logically failed task.
         """
+        status = data.get('_http_status', 200)
+        if (
+            status >= 400
+            or data.get('_invalid_status')
+            or self._extract_value(data, self._spec.output_mapping.status_path)
+            in self._spec.output_mapping.failure_statuses
+        ):
+            return ToolResult.from_error(self.name, '外部 API 请求失败', raw=data, http_status=status)
         if data.get('_poll_timeout'):
             return ToolResult.from_error(
                 self._spec.name,
@@ -414,7 +455,7 @@ class APIToolAdapter:
         success_path = self._spec.output_mapping.success_path
         if success_path:
             value = self._extract_value(data, success_path)
-            if value is None:
+            if value is None or value == []:
                 return ToolResult.from_error(
                     self._spec.name,
                     f'Response missing success field at {success_path!r}',
@@ -436,12 +477,15 @@ class APIToolAdapter:
             path = '/' + path
         return f'{self._base_url}{path}'
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self, context: Optional[ToolInvocationContext] = None) -> Dict[str, str]:
         """Build request headers: Content-Type + auth + per-tool extras."""
         headers: Dict[str, str] = {'Content-Type': 'application/json'}
         auth_type = (self._auth.type or 'none').lower()
         if auth_type != 'none':
-            token = self._auth.resolve_token()
+            token = context.credentials.get(self.name) if context is not None else None
+            token = token or self._auth.resolve_token()
+            if not token:
+                raise ValueError('外部 API 凭据未配置')
             if token:
                 if auth_type == 'bearer':
                     headers['Authorization'] = f'Bearer {token}'
@@ -540,8 +584,8 @@ def _parse_json_or_wrap(text: str, status: int) -> Dict[str, Any]:
             },
         }
     if isinstance(parsed, dict):
-        return parsed
-    return {'data': parsed}
+        return {**parsed, '_http_status': status}
+    return {'data': parsed, '_http_status': status}
 
 
 def _urllib_request(

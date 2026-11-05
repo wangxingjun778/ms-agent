@@ -15,7 +15,11 @@ import asyncio
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from jsonschema import Draft202012Validator
+
+from ms_agent.tools.schema import ToolInvocationContext
 
 try:
     import aiohttp  # type: ignore
@@ -126,6 +130,7 @@ def _spec_from_dict(entry: Dict[str, Any]) -> APIToolSpec:
         parameters=dict(entry['parameters']),
         output_mapping=_output_from_dict(entry.get('output_mapping')),
         auth=_auth_from_dict(entry.get('auth')) if entry.get('auth') else None,
+        requires_approval=bool(entry.get('requires_approval', False)),
     )
 
 
@@ -143,11 +148,16 @@ class APIToolRegistry:
     def __init__(
         self,
         http_client: Optional['aiohttp.ClientSession'] = None,
+        *,
+        strict: bool = False,
+        credential_provider: Optional[Callable[[ToolInvocationContext], Awaitable[Dict[str, str]]]] = None,
     ) -> None:
         self._tools: Dict[str, APIToolAdapter] = {}
         self._http_client = http_client
         self._owns_client = False
         self._loaded = False
+        self._strict = strict
+        self._credential_provider = credential_provider
 
     # ---- Loading ------------------------------------------------------------
 
@@ -155,7 +165,7 @@ class APIToolRegistry:
         """Load tools from a YAML config file (``api_tools.yaml`` format)."""
         if not _HAS_YAML:
             raise RuntimeError("PyYAML is required for load_from_config; install via 'pip install pyyaml'")
-        if not os.path.isfile(config_path):
+        if not config_path or not os.path.isfile(config_path):
             raise FileNotFoundError(f'API tools config not found: {config_path}')
         with open(config_path, 'r', encoding='utf-8') as fh:
             raw = yaml.safe_load(fh) or {}
@@ -190,8 +200,19 @@ class APIToolRegistry:
             try:
                 spec = _spec_from_dict(entry)
             except ValueError as exc:
+                if self._strict:
+                    raise
                 logger.error('Invalid API tool config: %s', exc)
                 continue
+            if not entry.get('enabled', True):
+                continue
+            Draft202012Validator.check_schema(spec.parameters)
+            if (
+                self._strict
+                and (spec.auth or default_auth).type != 'none'
+                and not (spec.auth or default_auth).resolve_token()
+            ):
+                raise ValueError(f'工具 {spec.name} 缺少凭据')
             self.register(spec, base_url, default_auth)
             count += 1
 
@@ -210,6 +231,8 @@ class APIToolRegistry:
         warning is emitted so an accidental name clash in a hand-edited
         YAML is at least visible in logs.
         """
+        if spec.name in self._tools and self._strict:
+            raise ValueError(f'工具名称重复: {spec.name}')
         if spec.name in self._tools:
             logger.warning('APIToolRegistry: replacing existing tool %r', spec.name)
         adapter = APIToolAdapter(
@@ -243,7 +266,18 @@ class APIToolRegistry:
 
     # ---- Execution ----------------------------------------------------------
 
-    async def execute(self, tool_name: str, args: Dict[str, Any]) -> ToolResult:
+    def parameters(self, tool_name: str) -> Dict[str, Any]:
+        return self._tools[tool_name].parameters_schema
+
+    def requires_approval(self, tool_name: str) -> bool:
+        return self._tools[tool_name]._spec.requires_approval
+
+    async def execute(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        context: Optional[ToolInvocationContext] = None,
+    ) -> ToolResult:
         """Execute a tool by name.
 
         Raises
@@ -255,7 +289,12 @@ class APIToolRegistry:
         """
         if tool_name not in self._tools:
             raise KeyError(tool_name)
-        return await self._tools[tool_name].execute(args or {})
+        Draft202012Validator(self.parameters(tool_name)).validate(args)
+        if context is not None and self._credential_provider is not None:
+            from dataclasses import replace
+
+            context = replace(context, credentials=await self._credential_provider(context))
+        return await self._tools[tool_name].execute(args or {}, context)
 
     # ---- Lifecycle ----------------------------------------------------------
 

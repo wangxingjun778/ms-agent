@@ -12,8 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from ms_agent.memory.unified.backends.file_based import FileBasedBackend
-from ms_agent.memory.unified.config import MemoryConfig
+from ms_agent.session.locking import PathLocks, PersistenceError, durable_io, safe_path, validate_id
 from ms_agent.utils.atomic_file import atomic_write_json, atomic_write_text
 from ms_agent.utils.logger import get_logger
 
@@ -38,36 +37,30 @@ class MemoryService:
         base_dir: str,
         user_id: str,
         llm_client: Any = None,
+        *,
+        session_id: Optional[str] = None,
+        locks: Optional[PathLocks] = None,
+        strict: bool = False,
     ) -> None:
         """Configure the service; backend and directories are initialized lazily."""
         self.user_id = self._validate_user_id(user_id)
-        self.memory_dir = Path(base_dir).expanduser() / 'users' / self.user_id / 'memory'
+        self._root = Path(base_dir).expanduser().absolute()
+        parts = ('users', self.user_id, 'memory')
+        if session_id is not None:
+            parts = ('users', self.user_id, 'sessions', validate_id(session_id, 'session_id'), 'memory')
+        self._parts = parts
+        self.memory_dir = safe_path(self._root, *parts)
         self.llm_client = llm_client
-        self._lock = asyncio.Lock()
-        self._backend: Optional[FileBasedBackend] = None
+        self._lock = (locks or PathLocks()).for_path(self.memory_dir)
+        self._strict = strict
         self._closed = False
 
-    async def _ensure_backend(self) -> FileBasedBackend:
-        """Lazily construct and start the existing file-based backend."""
+    async def _ensure_backend(self) -> None:
+        """只创建文件目录，不初始化 unified/FTS 或其他可选集成。"""
         async with self._lock:
             if self._closed:
                 raise RuntimeError('MemoryService is closed')
-            if self._backend is None:
-                await asyncio.to_thread(self.memory_dir.mkdir, parents=True, exist_ok=True)
-                config = MemoryConfig(
-                    base_dir=str(self.memory_dir),
-                    user_id=self.user_id,
-                    storage_backend='file',
-                    retrieval_strategy='full_dump',
-                    extraction_strategy='tool_based',
-                    security_scan=False,
-                    char_limit=1_000_000,
-                )
-                backend = FileBasedBackend(config)
-                start_kwargs = {'llm': self.llm_client} if self.llm_client is not None else {}
-                await backend.start(**start_kwargs)
-                self._backend = backend
-            return self._backend
+            await durable_io(safe_path(self._root, *self._parts).mkdir, parents=True, exist_ok=True)
 
     async def recall(
         self,
@@ -102,11 +95,11 @@ class MemoryService:
         """
         if self._closed or not messages:
             return
-        backend = await self._ensure_backend()
+        await self._ensure_backend()
         async with self._lock:
             try:
-                entries = await asyncio.to_thread(self._read_entries_sync)
-                state = await asyncio.to_thread(self._read_state_sync)
+                entries = await durable_io(self._read_entries_sync)
+                state = await durable_io(self._read_state_sync)
                 ledger = list(state.get('hashes') or [])
                 seen: Set[str] = set(str(item) for item in ledger)
                 seen.update(
@@ -141,13 +134,13 @@ class MemoryService:
                     )
 
                 if new_entries:
-                    await asyncio.to_thread(self._append_entries_sync, new_entries)
+                    await durable_io(self._append_entries_sync, new_entries)
                     entries.extend(new_entries)
 
                 if not batch_hashes:
                     return
 
-                await asyncio.to_thread(self._write_memory_markdown_sync, entries)
+                await durable_io(self._write_memory_markdown_sync, entries)
                 for content_hash in new_hashes:
                     if content_hash not in seen:
                         ledger.append(content_hash)
@@ -161,7 +154,7 @@ class MemoryService:
                     'hashes': new_hashes,
                     'updated_at': self._now(),
                 }
-                await asyncio.to_thread(
+                await durable_io(
                     atomic_write_json,
                     self._state_path,
                     {
@@ -169,9 +162,11 @@ class MemoryService:
                         'hashes': ledger,
                         'sessions': sessions,
                     },
+                    fsync=True,
                 )
-                backend.invalidate()
             except (OSError, TypeError, ValueError) as exc:
+                if self._strict:
+                    raise PersistenceError('记忆写入失败') from exc
                 logger.warning('Memory ingest failed for user %s: %s', self.user_id, exc)
 
     async def search(
@@ -185,7 +180,7 @@ class MemoryService:
             return []
         await self._ensure_backend()
         async with self._lock:
-            entries = await asyncio.to_thread(self._read_entries_sync)
+            entries = await durable_io(self._read_entries_sync)
         return self._rank_entries(query, entries, top_k)
 
     async def add(
@@ -198,17 +193,16 @@ class MemoryService:
         content = str(content or '').strip()
         if not content:
             raise ValueError('memory content must not be empty')
-        backend = await self._ensure_backend()
+        await self._ensure_backend()
         entry = self._new_entry(
             content=content,
             category=str(category or 'general'),
             metadata=dict(metadata or {}),
         )
         async with self._lock:
-            await asyncio.to_thread(self._append_entries_sync, [entry])
-            entries = await asyncio.to_thread(self._read_entries_sync)
-            await asyncio.to_thread(self._write_memory_markdown_sync, entries)
-            backend.invalidate()
+            await durable_io(self._append_entries_sync, [entry])
+            entries = await durable_io(self._read_entries_sync)
+            await durable_io(self._write_memory_markdown_sync, entries)
 
     async def close(self) -> None:
         """Close backend resources; closing is idempotent and terminal."""
@@ -216,25 +210,19 @@ class MemoryService:
             if self._closed:
                 return
             self._closed = True
-            backend = self._backend
-            self._backend = None
-            if backend is not None:
-                try:
-                    await backend.close()
-                except Exception as exc:  # noqa: BLE001 - cleanup is best effort
-                    logger.warning('Closing memory backend failed: %s', exc)
+            self.llm_client = None
 
     @property
     def _entries_path(self) -> Path:
-        return self.memory_dir / 'memories.jsonl'
+        return safe_path(self._root, *self._parts, 'memories.jsonl')
 
     @property
     def _state_path(self) -> Path:
-        return self.memory_dir / 'ingest_state.json'
+        return safe_path(self._root, *self._parts, 'ingest_state.json')
 
     @property
     def _markdown_path(self) -> Path:
-        return self.memory_dir / 'MEMORY.md'
+        return safe_path(self._root, *self._parts, 'MEMORY.md')
 
     def _read_entries_sync(self) -> List[Dict[str, Any]]:
         if not self._entries_path.exists():
@@ -248,12 +236,16 @@ class MemoryService:
                         continue
                     try:
                         entry = json.loads(line)
-                    except (json.JSONDecodeError, TypeError):
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        if self._strict:
+                            raise PersistenceError('记忆日志损坏') from exc
                         logger.warning('Ignoring malformed memory record %s:%s', self._entries_path, line_number)
                         continue
                     if isinstance(entry, dict) and isinstance(entry.get('content'), str):
                         entries.append(entry)
         except OSError as exc:
+            if self._strict:
+                raise PersistenceError('记忆日志读取失败') from exc
             logger.warning('Unable to read memory file %s: %s', self._entries_path, exc)
         return entries
 
@@ -271,17 +263,15 @@ class MemoryService:
         try:
             state = json.loads(self._state_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, TypeError) as exc:
+            if self._strict:
+                raise PersistenceError('记忆状态损坏') from exc
             logger.warning('Unable to read ingest state %s: %s', self._state_path, exc)
             return {'version': 1, 'hashes': [], 'sessions': {}}
-        return (
-            state
-            if isinstance(state, dict)
-            else {
-                'version': 1,
-                'hashes': [],
-                'sessions': {},
-            }
-        )
+        if not isinstance(state, dict):
+            if self._strict:
+                raise PersistenceError('记忆状态不是对象')
+            return {'version': 1, 'hashes': [], 'sessions': {}}
+        return state
 
     def _write_memory_markdown_sync(
         self,

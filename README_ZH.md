@@ -342,6 +342,47 @@ pip install -e '.[all]'
 
 定时任务 `ms-agent cron`、Agent Hub `ms-agent agent` 及更多命令见 [CLI 参考](docs/zh/GetStarted/cli.md)。
 
+### AIGC 轻量服务
+
+`service/aigc` 提供独立 FastAPI 服务，直接调用轻量 SDK，默认只开放图片推理 HTTP API；不启用本地工具、sandbox、MCP、workflow 或数据库。Docker 使用 Python 3.12，单协调器和本机持久卷。
+
+在仓库根目录构建：
+
+```bash
+docker build -f docker/aigc.Dockerfile --build-arg GIT_SHA="$(git rev-parse --short HEAD)" -t ms-agent-aigc:dev .
+```
+
+准备三个仅部署环境可读的凭据文件，分别用于服务间认证、LLM、图片 API，再启动：
+
+```bash
+export AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
+export LLM_API_KEY_PATH=/absolute/path/llm-api-key
+export API_TOKEN_PATH=/absolute/path/image-api-token
+docker compose -f docker/aigc.compose.yaml up -d --build
+```
+
+默认仅映射 `127.0.0.1:8000`。`LLM_MODEL`、`LLM_BASE_URL` 和 `API_BASE_URL` 可覆盖模型与接口地址；通过 `service/aigc/configs/service.yaml` 配置并发和本地 skills，通过 `api_tools.yaml` 配置允许的图片模型和参数。替换配置时只读挂载目录，并指定 `AIGC_CONFIG` / `API_TOOLS_CONFIG`。模型权限和真实接口可用性需部署方确认。
+
+源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `DATA_DIR`、`AIGC_SERVICE_TOKEN`、`LLM_API_KEY`、`API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
+
+所有业务请求必须带 `Authorization: Bearer <service-token>` 和可信 backend 注入的 `X-User-Id`。不要向浏览器泄露服务凭据，也不要允许客户端直接自报用户身份访问。接口前缀为 `/v1/aigc`；完整模型与错误定义见 `/docs`、`/openapi.json`。
+
+| 接口 | HTTP | 关键契约 |
+|---|---|---|
+| StartRun | `POST /runs` | 必填 `run_uuid`、`session_id`、`messages`；固定 ID 同输入不重复执行，冲突返回 409 |
+| GetRun | `GET /runs/{run_uuid}` | 查询状态、命令回执、完整结果、产物和外部 task_id；不触发执行 |
+| SubscribeRunEvents | `GET /runs/{run_uuid}/events` | SSE，`after_seq` 或 `Last-Event-ID` 排他回放；断流不停止执行 |
+| ControlRun | `POST /runs/{run_uuid}/commands` | `command_id` 幂等；支持 approve/skip/input/intervene/stop，按 interaction_id 响应待输入 |
+| GetOrBuildRecipe | `POST /runs/{run_uuid}/recipe` | `recipe_request_id`、`artifact_ids`、可选 context；LLM 辅助生成可编辑 JSON，相同 ID 取原构建状态/结果 |
+
+StartRun 示例：`{"run_uuid":"11111111-1111-4111-8111-111111111111","session_id":"session-1","profile_id":"aigc_assistant","messages":[{"role":"user","content":"生成一张猫的图片"}]}`。图片调用默认等待授权，使用 GetRun 的 `pending_interaction.interaction_id` 提交 `{"command_id":"approve-1","type":"approve","interaction_id":"<id>"}`。
+
+受理返回 202，结果通过 GetRun / SSE 取得。Recipe 正在构建时返回 202，重复调用同一请求取得终态。停止先于启动时保存取消墓碑；停止本地轮询不意味着远端推理已取消，当前图片 API 不支持取消。相同会话串行，不同 user/session 的记忆隔离。公开事件不包含模型私有推理。
+
+重启保留已提交事件和产物，未终态标为 `interrupted`，**不自动续跑或重提图片任务**；新执行必须换 `run_uuid`。不要移除持久卷，否则幂等/回放记录会丢失。首版不自动清理数据，不支持多副本或共享网络文件系统。图片产物只保存远端 URL，不能保证 URL 永不过期。
+
+健康检查：`/health/live`、`/health/ready`；网关需要关闭 SSE 缓冲。开发测试：`python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`，需安装 pytest、pytest-asyncio、httpx。
+
 <a id="应用项目"></a>
 
 ## 🎯 应用项目

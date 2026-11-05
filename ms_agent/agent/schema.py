@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from ms_agent.tools.schema import ToolResult
+
 __all__ = [
     'AgentRequest',
     'AgentResponse',
@@ -102,57 +104,6 @@ class AgentRequest:
             messages=messages,
             config_overrides=dict(overrides) if isinstance(overrides, dict) else None,
             stream=bool(data.get('stream', True)),
-        )
-
-
-@dataclass
-class ToolResult:
-    """Normalized result returned by a tool invocation."""
-
-    tool_name: str
-    success: bool
-    content: str
-    raw_data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_error(cls, tool_name: str, error_msg: str) -> 'ToolResult':
-        """Create a failed tool result."""
-        return cls(
-            tool_name=tool_name,
-            success=False,
-            content=error_msg,
-            error=error_msg,
-        )
-
-    @classmethod
-    def from_success(
-        cls,
-        tool_name: str,
-        content: str,
-        raw_data: Optional[Dict[str, Any]] = None,
-    ) -> 'ToolResult':
-        """Create a successful tool result."""
-        return cls(
-            tool_name=tool_name,
-            success=True,
-            content=content,
-            raw_data=raw_data,
-        )
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ToolResult':
-        """Deserialize a tool result."""
-        raw_data = data.get('raw_data')
-        metadata = data.get('metadata')
-        return cls(
-            tool_name=str(data.get('tool_name', '')),
-            success=bool(data.get('success', False)),
-            content=str(data.get('content', '')),
-            raw_data=dict(raw_data) if isinstance(raw_data, dict) else None,
-            error=None if data.get('error') is None else str(data['error']),
-            metadata=dict(metadata) if isinstance(metadata, dict) else {},
         )
 
 

@@ -3,6 +3,11 @@ include LICENSE
 include requirements.txt
 recursive-include requirements *.txt
 recursive-include ms_agent/ *.yaml
+recursive-include service/aigc/configs *.yaml
+include docker/aigc.Dockerfile
+include docker/aigc.Dockerfile.dockerignore
+include docker/aigc.compose.yaml
+recursive-include .dev_scripts/aigc *.py
 
 # agent_hub cross-framework conversion templates (markdown, not yaml)
 recursive-include ms_agent/agent_hub/default_configs *

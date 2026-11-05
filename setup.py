@@ -212,12 +212,14 @@ if __name__ == '__main__':
     extra_requires['cinema'], _ = parse_requirements('requirements/cinema.txt')
     extra_requires['docs'], _ = parse_requirements('requirements/docs.txt')
     extra_requires['webui'], _ = parse_requirements('requirements/webui.txt')
+    extra_requires['lightweight'], _ = parse_requirements('requirements/lightweight.txt')
+    extra_requires['aigc'], _ = parse_requirements('requirements/aigc.txt')
 
     # ``all`` aggregates every *runtime* extra so that `pip install ms-agent[all]`
     # yields a fully-featured install. ``docs`` is build-only and intentionally
     # excluded. De-duplicated for a clean, deterministic dependency set.
     all_requires = list(install_requires)
-    for _group in ('research', 'code', 'acp', 'a2a', 'retrieval', 'cinema', 'webui'):
+    for _group in ('research', 'code', 'acp', 'a2a', 'retrieval', 'cinema', 'webui', 'aigc'):
         all_requires.extend(extra_requires[_group])
     extra_requires['all'] = sorted(set(all_requires))
 
@@ -246,6 +248,7 @@ if __name__ == '__main__':
                 # Capability Gateway skill package (copied into ms_agent/skills at build).
                 'skills/**/*',
             ],
+            'service.aigc': ['configs/*.yaml'],
             '': ['*.h', '*.cpp', '*.cu'],
         },
         classifiers=[

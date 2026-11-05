@@ -21,6 +21,7 @@ Or for non-streaming::
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import uuid4
 
@@ -32,7 +33,9 @@ from ms_agent.agent.schema import (
     MessageInput,
     StreamEvent,
 )
+from ms_agent.llm.http_client import HTTPLLMClient
 from ms_agent.memory.service import MemoryService
+from ms_agent.session.locking import PathLocks
 from ms_agent.session.store import SessionStore
 from ms_agent.tools.api_registry import APIToolRegistry
 
@@ -60,8 +63,12 @@ class AgentService:
             - ``skills.dirs`` — List of skill directories (optional).
     """
 
-    def __init__(self, config: Dict[str, Any]) -> None:
-        self._config = config
+    def __init__(self, config: Dict[str, Any], *, locks: Optional[PathLocks] = None, llm_client: Any = None) -> None:
+        self._config = deepcopy(config)
+        self._locks = locks or PathLocks()
+        self._llm_client = llm_client
+        self._http_session = None
+        self._skill_service = None
         self._runner = AgentRunner()
         self._tool_registry: Optional[APIToolRegistry] = None
         self._initialized = False
@@ -78,28 +85,51 @@ class AgentService:
         tools_config = self._config.get('tools', {})
         api_config_path = str(tools_config.get('api_tools_config', '') or '')
 
-        self._tool_registry = APIToolRegistry()
+        import aiohttp
+
+        self._http_session = aiohttp.ClientSession()
+        self._tool_registry = APIToolRegistry(self._http_session, strict=bool(self._config.get('strict')))
         if api_config_path:
             try:
                 await self._tool_registry.load_from_config(api_config_path)
             except FileNotFoundError:
+                if self._config.get('strict'):
+                    await self.shutdown()
+                    raise
                 logger.warning(
                     'API tools config not found at %s; continuing without API tools',
                     api_config_path,
                 )
             except Exception:  # noqa: BLE001
+                if self._config.get('strict'):
+                    await self.shutdown()
+                    raise
                 logger.warning(
                     'Failed to load API tools from %s',
                     api_config_path,
                     exc_info=True,
                 )
 
+        skills_config = self._config.get('skills', {})
+        if skills_config.get('enabled', True) and skills_config.get('dirs'):
+            self._skill_service = SkillService(
+                list(skills_config['dirs']),
+                {**skills_config, 'strict': bool(self._config.get('strict'))},
+            )
+            try:
+                self._skill_service.build_skill_prompt_section()
+            except BaseException:
+                await self.shutdown()
+                raise
         self._initialized = True
 
     async def shutdown(self) -> None:
         """Graceful shutdown.  Close shared resources."""
         if self._tool_registry is not None:
             await self._tool_registry.close()
+        if self._http_session is not None:
+            await self._http_session.close()
+            self._http_session = None
         self._initialized = False
 
     async def __aenter__(self) -> 'AgentService':
@@ -113,7 +143,14 @@ class AgentService:
     # Request handling
     # ------------------------------------------------------------------
 
-    async def run(self, request: AgentRequest) -> AsyncIterator[StreamEvent]:
+    async def run(
+        self,
+        request: AgentRequest,
+        *,
+        run_uuid: str = '',
+        control: Any = None,
+        record: Any = None,
+    ) -> AsyncIterator[StreamEvent]:
         """Process a request, yielding :class:`StreamEvent` objects.
 
         Constructs per-request, user-isolated services and delegates to
@@ -132,7 +169,9 @@ class AgentService:
                 '/tmp/ms_agent/sessions',
             ),
         )
-        session_store = SessionStore(session_base, request.user_id)
+        session_store = SessionStore(
+            session_base, request.user_id, self._locks, strict=bool(self._config.get('strict'))
+        )
         await session_store.create_session(session_id)
 
         # Per-user memory service
@@ -142,17 +181,18 @@ class AgentService:
                 '/tmp/ms_agent/memory',
             ),
         )
-        memory_service = MemoryService(memory_base, request.user_id)
+        memory_config = self._config.get('memory', {})
+        memory_service = MemoryService(
+            memory_base,
+            request.user_id,
+            session_id=session_id if memory_config.get('scope') == 'session' else None,
+            locks=self._locks,
+            strict=bool(self._config.get('strict')),
+        )
 
         # Skill service (optional)
         skill_service: Optional[SkillService] = None
-        skills_config = self._config.get('skills', {})
-        skill_dirs = skills_config.get('dirs') or []
-        if skill_dirs:
-            skill_service = SkillService(
-                skill_dirs=list(skill_dirs),
-                config=skills_config,
-            )
+        skill_service = self._skill_service
 
         # Convert MessageInput objects to internal message dicts
         messages = self._convert_messages(request.messages)
@@ -163,12 +203,16 @@ class AgentService:
             user_id=request.user_id,
             session_id=session_id,
             messages=messages,
-            config=agent_config,
+            config=deepcopy(agent_config),
             session_store=session_store,
             memory_service=memory_service,
             tool_registry=self._tool_registry,  # type: ignore[arg-type]
             skill_service=skill_service,
-            llm_config=self._config.get('llm', {}),
+            llm_config=deepcopy(self._config.get('llm', {})),
+            run_uuid=run_uuid,
+            control=control,
+            record=record,
+            memory_enabled=bool(memory_config.get('enabled', True)),
             max_rounds=int(
                 agent_config.get('max_chat_round', 20) or 20,
             ),
@@ -177,6 +221,9 @@ class AgentService:
         # Apply per-request config overrides
         if request.config_overrides:
             self._apply_overrides(ctx, request.config_overrides)
+
+        if ctx.llm_config.get('transport') == 'http':
+            ctx.llm_client = self._llm_client or HTTPLLMClient(ctx.llm_config, self._http_session)
 
         # Delegate to runner
         try:
@@ -208,6 +255,9 @@ class AgentService:
                 'content': msg.content,
             }
             if msg.attachments:
+                urls = [a.url for a in msg.attachments if a.url]
+                if urls:
+                    d['content'] += '\n参考图片（保持顺序）：\n' + '\n'.join(urls)
                 d['attachments'] = [
                     {
                         'type': a.type,

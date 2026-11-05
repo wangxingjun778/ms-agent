@@ -16,7 +16,23 @@ from pathlib import Path
 from typing import Any, Union
 
 
-def atomic_write_text(path: Union[str, Path], text: str, *, encoding: str = 'utf-8', fsync: bool = False) -> None:
+def fsync_directory(path: Union[str, Path]) -> None:
+    """持久提交目录项；只在要求崩溃恢复的 POSIX 服务路径使用。"""
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_write_text(
+    path: Union[str, Path],
+    text: str,
+    *,
+    encoding: str = 'utf-8',
+    fsync: bool = False,
+    sync_directory: bool = False,
+) -> None:
     """Replace what is at ``path`` with ``text`` in one indivisible step.
 
     Creates the parent directory if it is missing. Set ``fsync`` to flush to
@@ -35,6 +51,8 @@ def atomic_write_text(path: Union[str, Path], text: str, *, encoding: str = 'utf
                 os.fsync(f.fileno())
         # replace(), not rename(): rename() fails on Windows if path exists.
         os.replace(tmp, path)
+        if sync_directory:
+            fsync_directory(path.parent)
     except BaseException:
         with suppress(OSError):
             os.unlink(tmp)
@@ -42,8 +60,19 @@ def atomic_write_text(path: Union[str, Path], text: str, *, encoding: str = 'utf
 
 
 def atomic_write_json(
-    path: Union[str, Path], data: Any, *, indent: Union[int, None] = 2, ensure_ascii: bool = False, fsync: bool = False
+    path: Union[str, Path],
+    data: Any,
+    *,
+    indent: Union[int, None] = 2,
+    ensure_ascii: bool = False,
+    fsync: bool = False,
+    sync_directory: bool = False,
 ) -> None:
     """:func:`atomic_write_text` for JSON."""
     # Serialized first, so an unencodable value leaves no temp file behind.
-    atomic_write_text(path, json.dumps(data, ensure_ascii=ensure_ascii, indent=indent), fsync=fsync)
+    atomic_write_text(
+        path,
+        json.dumps(data, ensure_ascii=ensure_ascii, indent=indent),
+        fsync=fsync,
+        sync_directory=sync_directory,
+    )

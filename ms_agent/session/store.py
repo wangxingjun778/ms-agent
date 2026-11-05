@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ms_agent.session.locking import PathLocks, PersistenceError, durable_io, safe_path
 from ms_agent.session.session_log import SessionLog
 from ms_agent.utils.atomic_file import atomic_write_json
 from ms_agent.utils.logger import get_logger
@@ -36,11 +37,20 @@ class SessionStore:
     session's read-modify-append and metadata update operations.
     """
 
-    def __init__(self, base_dir: str, user_id: str) -> None:
+    def __init__(
+        self,
+        base_dir: str,
+        user_id: str,
+        locks: Optional[PathLocks] = None,
+        *,
+        strict: bool = False,
+    ) -> None:
         """Initialize an isolated store without creating any session files."""
         self.user_id = self._validate_id(user_id, 'user_id')
-        self.base_path = Path(base_dir).expanduser() / 'users' / self.user_id / 'sessions'
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._root = Path(base_dir).expanduser().absolute()
+        self.base_path = safe_path(self._root, 'users', self.user_id, 'sessions')
+        self._locks = locks or PathLocks()
+        self._strict = strict
 
     async def load_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Return conversational records from a session's append-only log.
@@ -52,12 +62,12 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            await asyncio.to_thread(
+            await durable_io(
                 self._session_dir(session_id).mkdir,
                 parents=True,
                 exist_ok=True,
             )
-            return await asyncio.to_thread(self._read_history_sync, self._jsonl_path(session_id))
+            return await durable_io(self._read_history_sync, self._jsonl_path(session_id))
 
     async def append(
         self,
@@ -71,7 +81,7 @@ class SessionStore:
         snapshot = [dict(message) for message in messages]
         lock = self._lock_for(session_id)
         async with lock:
-            await asyncio.to_thread(
+            await durable_io(
                 self._append_sync,
                 self._session_dir(session_id),
                 session_id,
@@ -83,7 +93,7 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            return await asyncio.to_thread(
+            return await durable_io(
                 self._read_metadata_sync,
                 self._meta_path(session_id),
                 session_id,
@@ -98,7 +108,7 @@ class SessionStore:
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            await asyncio.to_thread(
+            await durable_io(
                 self._update_metadata_sync,
                 self._meta_path(session_id),
                 session_id,
@@ -107,8 +117,8 @@ class SessionStore:
 
     async def list_sessions(self) -> List[Dict[str, Any]]:
         """List metadata for every session directory owned by this user."""
-        await asyncio.to_thread(self.base_path.mkdir, parents=True, exist_ok=True)
-        session_ids = await asyncio.to_thread(self._list_session_ids_sync)
+        await durable_io(self.base_path.mkdir, parents=True, exist_ok=True)
+        session_ids = await durable_io(self._list_session_ids_sync)
         metadata = [await self.get_metadata(session_id) for session_id in session_ids]
         return sorted(
             metadata,
@@ -121,53 +131,70 @@ class SessionStore:
         session_id = self._validate_id(session_id or str(uuid.uuid4()), 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
-            await asyncio.to_thread(
-                SessionLog,
-                self._session_dir(session_id),
-                session_id,
-            )
+            self._jsonl_path(session_id)
+            self._meta_path(session_id)
+            await durable_io(self._create_sync, self._session_dir(session_id), session_id)
         return session_id
 
     def _session_dir(self, session_id: str) -> Path:
         """Return the isolated directory for ``session_id``."""
         safe_id = self._validate_id(session_id, 'session_id')
-        return self.base_path / safe_id
+        return safe_path(self._root, 'users', self.user_id, 'sessions', safe_id)
 
     def _jsonl_path(self, session_id: str) -> Path:
         """Return the append-only JSONL path for ``session_id``."""
         safe_id = self._validate_id(session_id, 'session_id')
-        return self._session_dir(safe_id) / f'{safe_id}.jsonl'
+        return safe_path(self._session_dir(safe_id), f'{safe_id}.jsonl')
 
     def _meta_path(self, session_id: str) -> Path:
         """Return the mutable metadata sidecar path for ``session_id``."""
         safe_id = self._validate_id(session_id, 'session_id')
-        return self._session_dir(safe_id) / f'{safe_id}.meta.json'
+        return safe_path(self._session_dir(safe_id), f'{safe_id}.meta.json')
 
     def _lock_for(self, session_id: str) -> asyncio.Lock:
-        lock = self._locks.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[session_id] = lock
-        return lock
+        return self._locks.for_path(self._session_dir(session_id))
 
     def _list_session_ids_sync(self) -> List[str]:
         try:
             return [path.name for path in self.base_path.iterdir() if path.is_dir()]
         except OSError as exc:
+            if self._strict:
+                raise PersistenceError('无法读取会话目录') from exc
             logger.warning('Unable to list sessions in %s: %s', self.base_path, exc)
             return []
 
-    @staticmethod
-    def _append_sync(
-        directory: Path,
-        session_id: str,
-        messages: List[Dict[str, Any]],
-    ) -> None:
+    def _validate_session_files(self, directory: Path, session_id: str) -> None:
+        if not self._strict:
+            return
+        try:
+            log_path = safe_path(directory, f'{session_id}.jsonl')
+            meta_path = safe_path(directory, f'{session_id}.meta.json')
+            if log_path.exists():
+                previous = -1
+                for line in log_path.read_text(encoding='utf-8').splitlines():
+                    record = json.loads(line)
+                    if not isinstance(record, dict):
+                        raise ValueError('会话日志记录不是对象')
+                    seq = record.get('seq')
+                    if seq is not None:
+                        if not isinstance(seq, int) or seq <= previous:
+                            raise ValueError('会话日志 seq 损坏')
+                        previous = seq
+            if meta_path.exists() and not isinstance(json.loads(meta_path.read_text(encoding='utf-8')), dict):
+                raise ValueError('会话元数据不是对象')
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise PersistenceError('会话文件损坏') from exc
+
+    def _create_sync(self, directory: Path, session_id: str) -> None:
+        self._validate_session_files(directory, session_id)
+        SessionLog(directory, session_key=session_id)
+
+    def _append_sync(self, directory: Path, session_id: str, messages: List[Dict[str, Any]]) -> None:
+        self._validate_session_files(directory, session_id)
         log = SessionLog(directory, session_key=session_id)
         log.append_messages(messages)
 
-    @staticmethod
-    def _read_history_sync(path: Path) -> List[Dict[str, Any]]:
+    def _read_history_sync(self, path: Path) -> List[Dict[str, Any]]:
         if not path.exists():
             return []
         messages: List[Dict[str, Any]] = []
@@ -179,7 +206,9 @@ class SessionStore:
                         continue
                     try:
                         record = json.loads(line)
-                    except (json.JSONDecodeError, TypeError):
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        if self._strict:
+                            raise PersistenceError('会话日志损坏') from exc
                         logger.warning('Ignoring malformed session record %s:%s', path, line_number)
                         continue
                     if not isinstance(record, dict):
@@ -191,38 +220,33 @@ class SessionStore:
                         continue
                     messages.append(record)
         except OSError as exc:
+            if self._strict:
+                raise
             logger.warning('Unable to read session history %s: %s', path, exc)
         return messages
 
-    @classmethod
-    def _read_metadata_sync(
-        cls,
-        path: Path,
-        session_id: str,
-    ) -> Dict[str, Any]:
-        defaults = cls._default_metadata(session_id)
+    def _read_metadata_sync(self, path: Path, session_id: str) -> Dict[str, Any]:
+        defaults = self._default_metadata(session_id)
         if not path.exists():
             return defaults
         try:
             data = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, TypeError) as exc:
+            if self._strict:
+                raise PersistenceError('会话元数据损坏') from exc
             logger.warning('Unable to read session metadata %s: %s', path, exc)
             return defaults
         if not isinstance(data, dict):
+            if self._strict:
+                raise PersistenceError('会话元数据不是对象')
             return defaults
         result = {**defaults, **data}
         result['session_id'] = session_id
         result['session_key'] = session_id
         return result
 
-    @classmethod
-    def _update_metadata_sync(
-        cls,
-        path: Path,
-        session_id: str,
-        updates: Dict[str, Any],
-    ) -> None:
-        metadata = cls._read_metadata_sync(path, session_id)
+    def _update_metadata_sync(self, path: Path, session_id: str, updates: Dict[str, Any]) -> None:
+        metadata = self._read_metadata_sync(path, session_id)
         metadata.update(updates)
         metadata['session_id'] = session_id
         metadata['session_key'] = session_id
