@@ -10,7 +10,7 @@ import pytest_asyncio
 from ms_agent.agent.api import AgentService
 from ms_agent.agent.run_service import RunService
 from ms_agent.session.run_store import FileRunStore
-from service.aigc.settings import Settings
+from service.aigc.settings import ServiceCredentials, Settings
 
 
 class FakeLLM:
@@ -56,33 +56,38 @@ async def wait_for(runs, identifier, status=None):
 
 
 @pytest.fixture
-def config(tmp_path):
-    return {
-        'strict': True,
-        'agent': {'mode': 'lightweight', 'max_chat_round': 5},
-        'tools': {'builtin_enabled': False},
-        'skills': {'enabled': False},
-        'session': {'base_dir': str(tmp_path)},
-        'memory': {'base_dir': str(tmp_path), 'scope': 'session', 'enabled': True},
-        'llm': {
-            'transport': 'http',
-            'model': 'test',
-            'api_key': 'test-model-secret',
-            'base_url': 'http://unused.invalid/v1',
+def settings(tmp_path):
+    return Settings(
+        storage={'data_dir': str(tmp_path)},
+        runtime={
+            'max_active_runs': 4,
+            'max_inflight_runs': 104,
+            'per_user_active': 4,
+            'per_user_inflight': 104,
+            'interaction_timeout': 0,
+            'drain_timeout': 0,
         },
-    }
+        agent={'max_chat_round': 5, 'model': 'test', 'base_url': 'http://unused.invalid/v1'},
+    ).bind_credentials(
+        ServiceCredentials(service='test-service-secret', llm='test-model-secret', api='test-image-secret')
+    )
 
 
 @pytest.fixture
-def settings(tmp_path, config):
-    return Settings(data_dir=str(tmp_path), service_token='test-service-secret', agent_config=config)
+def config(settings):
+    return settings.to_agent_config()
 
 
 @pytest_asyncio.fixture
-async def runtime(tmp_path, config):
+async def runtime(tmp_path, config, settings):
     llm = FakeLLM()
     store = FileRunStore(tmp_path)
-    runs = RunService(store, AgentService(config, locks=store.locks, llm_client=llm))
+    runs = RunService(
+        store,
+        AgentService(config, locks=store.locks, llm_client=llm),
+        runtime_config=settings.runtime.model_dump(),
+        event_config=settings.events.model_dump(),
+    )
     await runs.initialize()
     try:
         yield runs, llm

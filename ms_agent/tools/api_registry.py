@@ -17,25 +17,9 @@ import os
 import re
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+import aiohttp
+import yaml
 from jsonschema import Draft202012Validator
-
-from ms_agent.tools.schema import ToolInvocationContext
-
-try:
-    import aiohttp  # type: ignore
-
-    _HAS_AIOHTTP = True
-except ImportError:  # pragma: no cover — aiohttp is declared in requirements
-    aiohttp = None  # type: ignore
-    _HAS_AIOHTTP = False
-
-try:
-    import yaml  # type: ignore
-
-    _HAS_YAML = True
-except ImportError:  # pragma: no cover — PyYAML is declared in requirements
-    yaml = None  # type: ignore
-    _HAS_YAML = False
 
 from ms_agent.tools.api_adapter import (
     APIConfig,
@@ -45,6 +29,7 @@ from ms_agent.tools.api_adapter import (
     OutputMapping,
     ToolResult,
 )
+from ms_agent.tools.schema import ToolInvocationContext
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +155,6 @@ class APIToolRegistry:
 
     async def load_from_config(self, config_path: str) -> None:
         """Load tools from a YAML config file (``api_tools.yaml`` format)."""
-        if not _HAS_YAML:
-            raise RuntimeError("PyYAML is required for load_from_config; install via 'pip install pyyaml'")
         if not config_path or not os.path.isfile(config_path):
             raise FileNotFoundError(f'API tools config not found: {config_path}')
         with open(config_path, 'r', encoding='utf-8') as fh:
@@ -311,11 +294,6 @@ class APIToolRegistry:
     async def _ensure_client(self) -> None:
         """Create a shared aiohttp session if none was injected."""
         if self._http_client is not None:
-            return
-        if not _HAS_AIOHTTP:
-            # Adapters will fall back to urllib-on-thread; log once so this
-            # is visible when the fallback path is exercised in production.
-            logger.warning('aiohttp not available; API tools will use blocking urllib in a worker thread')
             return
         self._http_client = aiohttp.ClientSession()
         self._owns_client = True

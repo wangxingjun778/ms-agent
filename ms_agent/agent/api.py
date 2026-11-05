@@ -207,8 +207,6 @@ class AgentService:
                 session_base,
                 request.user_id,
                 self._locks,
-                strict=bool(self._config.get('strict')),
-                optimized=bool(self._config.get('session', {}).get('optimized')),
                 cache=self._history_cache,
                 cache_entries=self._config.get('session', {}).get('cache_entries', 256),
                 cache_bytes=self._config.get('session', {}).get('cache_bytes', 67108864),
@@ -237,8 +235,6 @@ class AgentService:
             projection=memory_config.get('projection', True),
         )
 
-        # Skill service (optional)
-        skill_service: Optional[SkillService] = None
         skill_service = self._skill_service
 
         # Convert MessageInput objects to internal message dicts
@@ -269,10 +265,9 @@ class AgentService:
         if request.config_overrides:
             self._apply_overrides(ctx, request.config_overrides)
 
-        if ctx.llm_config.get('transport') == 'http':
-            ctx.llm_client = self._llm_client or HTTPLLMClient(
-                ctx.llm_config, self._http_session, limiter=self.limiters['llm']
-            )
+        ctx.llm_client = self._llm_client or HTTPLLMClient(
+            ctx.llm_config, self._http_session, limiter=self.limiters['llm']
+        )
 
         # Delegate to runner
         try:
@@ -324,8 +319,6 @@ class AgentService:
         """Apply per-request configuration overrides to the context."""
         if 'max_rounds' in overrides:
             ctx.max_rounds = int(overrides['max_rounds'])
-        if 'max_chat_round' in overrides:
-            ctx.max_rounds = int(overrides['max_chat_round'])
         if 'system_prompt' in overrides:
             ctx.config = {**ctx.config, 'system_prompt': overrides['system_prompt']}
         if 'llm' in overrides and isinstance(overrides['llm'], dict):

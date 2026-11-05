@@ -837,19 +837,23 @@ variables 中的每项：
 ready 检查运行服务是否接受任务、台账是否健康以及协调器是否持有文件租约，不发送收费模型请求，也不证明远端图片 API 可用。
 
 - [统一服务配置](aigc/configs/service.yaml)：server、auth、storage、runtime、events、upstreams、agent、recipe、observability、eas、tools.api、secrets。图片工具 schema 和白名单也在该文件。
-- `API_TOOLS_CONFIG` 已移除并在启动时拒绝；旧 api_tools.yaml 不再参与服务加载。只通过 `AIGC_CONFIG` 选择配置文件。
+- 旧 `service/aigc/configs/api_tools.yaml` 已删除。只通过 `AIGC_CONFIG` 选择统一配置；`API_TOOLS_CONFIG`、`AIGC_QUEUE_LIMIT` 均在启动时拒绝。
 - [Dockerfile](../docker/aigc.Dockerfile)、[Compose](../docker/aigc.compose.yaml)：Python 3.12、单协调器、非 root、只读根文件系统、本地数据卷。
 - [中文启动说明](../README_ZH.md#aigc-轻量服务)：镜像构建、部署凭据与本地调试。
 
 当前服务保持单进程、单协调器，不支持同一数据目录多副本写入。本地 POSIX 文件系统可用；NAS 必须验证 NFSv4 跨客户端 flock，生产锁策略 require 会拒绝 NFSv3/本地锁退化及对象存储/FUSE。epoch 仅作意外接管检测，不能替代互斥或提供分布式 fencing。存储故障会停止新副作用并使探针失败；日志损坏只隔离对应记录。
 
-journal 是唯一事实来源，内存缓存只缓存已持久提交的状态和事件；缓存按条数/序列化大小限额淘汰，冷查询会读盘。热提交不重读 journal，常规事件做 journal 与目录各一次 fsync；受理、快照、终态投影和索引变更会有额外同步。活跃索引先于首次 journal 提交写入、终态提交后清理；旧数据首次启动仍需全量扫描，后续只恢复活跃项。不提供自动删除历史数据；清理必须另行授权，不能删除仍需保持幂等的记录。
+journal 是唯一事实来源，内存缓存只缓存已持久提交的状态和事件；缓存按条数/序列化大小限额淘汰，冷查询会读盘。热提交不重读 journal，常规事件做 journal 与目录各一次 fsync；受理、快照、终态投影和索引变更会有额外同步。活跃索引先于首次 journal 提交写入、终态提交后清理；首次建立恢复索引时仍需校验现有 journal，后续只恢复活跃项；这是持久化完整性检查，不提供旧配置或旧格式转换。不提供自动删除历史数据；清理必须另行授权，不能删除仍需保持幂等的记录。
 
 ## 13. 配置、单 Pod 调优与 EAS 部署
 
 ### 13.1 配置生效规则
 
-唯一运行配置是 `service/aigc/configs/service.yaml`，由类型化 Settings 校验。所有环境覆盖在 YAML 的 `${VAR:default}` 中显式列出；凭据名由 `secrets` 声明，读取 `NAME` 或 `NAME_FILE`，凭据不进入冻结快照、部署 JSON 或日志。`AIGC_MAX_RUNS` 控制活跃槽，`AIGC_MAX_INFLIGHT` 控制总在途容量；兼容 `AIGC_QUEUE_LIMIT` 的等待容量，但不能同时设置两种总容量覆盖。
+唯一运行配置是 `service/aigc/configs/service.yaml`，由类型化 Settings 校验。所有环境覆盖在 YAML 的 `${VAR:default}` 中显式列出；凭据名由 `secrets` 声明，读取 `NAME` 或 `NAME_FILE`，凭据不进入冻结快照、部署 JSON 或日志。`AIGC_MAX_RUNS` 控制活跃槽，`AIGC_MAX_INFLIGHT` 控制总在途容量。旧配置字段、环境入口及程序化构造别名不再支持。
+
+程序化使用 `Settings.load()` 加载配置，访问 `settings.server`、`settings.runtime` 等嵌套对象；不接受根层 `data_dir`、`max_runs`、`queue_limit`、`agent_config` 等旧字段。测试或嵌入调用的凭据使用 `ServiceCredentials` 单独注入，再通过 `settings.to_agent_config()` 派生 SDK 参数。服务入口不再合并 SDK 的另一份默认 YAML。
+
+存储统一使用带缓存、活跃索引和批量持久化的新实现，不提供 `optimized=False` 双轨。轻量执行只使用显式注入的 LLM 客户端和 aiohttp API 工具，不回退到旧模型调用或 urllib；通用 SDK 的独立功能不属于服务配置入口。
 
 修改配置后重启生效，不提供热更新。可通过 `/health/ready` 与受服务凭据保护的 `/internal/stats` 核对 `config_digest`。初始 64 活跃槽 / 32 LLM 并发不是压测保证，须按上游 RPM/TPM、响应时长、RSS 和 p95 排队时间校准。RPM=0 表示不做本地 RPM 限制，不表示远端无限额。上游连接池、IO 线程数、重试次数/总预算、交互超时、SSE 时长、keep-alive 和 drain 都集中在此文件。
 

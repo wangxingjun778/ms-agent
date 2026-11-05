@@ -1,7 +1,9 @@
 """图片 API 契约、错误、取消与 task_id 持久化顺序。"""
 
 import asyncio
+from unittest.mock import Mock
 
+import aiohttp
 import pytest
 
 from ms_agent.session.locking import PersistenceError
@@ -31,7 +33,9 @@ def adapter():
         {'type': 'object'},
         OutputMapping(success_path='output_images', task_id_path='task_id', status_path='task_status'),
     )
-    return APIToolAdapter(spec, 'http://test', AuthConfig(type='bearer', token='fake-token'))
+    return APIToolAdapter(
+        spec, 'http://test', AuthConfig(type='bearer', token='fake-token'), http_client=Mock(spec=aiohttp.ClientSession)
+    )
 
 
 @pytest.mark.asyncio

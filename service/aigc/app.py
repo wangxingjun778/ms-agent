@@ -21,7 +21,7 @@ from ms_agent.session.locking import PersistenceError
 from ms_agent.session.run_store import FileRunStore, StorageCorrupted
 from service.aigc.dependencies import User
 from service.aigc.routers import recipes, runs
-from service.aigc.settings import ServerSettings, Settings, read_secret
+from service.aigc.settings import Settings
 from service.aigc.telemetry import Telemetry, configure_logging
 
 
@@ -42,11 +42,11 @@ class RequestBoundary:
             return await self.app(scope, receive, send)
         request_id = uuid4().hex
         scope.setdefault('state', {})['request_id'] = request_id
-        settings = getattr(self.application.state, 'settings', None)
+        settings = self.application.state.settings
         telemetry = getattr(self.application.state, 'telemetry', None)
         if telemetry:
             telemetry.http_requests += 1
-        limit = settings.max_body_bytes if settings else ServerSettings().max_body_bytes
+        limit = settings.server.max_body_bytes
         if scope['method'] in {'POST', 'PUT', 'PATCH'}:
             body = bytearray()
             while True:
@@ -98,35 +98,34 @@ class RequestBoundary:
 def create_app(settings: Settings | None = None, *, llm_client=None, recipe_llm=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        effective = settings or Settings.from_env()
+        effective = settings or Settings.load()
         application.state.settings = effective
+        agent_config = effective.to_agent_config()
+        credentials = effective.credentials
         store = FileRunStore(
-            effective.data_dir,
-            optimized=True,
+            effective.storage.data_dir,
             cache_entries=effective.storage.cache_entries,
             cache_bytes=effective.storage.cache_bytes,
             projection=effective.storage.projection,
             secret_values=(
-                effective.service_token.get_secret_value(),
-                effective.agent_config['llm'].get('api_key', ''),
-                read_secret(effective.secrets.api),
+                credentials.service.get_secret_value(),
+                credentials.llm.get_secret_value(),
+                credentials.api.get_secret_value(),
             ),
         )
         executor = ThreadPoolExecutor(max_workers=effective.storage.io_workers, thread_name_prefix='aigc-io')
         store.locks.executor = executor
-        store.lease_wait = effective.storage.lease_wait
         store.lease.check_filesystem(effective.storage.lock_policy)
         if effective.observability.json_logs:
             configure_logging(store.secret_values)
         logging.getLogger(__name__).info('配置已加载 %s', effective.config_digest)
-        agent = AgentService(effective.agent_config, locks=store.locks, llm_client=llm_client)
+        agent = AgentService(agent_config, locks=store.locks, llm_client=llm_client)
         runtime = RunService(
             store,
             agent,
-            max_runs=effective.max_runs,
-            queue_limit=effective.queue_limit,
             runtime_config=effective.runtime.model_dump(),
             event_config=effective.events.model_dump(),
+            lease_wait=effective.storage.lease_wait,
         )
         application.state.runs = runtime
         builder = None
@@ -139,12 +138,12 @@ def create_app(settings: Settings | None = None, *, llm_client=None, recipe_llm=
                 runtime,
                 recipe_llm
                 or HTTPLLMClient(
-                    effective.agent_config['llm'],
+                    agent_config['llm'],
                     agent._http_session,
                     limiter=agent.limiters['llm'],
                 ),
-                timeout=effective.recipe_timeout,
-                concurrency=effective.recipe_concurrency,
+                timeout=effective.recipe.timeout,
+                concurrency=effective.recipe.concurrency,
                 max_inflight=effective.recipe.max_inflight,
             )
             application.state.recipes = builder

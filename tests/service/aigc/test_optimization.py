@@ -53,22 +53,73 @@ def configured(monkeypatch):
     monkeypatch.setenv('AIGC_SERVICE_TOKEN', 'secret-service')
     monkeypatch.setenv('LLM_API_KEY', 'secret-llm')
     monkeypatch.setenv('API_TOKEN', 'secret-image')
-    return Settings.from_env()
+    return Settings.load()
+
+
+@pytest.mark.parametrize(
+    'legacy',
+    [
+        {'service': {'max_runs': 4}},
+        {'agent_config': {}},
+        {'service_token': 'old'},
+        {'data_dir': '/tmp/old'},
+        {'host': '127.0.0.1'},
+        {'port': 8001},
+        {'max_runs': 4},
+        {'queue_limit': 100},
+        {'shutdown_timeout': 30},
+        {'max_body_bytes': 1024},
+        {'recipe_timeout': 60},
+        {'recipe_concurrency': 2},
+        {'runtime': {'queue_limit': 10}},
+    ],
+)
+def test_removed_settings_entries_are_rejected(legacy):
+    with pytest.raises(ValidationError):
+        Settings.model_validate(legacy)
+
+
+@pytest.mark.parametrize('name', ['API_TOOLS_CONFIG', 'AIGC_QUEUE_LIMIT'])
+def test_obsolete_environment_is_rejected(configured, monkeypatch, name):
+    monkeypatch.setenv(name, 'old-value')
+    with pytest.raises(ValueError, match=name):
+        Settings.load()
+
+
+def test_service_configuration_no_second_yaml(configured, monkeypatch):
+    import ms_agent.config.lightweight as lightweight
+
+    monkeypatch.setattr(
+        lightweight, 'load_lightweight_config', lambda *_args, **_kwargs: pytest.fail('禁止合并旧 SDK 配置')
+    )
+    assert Settings.load().to_agent_config()['session']['base_dir'] == configured.storage.data_dir
+    assert not hasattr(configured, 'data_dir')
+    assert not hasattr(configured, 'agent_config')
+    assert not hasattr(AgentRunner, '_call_llm_native')
+    assert not hasattr(AgentRunner, '_call_llm_http')
+    assert not (ROOT / 'service/aigc/configs/api_tools.yaml').exists()
+
+
+def test_storage_has_only_one_implementation(tmp_path):
+    with pytest.raises(TypeError):
+        FileRunStore(tmp_path, optimized=False)
+    with pytest.raises(TypeError):
+        SessionStore(str(tmp_path), 'u', optimized=False)
 
 
 def test_unified_configuration_and_secrets(configured, monkeypatch):
-    assert configured.max_runs == 64
+    assert configured.runtime.max_active_runs == 64
     assert configured.runtime.max_inflight_runs == 500
-    assert configured.agent_config['tools']['api']['auth']['token'] == 'secret-image'
+    assert configured.to_agent_config()['tools']['api']['auth']['token'] == 'secret-image'
     exported = json.dumps(configured.effective_config())
     assert all(value not in exported for value in ('secret-service', 'secret-llm', 'secret-image'))
     assert configured.config_digest == configured.config_digest
     monkeypatch.setenv('AIGC_MAX_RUNS', '16')
-    monkeypatch.setenv('AIGC_QUEUE_LIMIT', '20')
-    assert Settings.from_env().runtime.max_inflight_runs == 36
+    monkeypatch.setenv('AIGC_MAX_INFLIGHT', '36')
+    assert Settings.load().runtime.max_inflight_runs == 36
     monkeypatch.setenv('API_TOOLS_CONFIG', 'ignored.yaml')
     with pytest.raises(ValueError, match='API_TOOLS_CONFIG'):
-        Settings.from_env()
+        Settings.load()
 
 
 @pytest.mark.parametrize(
@@ -123,7 +174,7 @@ def test_eas_generator_has_isolated_mounts_and_correct_rpc(configured):
 
 @pytest.mark.asyncio
 async def test_hot_store_reads_and_commits_do_not_replay(tmp_path, monkeypatch):
-    store = FileRunStore(tmp_path, optimized=True, projection='never')
+    store = FileRunStore(tmp_path, projection='never')
     await store.recover()
     async with store.lock('u', 'runs', 'r'):
         await store.commit('u', 'runs', 'r', {'status': 'running'}, 'run_started')
@@ -146,11 +197,11 @@ async def test_hot_store_reads_and_commits_do_not_replay(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_active_index_recovery_no_full_scan(tmp_path, monkeypatch):
-    store = FileRunStore(tmp_path, optimized=True, projection='terminal')
+    store = FileRunStore(tmp_path, projection='terminal')
     await store.recover()
     await store.commit('u', 'runs', 'active', {'status': 'running'})
     await store.commit('u', 'runs', 'done', {'status': 'succeeded'})
-    revived = FileRunStore(tmp_path, optimized=True)
+    revived = FileRunStore(tmp_path)
 
     async def forbidden():
         pytest.fail('已有索引不应扫描全部历史')
@@ -168,7 +219,7 @@ async def test_corrupt_journal_isolated_and_never_reused(tmp_path):
     await old.commit('u', 'runs', 'bad', {'status': 'running'})
     bad = old.directory('u', 'runs', 'bad') / 'journal.jsonl'
     bad.write_text('{}\n', encoding='utf-8')
-    store = FileRunStore(tmp_path, optimized=True)
+    store = FileRunStore(tmp_path)
     await store.recover()
     with pytest.raises(StorageCorrupted):
         await store.read('u', 'runs', 'bad')
@@ -180,7 +231,7 @@ async def test_corrupt_journal_isolated_and_never_reused(tmp_path):
 
 @pytest.mark.asyncio
 async def test_epoch_change_fails_closed(tmp_path):
-    store = FileRunStore(tmp_path, optimized=True)
+    store = FileRunStore(tmp_path)
     store.lease.acquire()
     try:
         await store.initialize_epoch()
@@ -232,14 +283,21 @@ async def test_interaction_releases_slot_and_timeout():
 
 
 @pytest.mark.asyncio
-async def test_waiting_run_does_not_block_other_user(tmp_path, config):
+async def test_waiting_run_does_not_block_other_user(tmp_path, config, settings):
     call = {'id': 'x', 'function': {'name': 'test_tool', 'arguments': '{}'}}
     llm = FakeLLM([{'role': 'assistant', 'tool_calls': [call]}, {'role': 'assistant', 'content': 'ok'}])
     runs = RunService(
-        FileRunStore(tmp_path, optimized=True),
+        FileRunStore(tmp_path),
         AgentService(config, llm_client=llm),
-        max_runs=1,
-        runtime_config={'per_user_active': 1, 'max_inflight_runs': 3, 'per_user_inflight': 2, 'interaction_timeout': 1},
+        runtime_config={
+            **settings.runtime.model_dump(),
+            'max_active_runs': 1,
+            'per_user_active': 1,
+            'max_inflight_runs': 3,
+            'per_user_inflight': 2,
+            'interaction_timeout': 1,
+        },
+        event_config=settings.events.model_dump(),
     )
     await runs.initialize()
     try:
@@ -275,13 +333,19 @@ async def test_waiting_run_does_not_block_other_user(tmp_path, config):
 
 
 @pytest.mark.asyncio
-async def test_same_user_multiple_sessions_and_queue_reservation(tmp_path, config):
+async def test_same_user_multiple_sessions_and_queue_reservation(tmp_path, config, settings):
     llm = FakeLLM(delay=0.05)
     runs = RunService(
         FileRunStore(tmp_path),
         AgentService(config, llm_client=llm),
-        max_runs=1,
-        runtime_config={'per_user_active': 1, 'max_inflight_runs': 5, 'per_user_inflight': 2},
+        runtime_config={
+            **settings.runtime.model_dump(),
+            'max_active_runs': 1,
+            'per_user_active': 1,
+            'max_inflight_runs': 5,
+            'per_user_inflight': 2,
+        },
+        event_config=settings.events.model_dump(),
     )
     await runs.initialize()
     try:
@@ -340,7 +404,7 @@ async def test_sse_no_lost_wakeup_or_idle_journal_replay(runtime, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_optimized_session_batch_seq_and_single_flush(tmp_path, monkeypatch):
-    store = SessionStore(str(tmp_path), 'u', optimized=True, strict=True)
+    store = SessionStore(str(tmp_path), 'u')
     await store.create_session('s')
     fsyncs = []
     original = os.fsync
@@ -350,7 +414,7 @@ async def test_optimized_session_batch_seq_and_single_flush(tmp_path, monkeypatc
     await store.append('s', [{'role': 'user', 'content': 'three'}])
     history = await store.load_history('s')
     assert [r['seq'] for r in history] == [0, 1, 2]
-    fresh = SessionStore(str(tmp_path), 'u', optimized=True, strict=True)
+    fresh = SessionStore(str(tmp_path), 'u')
     assert len(await fresh.load_history('s')) == 3
 
 
@@ -514,7 +578,7 @@ async def test_cancelled_predecessor_does_not_release_later_run_early(runtime):
 
 @pytest.mark.asyncio
 async def test_cache_eviction_and_nested_event_mutation(tmp_path):
-    store = FileRunStore(tmp_path, optimized=True, cache_entries=1, projection='never')
+    store = FileRunStore(tmp_path, cache_entries=1, projection='never')
     await store.commit('u', 'runs', 'a', {'status': 'running'}, 'started', {'x': 1})
     _, events = await store.read('u', 'runs', 'a')
     events[0]['data']['x'] = 99
@@ -528,7 +592,7 @@ async def test_cache_eviction_and_nested_event_mutation(tmp_path):
 async def test_projection_failure_preserves_committed_terminal(tmp_path, monkeypatch):
     import ms_agent.session.run_store as module
 
-    store = FileRunStore(tmp_path, optimized=True, projection='terminal')
+    store = FileRunStore(tmp_path, projection='terminal')
     await store.recover()
     await store.commit('u', 'runs', 'a', {'status': 'running'})
     original = module.atomic_write_json
@@ -542,7 +606,7 @@ async def test_projection_failure_preserves_committed_terminal(tmp_path, monkeyp
     with pytest.raises(PersistenceError):
         await store.commit('u', 'runs', 'a', {'status': 'succeeded'})
     assert not store.healthy
-    new = FileRunStore(tmp_path, optimized=True, projection='never')
+    new = FileRunStore(tmp_path, projection='never')
     await new.recover()
     assert (await new.read('u', 'runs', 'a'))[0]['status'] == 'succeeded'
     assert not new._index_entries()
@@ -574,7 +638,7 @@ def test_nfs_lock_policy_fails_closed(tmp_path, monkeypatch, fs_type, options, s
 
 def test_eas_render_preserves_visible_environment_overrides(configured, monkeypatch):
     monkeypatch.setenv('LLM_MODEL', 'test-model')
-    settings = Settings.from_env()
+    settings = Settings.load()
     settings.eas.image, settings.eas.nas_server = 'registry.example/app:v1', 'nas.example'
     document = render_eas(settings, 0)
     env = {entry['name']: entry['value'] for entry in document['containers'][0]['env']}

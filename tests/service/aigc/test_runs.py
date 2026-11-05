@@ -97,10 +97,15 @@ async def test_stop_running_has_final_receipt(runtime):
     assert (await runs.start('u1', body))[0]['status'] == 'cancelled'
 
 
-async def test_restart_queries_without_rerunning(tmp_path, config):
+async def test_restart_queries_without_rerunning(tmp_path, config, settings):
     llm = FakeLLM(delay=10)
     store = FileRunStore(tmp_path)
-    runs = RunService(store, AgentService(config, locks=store.locks, llm_client=llm))
+    runs = RunService(
+        store,
+        AgentService(config, locks=store.locks, llm_client=llm),
+        runtime_config=settings.runtime.model_dump(),
+        event_config=settings.events.model_dump(),
+    )
     await runs.initialize()
     body = request()
     await runs.start('u1', body)
@@ -108,7 +113,12 @@ async def test_restart_queries_without_rerunning(tmp_path, config):
     await runs.close()
     next_llm = FakeLLM()
     next_store = FileRunStore(tmp_path)
-    second = RunService(next_store, AgentService(config, locks=next_store.locks, llm_client=next_llm))
+    second = RunService(
+        next_store,
+        AgentService(config, locks=next_store.locks, llm_client=next_llm),
+        runtime_config=settings.runtime.model_dump(),
+        event_config=settings.events.model_dump(),
+    )
     await second.initialize()
     try:
         view, created = await second.start('u1', body)

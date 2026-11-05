@@ -13,14 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ms_agent.session.locking import PathLocks, PersistenceError, durable_io, safe_path
+from ms_agent.session.locking import PathLocks, PersistenceError, durable_io, safe_path, validate_id
 from ms_agent.session.session_log import SessionLog
-from ms_agent.utils.atomic_file import atomic_write_json
-from ms_agent.utils.logger import get_logger
+from ms_agent.utils.atomic_file import atomic_write_json, fsync_directory
 
 __all__ = ['SessionStore']
-
-logger = get_logger()
 
 _SPECIAL_RECORD_TYPES = {
     'error',
@@ -54,9 +51,7 @@ class SessionStore:
         user_id: str,
         locks: Optional[PathLocks] = None,
         *,
-        strict: bool = False,
-        optimized: bool = False,
-        cache=None,
+        cache: HistoryCache | None = None,
         cache_entries: int = 256,
         cache_bytes: int = 67108864,
     ) -> None:
@@ -65,22 +60,15 @@ class SessionStore:
         self._root = Path(base_dir).expanduser().absolute()
         self.base_path = safe_path(self._root, 'users', self.user_id, 'sessions')
         self._locks = locks or PathLocks()
-        self._strict = strict
-        self._optimized = optimized
-        self._cache = cache if cache is not None else OrderedDict()
+        self._cache = cache if cache is not None else HistoryCache()
         self._cache_entries, self._cache_bytes = cache_entries, cache_bytes
-        self._cache_lock = getattr(self._cache, 'lock', threading.RLock())
+        self._cache_lock = self._cache.lock
 
     async def _io(self, function, *args, **kwargs):
         return await durable_io(function, *args, _executor=self._locks.executor, **kwargs)
 
     async def load_history(self, session_id: str) -> List[Dict[str, Any]]:
-        """Return conversational records from a session's append-only log.
-
-        Malformed JSON lines and non-message event records are ignored. The
-        session directory is created on demand, but a missing log remains
-        missing until the first append or explicit session creation.
-        """
+        """读取已校验的会话历史；损坏记录失败关闭，缺少日志返回空集合。"""
         session_id = self._validate_id(session_id, 'session_id')
         lock = self._lock_for(session_id)
         async with lock:
@@ -89,9 +77,9 @@ class SessionStore:
                 parents=True,
                 exist_ok=True,
             )
-            if self._optimized:
-                return deepcopy((await self._io(self._optimized_entry, session_id))['history'])
-            return await self._io(self._read_history_sync, self._jsonl_path(session_id))
+            if not self._jsonl_path(session_id).exists():
+                return []
+            return deepcopy((await self._io(self._entry, session_id))['history'])
 
     async def append(
         self,
@@ -182,15 +170,11 @@ class SessionStore:
         try:
             return [path.name for path in self.base_path.iterdir() if path.is_dir()]
         except OSError as exc:
-            if self._strict:
-                raise PersistenceError('无法读取会话目录') from exc
-            logger.warning('Unable to list sessions in %s: %s', self.base_path, exc)
-            return []
+            raise PersistenceError('无法读取会话目录') from exc
 
-    def _validate_session_files(self, directory: Path, session_id: str) -> None:
-        if not self._strict:
-            return
+    def _read_validated_records(self, directory: Path, session_id: str) -> list[dict]:
         try:
+            records = []
             log_path = safe_path(directory, f'{session_id}.jsonl')
             meta_path = safe_path(directory, f'{session_id}.meta.json')
             if log_path.exists():
@@ -204,27 +188,23 @@ class SessionStore:
                         if not isinstance(seq, int) or seq <= previous:
                             raise ValueError('会话日志 seq 损坏')
                         previous = seq
+                    records.append(record)
             if meta_path.exists() and not isinstance(json.loads(meta_path.read_text(encoding='utf-8')), dict):
                 raise ValueError('会话元数据不是对象')
+            return records
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             raise PersistenceError('会话文件损坏') from exc
 
     def _create_sync(self, directory: Path, session_id: str) -> None:
-        if self._optimized:
-            if not self._jsonl_path(session_id).exists():
-                SessionLog(directory, session_key=session_id)
-                with self._jsonl_path(session_id).open('rb') as handle:
-                    os.fsync(handle.fileno())
-                from ms_agent.utils.atomic_file import fsync_directory
+        if not self._jsonl_path(session_id).exists():
+            SessionLog(directory, session_key=session_id)
+            with self._jsonl_path(session_id).open('rb') as handle:
+                os.fsync(handle.fileno())
+            fsync_directory(directory)
+            fsync_directory(directory.parent)
+        self._entry(session_id)
 
-                fsync_directory(directory)
-                fsync_directory(directory.parent)
-            self._optimized_entry(session_id)
-            return
-        self._validate_session_files(directory, session_id)
-        SessionLog(directory, session_key=session_id)
-
-    def _optimized_entry(self, session_id: str) -> dict:
+    def _entry(self, session_id: str) -> dict:
         path = self._jsonl_path(session_id)
         signature = (path.stat().st_size, path.stat().st_mtime_ns)
         key = str(path)
@@ -237,8 +217,7 @@ class SessionStore:
                     raise PersistenceError('会话文件被协调器之外的写者修改')
                 self._cache.move_to_end(key)
                 return cached
-        self._validate_session_files(self._session_dir(session_id), session_id)
-        records = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+        records = self._read_validated_records(self._session_dir(session_id), session_id)
         history = [r for r in records if r.get('role') and r.get('_type') not in _SPECIAL_RECORD_TYPES]
         entry = {
             'history': history,
@@ -260,68 +239,32 @@ class SessionStore:
                 self._cache.popitem(last=False)
 
     def _append_sync(self, directory: Path, session_id: str, messages: List[Dict[str, Any]]) -> None:
-        if self._optimized:
-            self._create_sync(directory, session_id)
-            entry = self._optimized_entry(session_id)
-            records = [
-                {
-                    **message,
-                    'seq': entry['seq'] + i,
-                    'timestamp': message.get('timestamp') or datetime.now(timezone.utc).isoformat(),
-                }
-                for i, message in enumerate(messages)
-            ]
-            payload = ''.join(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n' for record in records)
-            path = self._jsonl_path(session_id)
-            try:
-                with path.open('a', encoding='utf-8') as handle:
-                    handle.write(payload)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-            except OSError:
-                with self._cache_lock:
-                    self._cache.pop(str(path), None)
-                raise
-            entry['history'].extend(records)
-            entry['seq'] += len(records)
-            entry['signature'] = (path.stat().st_size, path.stat().st_mtime_ns)
-            entry['bytes'] = entry['signature'][0]
-            self._trim_cache()
-            return
-        self._validate_session_files(directory, session_id)
-        log = SessionLog(directory, session_key=session_id)
-        log.append_messages(messages)
-
-    def _read_history_sync(self, path: Path) -> List[Dict[str, Any]]:
-        if not path.exists():
-            return []
-        messages: List[Dict[str, Any]] = []
+        self._create_sync(directory, session_id)
+        entry = self._entry(session_id)
+        records = [
+            {
+                **message,
+                'seq': entry['seq'] + i,
+                'timestamp': message.get('timestamp') or datetime.now(timezone.utc).isoformat(),
+            }
+            for i, message in enumerate(messages)
+        ]
+        payload = ''.join(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n' for record in records)
+        path = self._jsonl_path(session_id)
         try:
-            with path.open('r', encoding='utf-8') as handle:
-                for line_number, line in enumerate(handle, start=1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except (json.JSONDecodeError, TypeError) as exc:
-                        if self._strict:
-                            raise PersistenceError('会话日志损坏') from exc
-                        logger.warning('Ignoring malformed session record %s:%s', path, line_number)
-                        continue
-                    if not isinstance(record, dict):
-                        continue
-                    record_type = record.get('_type')
-                    if record_type in _SPECIAL_RECORD_TYPES:
-                        continue
-                    if not record.get('role'):
-                        continue
-                    messages.append(record)
-        except OSError as exc:
-            if self._strict:
-                raise
-            logger.warning('Unable to read session history %s: %s', path, exc)
-        return messages
+            with path.open('a', encoding='utf-8') as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError:
+            with self._cache_lock:
+                self._cache.pop(str(path), None)
+            raise
+        entry['history'].extend(records)
+        entry['seq'] += len(records)
+        entry['signature'] = (path.stat().st_size, path.stat().st_mtime_ns)
+        entry['bytes'] = entry['signature'][0]
+        self._trim_cache()
 
     def _read_metadata_sync(self, path: Path, session_id: str) -> Dict[str, Any]:
         defaults = self._default_metadata(session_id)
@@ -330,14 +273,9 @@ class SessionStore:
         try:
             data = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, TypeError) as exc:
-            if self._strict:
-                raise PersistenceError('会话元数据损坏') from exc
-            logger.warning('Unable to read session metadata %s: %s', path, exc)
-            return defaults
+            raise PersistenceError('会话元数据损坏') from exc
         if not isinstance(data, dict):
-            if self._strict:
-                raise PersistenceError('会话元数据不是对象')
-            return defaults
+            raise PersistenceError('会话元数据不是对象')
         result = {**defaults, **data}
         result['session_id'] = session_id
         result['session_key'] = session_id
@@ -366,14 +304,4 @@ class SessionStore:
 
     @staticmethod
     def _validate_id(value: str, name: str) -> str:
-        text = str(value or '').strip()
-        if (
-            not text
-            or text in {'.', '..'}
-            or '/' in text
-            or '\\' in text
-            or os.sep in text
-            or (os.altsep and os.altsep in text)
-        ):
-            raise ValueError(f'{name} must be a non-empty path component')
-        return text
+        return validate_id(value, name)

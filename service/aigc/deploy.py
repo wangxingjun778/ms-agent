@@ -35,7 +35,7 @@ def render_eas(settings: Settings, shard: int) -> dict:
 
     def probe(path: str, *, startup=False):
         return {
-            'http_get': {'path': path, 'port': settings.port},
+            'http_get': {'path': path, 'port': settings.server.port},
             'period_seconds': 10,
             'timeout_seconds': 3,
             'success_threshold': 1,
@@ -74,7 +74,7 @@ def render_eas(settings: Settings, shard: int) -> dict:
             {
                 'image': eas.image,
                 'command': '/opt/venv/bin/python -m service.aigc',
-                'port': settings.port,
+                'port': settings.server.port,
                 'env': [{'name': key, 'value': value} for key, value in env.items()],
                 'startup_check': probe('/health/ready', startup=True),
                 'health_check': probe('/health/ready'),
@@ -112,7 +112,7 @@ def main():
     parser.add_argument('--shard', type=int, default=0)
     parser.add_argument('--output', help='生成 JSON 文件（不部署）')
     args = parser.parse_args()
-    settings = Settings.from_env(deployment=True)
+    settings = Settings.load(deployment=True)
     text = json.dumps(render_eas(settings, args.shard), ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text + '\n', encoding='utf-8')

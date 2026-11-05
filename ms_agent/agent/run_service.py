@@ -30,24 +30,19 @@ class RunService:
         agent: AgentService,
         *,
         profile_id: str = 'aigc_assistant',
-        max_runs: int = 4,
-        queue_limit: int = 100,
-        runtime_config: dict | None = None,
-        event_config: dict | None = None,
+        runtime_config: dict,
+        event_config: dict,
+        lease_wait: float = 0,
     ) -> None:
         self.store, self.agent, self.profile_id = store, agent, profile_id
-        self.max_runs, self.queue_limit = max_runs, queue_limit
-        options = runtime_config or {}
-        self._scheduler = FairScheduler(max_runs, options.get('per_user_active', max_runs))
-        self._limit = options.get('max_inflight_runs', max_runs + queue_limit)
-        self._user_limit = options.get('per_user_inflight', self._limit)
-        self._interaction_timeout = options.get('interaction_timeout', 0)
+        self.max_active_runs = runtime_config['max_active_runs']
+        self._scheduler = FairScheduler(self.max_active_runs, runtime_config['per_user_active'])
+        self._limit = runtime_config['max_inflight_runs']
+        self._user_limit = runtime_config['per_user_inflight']
+        self._interaction_timeout = runtime_config['interaction_timeout']
+        self._lease_wait = lease_wait
         self._reservations: set[tuple[str, str]] = set()
-        self._event_config = event_config or {
-            'heartbeat_seconds': 15,
-            'max_stream_seconds': 540,
-            'max_subscribers': 512,
-        }
+        self._event_config = dict(event_config)
         self.subscribers = 0
         self.draining = asyncio.Event()
         self._tasks: dict[tuple[str, str], asyncio.Task] = {}
@@ -60,9 +55,8 @@ class RunService:
         try:
             from ms_agent.session.locking import durable_io
 
-            await durable_io(self.store.lease.acquire, getattr(self.store, 'lease_wait', 0))
-            if self.store.optimized:
-                await self.store.initialize_epoch()
+            await durable_io(self.store.lease.acquire, self._lease_wait)
+            await self.store.initialize_epoch()
             await self.store.recover()
             await self.agent.initialize()
         except BaseException:

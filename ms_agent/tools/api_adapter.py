@@ -10,15 +10,7 @@ The design mirrors the ModelScope API-Inference image generation flow
 (submit → task_id → poll /v1/tasks/{task_id}) so one adapter can describe
 both plain RPC-style endpoints and long-running task endpoints.
 
-Note
-----
-A richer :class:`ToolResult` lives in :mod:`ms_agent.llm.utils` (field name
-``text``). This module intentionally defines its own :class:`ToolResult`
-with ``content``/``raw_data``/``metadata`` because the API-tool layer runs
-*before* integration with the LLM runtime and we don't want a transitive
-import on the LLM package. If ``ms_agent.tools.schema`` is introduced
-later, ToolResult should be re-exported from there and this definition
-removed.
+工具结果统一使用 ``ms_agent.tools.schema.ToolResult``，传输统一使用 aiohttp。
 """
 
 from __future__ import annotations
@@ -34,21 +26,15 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
+import aiohttp
+
 from ms_agent.session.locking import PersistenceError
 from ms_agent.tools.schema import ToolInvocationContext, ToolResult
 from ms_agent.utils.limiter import retry_delay
 
-try:
-    import aiohttp  # type: ignore
-
-    _HAS_AIOHTTP = True
-except ImportError:  # pragma: no cover — aiohttp is in requirements/framework.txt
-    aiohttp = None  # type: ignore
-    _HAS_AIOHTTP = False
-
 logger = logging.getLogger(__name__)
-_CONNECTOR_ERRORS = (aiohttp.ClientConnectorError,) if _HAS_AIOHTTP else (ConnectionRefusedError,)
-_POLL_ERRORS = (OSError, asyncio.TimeoutError) + ((aiohttp.ClientError,) if _HAS_AIOHTTP else ())
+_CONNECTOR_ERRORS = (aiohttp.ClientConnectorError,)
+_POLL_ERRORS = (OSError, asyncio.TimeoutError, aiohttp.ClientError)
 
 __all__ = [
     'AuthConfig',
@@ -197,10 +183,8 @@ class APIToolAdapter:
     :class:`OutputMapping` describes. Those behaviours live in the
     registry (lifecycle) and higher-level agent runtime (retry policy).
 
-    The HTTP client is injected rather than created so the enclosing
-    :class:`APIToolRegistry` can share one TCP pool across every tool and
-    close it exactly once; passing ``None`` falls back to urllib on a
-    thread, which is only intended for the dependency-missing path.
+    HTTP 客户端由 APIToolRegistry 注入并管理生命周期，所有工具共享连接池。
+    不提供依赖缺失时的阻塞传输回退；缺失依赖在启动阶段失败。
     """
 
     def __init__(
@@ -208,7 +192,7 @@ class APIToolAdapter:
         spec: APIToolSpec,
         base_url: str,
         default_auth: AuthConfig,
-        http_client: Optional['aiohttp.ClientSession'] = None,
+        http_client: 'aiohttp.ClientSession',
     ) -> None:
         self._spec = spec
         self._base_url = base_url.rstrip('/')
@@ -348,11 +332,6 @@ class APIToolAdapter:
             return self._shape_result(submit_resp)
 
         task_id = self._extract_value(submit_resp, self._spec.output_mapping.task_id_path)
-        # Some task APIs put task_id at the top level instead of under
-        # ``output`` — fall back to the common top-level key before giving up,
-        # so a legitimate submission isn't rejected over a path mismatch.
-        if not task_id and 'task_id' in submit_resp:
-            task_id = submit_resp.get('task_id')
         if not task_id:
             err = self._extract_value(submit_resp, self._spec.output_mapping.error_path)
             if context is not None and not err:
@@ -460,7 +439,7 @@ class APIToolAdapter:
         crashing on a parse error.
         """
         client = self.poll_client if method.upper() == 'GET' and self.poll_client is not None else self._client
-        if client is not None and _HAS_AIOHTTP:
+        if client is not None:
             options = self.upstreams.get('poll' if method.upper() == 'GET' else 'submit', {})
             tmo = aiohttp.ClientTimeout(
                 total=timeout, connect=options.get('connect_timeout'), sock_read=options.get('read_timeout')
@@ -472,10 +451,7 @@ class APIToolAdapter:
                     if 'Retry-After' in resp.headers:
                         data['_retry_after'] = resp.headers['Retry-After']
                     return data
-        # Fallback path: no shared aiohttp client. Keep the signature async
-        # by delegating a blocking urllib call to a worker thread so the
-        # event loop isn't stalled on sockets.
-        return await asyncio.to_thread(_urllib_request, method, url, headers, json_body, timeout)
+        raise RuntimeError('API 工具需要生命周期所有者注入 aiohttp ClientSession')
 
     def _shape_result(self, data: Dict[str, Any]) -> ToolResult:
         """Translate a parsed response into a :class:`ToolResult`.
@@ -639,28 +615,3 @@ def _parse_json_or_wrap(text: str, status: int) -> Dict[str, Any]:
     if isinstance(parsed, dict):
         return {**parsed, '_http_status': status}
     return {'data': parsed, '_http_status': status}
-
-
-def _urllib_request(
-    method: str,
-    url: str,
-    headers: Dict[str, str],
-    json_body: Optional[Dict[str, Any]],
-    timeout: float,
-) -> Dict[str, Any]:
-    """Blocking fallback used when aiohttp is unavailable."""
-    import urllib.error
-    import urllib.request
-
-    body_bytes = json.dumps(json_body, ensure_ascii=False).encode('utf-8') if json_body is not None else None
-    req = urllib.request.Request(url=url, data=body_bytes, method=method.upper())
-    for key, value in headers.items():
-        req.add_header(key, value)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            text = resp.read().decode('utf-8', errors='replace')
-            status = resp.status
-    except urllib.error.HTTPError as exc:
-        text = exc.read().decode('utf-8', errors='replace') if exc.fp else ''
-        status = exc.code
-    return _parse_json_or_wrap(text, status)

@@ -29,7 +29,6 @@ storage:
 runtime:
   max_active_runs: "${AIGC_MAX_RUNS:64}"
   max_inflight_runs: "${AIGC_MAX_INFLIGHT:500}"
-  queue_limit: "${AIGC_QUEUE_LIMIT:}"  # 兼容旧等待容量；与 AIGC_MAX_INFLIGHT 互斥
   per_user_active: 4
   per_user_inflight: 20
   interaction_timeout: 1800

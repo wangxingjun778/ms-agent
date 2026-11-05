@@ -20,7 +20,7 @@ async def authenticated_user(
     user_id: Annotated[str | None, Header(alias='X-User-Id')] = None,
 ) -> str:
     settings = request.app.state.settings
-    token = settings.service_token.get_secret_value()
+    token = settings.credentials.service.get_secret_value()
     value = request.headers.get(settings.auth.header, '')
     if settings.auth.scheme == 'bearer':
         scheme, _, value = value.partition(' ')

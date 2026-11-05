@@ -366,7 +366,7 @@ export API_TOKEN_PATH=/absolute/path/image-api-token
 docker compose -f docker/aigc.compose.yaml up -d --build
 ```
 
-The default binding is `127.0.0.1:8000`. All runtime, upstream, image tool/schema, credential-reference and EAS deployment settings are centralized in `service/aigc/configs/service.yaml`. Environment overrides are explicitly listed in that YAML. Mount it read-only and select it with `AIGC_CONFIG`; `API_TOOLS_CONFIG` is removed and rejected. Model access and actual API availability must be verified by the deployment owner.
+The default binding is `127.0.0.1:8000`. All runtime, upstream, image tool/schema, credential-reference and EAS deployment settings are centralized in `service/aigc/configs/service.yaml`. Environment overrides are explicitly listed in that YAML. Mount it read-only and select it with `AIGC_CONFIG`. The old service api_tools.yaml, configuration aliases, and compatibility branches are removed; `API_TOOLS_CONFIG` and `AIGC_QUEUE_LIMIT` are rejected. Programmatic configuration uses `Settings.load()`, nested sections and separate `ServiceCredentials`; no legacy Settings constructor or SDK-default YAML merging is supported. Model access and actual API availability must be verified by the deployment owner.
 
 For source-only local debugging, use Python 3.12 and install `requirements/aigc-lock.txt` with `--require-hashes`. Set `DATA_DIR`, `AIGC_SERVICE_TOKEN`, `LLM_API_KEY`, and `API_TOKEN`, then run `python -m service.aigc` from the repository root. Do not use `pip install .` for the minimal service environment: the SDK `[aigc]` extra still includes its base framework dependencies.
 

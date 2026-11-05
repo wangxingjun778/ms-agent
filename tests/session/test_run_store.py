@@ -9,8 +9,8 @@ import pytest
 
 from ms_agent.memory.service import MemoryService
 from ms_agent.session.locking import PathLocks, PersistenceError, durable_io
-from ms_agent.session.run_store import FileRunStore
-from ms_agent.session.store import SessionStore
+from ms_agent.session.run_store import FileRunStore, StorageCorrupted
+from ms_agent.session.store import HistoryCache, SessionStore
 
 
 @pytest.mark.asyncio
@@ -45,6 +45,7 @@ async def test_torn_tail_recovery_and_middle_corruption(tmp_path):
     path = store.directory('u1', 'runs', 'r1') / 'journal.jsonl'
     with path.open('ab') as handle:
         handle.write(b'{"partial":')
+    store = FileRunStore(tmp_path)  # 模拟崩溃后重启，从持久日志恢复。
     state, events = await store.read('u1', 'runs', 'r1')
     assert state['status'] == 'running' and len(events) == 1
     assert list(path.parent.glob('journal.corrupt-*.jsonl'))
@@ -52,9 +53,10 @@ async def test_torn_tail_recovery_and_middle_corruption(tmp_path):
     lines = path.read_text().splitlines()
     lines[0] = lines[0].replace('running', 'broken')
     path.write_text('\n'.join(lines) + '\n')
-    with pytest.raises(PersistenceError):
+    store = FileRunStore(tmp_path)
+    with pytest.raises(StorageCorrupted):
         await store.read('u1', 'runs', 'r1')
-    assert not store.healthy
+    assert store.healthy and str(path.parent) in store.corrupted
 
 
 @pytest.mark.asyncio
@@ -94,7 +96,8 @@ def test_exclusive_coordinator_and_symlinks(tmp_path):
 @pytest.mark.asyncio
 async def test_shared_session_locks_and_memory_isolation(tmp_path):
     locks = PathLocks()
-    stores = [SessionStore(str(tmp_path), 'u1', locks) for _ in range(2)]
+    cache = HistoryCache()
+    stores = [SessionStore(str(tmp_path), 'u1', locks, cache=cache) for _ in range(2)]
     await asyncio.gather(
         *(stores[index % 2].append('s1', [{'role': 'user', 'content': str(index)}]) for index in range(20))
     )

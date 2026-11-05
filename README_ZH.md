@@ -361,7 +361,7 @@ export API_TOKEN_PATH=/absolute/path/image-api-token
 docker compose -f docker/aigc.compose.yaml up -d --build
 ```
 
-默认仅映射 `127.0.0.1:8000`。运行、上游、图片工具/schema、凭据引用和 EAS 部署配置全部集中在 `service/aigc/configs/service.yaml`；环境覆盖在该 YAML 中显式列出。替换配置时只读挂载该文件，通过 `AIGC_CONFIG` 选择；`API_TOOLS_CONFIG` 已移除并在启动时拒绝。模型权限和真实接口可用性需部署方确认。
+默认仅映射 `127.0.0.1:8000`。运行、上游、图片工具/schema、凭据引用和 EAS 部署配置全部集中在 `service/aigc/configs/service.yaml`；环境覆盖在该 YAML 中显式列出。替换配置时只读挂载该文件，通过 `AIGC_CONFIG` 选择。旧 service api_tools.yaml、配置别名和兼容分支已删除；`API_TOOLS_CONFIG`、`AIGC_QUEUE_LIMIT` 均在启动时拒绝。程序化配置使用 `Settings.load()`、嵌套字段及独立的 `ServiceCredentials`，不支持旧 Settings 构造或 SDK 默认 YAML 合并。模型权限和真实接口可用性需部署方确认。
 
 源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `DATA_DIR`、`AIGC_SERVICE_TOKEN`、`LLM_API_KEY`、`API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
 

@@ -15,7 +15,7 @@ class DrainingServer(uvicorn.Server):
 
 
 def main() -> None:
-    settings = Settings.from_env()
+    settings = Settings.load()
     server = settings.server
     configuration = uvicorn.Config(
         create_app(settings),

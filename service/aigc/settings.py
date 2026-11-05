@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, model_validator
 
-from ms_agent.config.lightweight import load_lightweight_config
 from ms_agent.session.run_store import digest, without_secrets
 from ms_agent.tools.api_registry import _resolve_env
 
@@ -30,7 +29,7 @@ class ServerSettings(ConfigNode):
     workers: Literal[1] = 1
     host: str = '0.0.0.0'
     port: int = Field(default=8000, ge=1, le=65535)
-    max_body_bytes: int = Field(default=2097152, ge=1024, le=20971520)
+    max_body_bytes: int = Field(default=1048576, ge=1024, le=20971520)
     keep_alive_timeout: int = Field(default=75, ge=1)
     graceful_shutdown_timeout: int = Field(default=30, ge=1)
     limit_concurrency: int = Field(default=1024, ge=1)
@@ -68,28 +67,13 @@ class StorageSettings(ConfigNode):
 
 
 class RuntimeSettings(ConfigNode):
-    max_active_runs: int = Field(default=4, ge=1, le=1024)
-    max_inflight_runs: int = Field(default=104, ge=1, le=10000)
+    max_active_runs: int = Field(default=64, ge=1, le=1024)
+    max_inflight_runs: int = Field(default=500, ge=1, le=10000)
     per_user_active: int = Field(default=4, ge=1)
-    per_user_inflight: int = Field(default=104, ge=1)
-    interaction_timeout: float = Field(default=0, ge=0)
-    drain_timeout: float = Field(default=5, ge=0)
+    per_user_inflight: int = Field(default=20, ge=1)
+    interaction_timeout: float = Field(default=1800, ge=0)
+    drain_timeout: float = Field(default=60, ge=0)
     retry_after: int = Field(default=2, ge=1)
-    queue_limit: int | None = Field(default=None, ge=0)
-
-    @model_validator(mode='before')
-    @classmethod
-    def legacy_queue(cls, data):
-        data = deepcopy(data)
-        if data.get('queue_limit') == '':
-            data['queue_limit'] = None
-        return data
-
-    @model_validator(mode='after')
-    def effective_capacity(self):
-        if self.queue_limit is not None:
-            self.max_inflight_runs = self.max_active_runs + self.queue_limit
-        return self
 
 
 class EventSettings(ConfigNode):
@@ -131,8 +115,8 @@ class UpstreamsSettings(ConfigNode):
 
 
 class HistorySettings(ConfigNode):
-    max_messages: int = Field(default=0, ge=0)
-    max_chars: int = Field(default=0, ge=0)
+    max_messages: int = Field(default=40, ge=0)
+    max_chars: int = Field(default=60000, ge=0)
 
 
 class AgentSettings(ConfigNode):
@@ -260,6 +244,14 @@ class SecretsSettings(ConfigNode):
     api: str = 'API_TOKEN'
 
 
+class ServiceCredentials(ConfigNode):
+    """部署凭据与运行配置分离，禁止进入 YAML 与配置摘要。"""
+
+    service: SecretStr
+    llm: SecretStr
+    api: SecretStr
+
+
 class Settings(ConfigNode):
     server: ServerSettings = Field(default_factory=ServerSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
@@ -273,33 +265,9 @@ class Settings(ConfigNode):
     eas: EASSettings = Field(default_factory=EASSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     secrets: SecretsSettings = Field(default_factory=SecretsSettings)
-    service_token: SecretStr = Field(default='', exclude=True)
-    agent_config: dict[str, Any] = Field(default_factory=dict, repr=False, exclude=True)
+    _credentials: ServiceCredentials | None = PrivateAttr(default=None)
     _digest: str | None = PrivateAttr(default=None)
     _environment_overrides: dict[str, str] = PrivateAttr(default_factory=dict)
-
-    @model_validator(mode='before')
-    @classmethod
-    def sdk_compatibility(cls, value):
-        # 保留程序化 Settings 构造兼容；文件加载不接受旧分散结构。
-        data = deepcopy(value)
-        aliases = {
-            'data_dir': ('storage', 'data_dir'),
-            'host': ('server', 'host'),
-            'port': ('server', 'port'),
-            'max_body_bytes': ('server', 'max_body_bytes'),
-            'shutdown_timeout': ('server', 'graceful_shutdown_timeout'),
-            'recipe_timeout': ('recipe', 'timeout'),
-            'recipe_concurrency': ('recipe', 'concurrency'),
-        }
-        for old, (section, key) in aliases.items():
-            if old in data:
-                data.setdefault(section, {})[key] = data.pop(old)
-        if 'max_runs' in data or 'queue_limit' in data:
-            active = data.pop('max_runs', 4)
-            queue = data.pop('queue_limit', 100)
-            data.setdefault('runtime', {}).update(max_active_runs=active, max_inflight_runs=active + queue)
-        return data
 
     @model_validator(mode='after')
     def validate_boundaries(self):
@@ -340,9 +308,7 @@ class Settings(ConfigNode):
         return self
 
     def effective_config(self) -> dict[str, Any]:
-        data = self.model_dump(mode='json')
-        data['resolved_agent'] = self.agent_config
-        return without_secrets(data)
+        return without_secrets(self.model_dump(mode='json'))
 
     @property
     def config_digest(self) -> str:
@@ -351,119 +317,98 @@ class Settings(ConfigNode):
         return self._digest
 
     @property
-    def data_dir(self):
-        return self.storage.data_dir
+    def credentials(self) -> ServiceCredentials:
+        if self._credentials is None:
+            raise RuntimeError('服务凭据尚未加载')
+        return self._credentials
 
-    @property
-    def max_runs(self):
-        return self.runtime.max_active_runs
-
-    @property
-    def queue_limit(self):
-        return self.runtime.max_inflight_runs - self.runtime.max_active_runs
-
-    @property
-    def host(self):
-        return self.server.host
-
-    @property
-    def port(self):
-        return self.server.port
-
-    @property
-    def shutdown_timeout(self):
-        return self.server.graceful_shutdown_timeout
-
-    @property
-    def max_body_bytes(self):
-        return self.server.max_body_bytes
-
-    @max_body_bytes.setter
-    def max_body_bytes(self, value):
-        self.server.max_body_bytes = value
-
-    @property
-    def recipe_timeout(self):
-        return self.recipe.timeout
-
-    @property
-    def recipe_concurrency(self):
-        return self.recipe.concurrency
+    def bind_credentials(self, credentials: ServiceCredentials) -> 'Settings':
+        self._credentials = credentials
+        return self
 
     @classmethod
-    def from_env(cls, *, deployment: bool = False) -> 'Settings':
-        path = Path(os.environ.get('AIGC_CONFIG', Path(__file__).parent / 'configs' / 'service.yaml'))
-        if 'API_TOOLS_CONFIG' in os.environ:
-            raise ValueError('移除 API_TOOLS_CONFIG，改用统一 service.yaml 的 tools.api')
-        if 'AIGC_QUEUE_LIMIT' in os.environ and 'AIGC_MAX_INFLIGHT' in os.environ:
-            raise ValueError('AIGC_QUEUE_LIMIT 与 AIGC_MAX_INFLIGHT 不能同时覆盖容量')
+    def load(
+        cls, path: str | Path | None = None, *, deployment: bool = False, credentials: ServiceCredentials | None = None
+    ) -> 'Settings':
+        path = Path(path or os.environ.get('AIGC_CONFIG', Path(__file__).parent / 'configs' / 'service.yaml'))
+        obsolete = {'API_TOOLS_CONFIG', 'AIGC_QUEUE_LIMIT'} & os.environ.keys()
+        if obsolete:
+            raise ValueError(f'已移除的配置入口：{", ".join(sorted(obsolete))}')
         source = path.read_text(encoding='utf-8')
         raw = _resolve_env(yaml.safe_load(source) or {})
-        if {'service', 'agent_config', 'service_token'} & raw.keys():
-            raise ValueError('服务配置必须使用统一配置树，不接受旧 service/agent_config 或明文密钥')
         effective = cls.model_validate(raw)
         references = {effective.secrets.service, effective.secrets.llm, effective.secrets.api}
         variables = set(re.findall(r'\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[^}]*)?\}', source))
         if references & variables:
             raise ValueError('密钥只能通过 secrets 引用读取，不允许作为普通 YAML 占位符展开')
         effective._environment_overrides = {name: os.environ[name] for name in variables if name in os.environ}
-        effective.service_token = SecretStr('' if deployment else read_secret(effective.secrets.service))
-        if not deployment and not effective.service_token.get_secret_value():
-            raise ValueError('服务凭据未配置')
+        if not deployment:
+            effective.bind_credentials(
+                credentials
+                or ServiceCredentials(
+                    service=read_secret(effective.secrets.service),
+                    llm=read_secret(effective.secrets.llm),
+                    api=read_secret(effective.secrets.api),
+                )
+            )
+            if not effective.credentials.service.get_secret_value():
+                raise ValueError('服务凭据未配置')
+            effective.to_agent_config()
+        return effective
+
+    def to_agent_config(self) -> dict[str, Any]:
+        """只从已校验的新配置树派生 SDK 参数，不加载另一份默认 YAML。"""
+        credentials = self.credentials
+        if not credentials.llm.get_secret_value():
+            raise ValueError('LLM 凭据未配置')
+        if self.tools.api and self.tools.api['auth']['type'] != 'none' and not credentials.api.get_secret_value():
+            raise ValueError('工具 API 凭据未配置')
         config = {
             'strict': True,
             'agent': {
                 'mode': 'lightweight',
-                'max_chat_round': effective.agent.max_chat_round,
-                'system_prompt': effective.agent.system_prompt,
-                'history': effective.agent.history.model_dump(),
-                'memory_top_k': effective.agent.memory_top_k,
+                'max_chat_round': self.agent.max_chat_round,
+                'system_prompt': self.agent.system_prompt,
+                'history': self.agent.history.model_dump(),
+                'memory_top_k': self.agent.memory_top_k,
             },
             'llm': {
                 'transport': 'http',
-                'model': effective.agent.model,
-                'base_url': effective.agent.base_url,
-                'api_key': '' if deployment else read_secret(effective.secrets.llm),
-                'temperature': effective.agent.temperature,
-                'max_tokens': effective.agent.max_tokens,
-                'timeout': effective.upstreams.llm.read_timeout,
-                'upstream': effective.upstreams.llm.model_dump(),
+                'model': self.agent.model,
+                'base_url': self.agent.base_url,
+                'api_key': credentials.llm.get_secret_value(),
+                'temperature': self.agent.temperature,
+                'max_tokens': self.agent.max_tokens,
+                'timeout': self.upstreams.llm.read_timeout,
+                'upstream': self.upstreams.llm.model_dump(),
             },
             'session': {
-                'base_dir': effective.data_dir,
-                'optimized': True,
-                'cache_entries': effective.storage.cache_entries,
-                'cache_bytes': effective.storage.cache_bytes,
+                'base_dir': self.storage.data_dir,
+                'cache_entries': self.storage.cache_entries,
+                'cache_bytes': self.storage.cache_bytes,
             },
             'memory': {
-                'base_dir': effective.data_dir,
+                'base_dir': self.storage.data_dir,
                 'storage_backend': 'file',
                 'scope': 'session',
-                'enabled': effective.agent.memory_enabled,
-                'projection': effective.agent.memory_projection,
-                'top_k': effective.agent.memory_top_k,
+                'enabled': self.agent.memory_enabled,
+                'projection': self.agent.memory_projection,
+                'top_k': self.agent.memory_top_k,
             },
-            'skills': {'enabled': bool(effective.agent.skill_dirs), 'dirs': effective.agent.skill_dirs},
+            'skills': {'enabled': bool(self.agent.skill_dirs), 'dirs': self.agent.skill_dirs},
             'tools': {
                 'builtin_enabled': False,
-                'api_tools_config': '',
-                'api': deepcopy(effective.tools.api),
+                'api': deepcopy(self.tools.api),
                 'upstreams': {
-                    'submit': effective.upstreams.submit.model_dump(),
-                    'poll': effective.upstreams.poll.model_dump(),
+                    'submit': self.upstreams.submit.model_dump(),
+                    'poll': self.upstreams.poll.model_dump(),
                 },
             },
         }
         # 在内存中注入 token，不把 *_FILE 内容复制到环境或冻结快照。
-        api_token = '' if deployment else read_secret(effective.secrets.api)
         if config['tools']['api']:
-            config['tools']['api'].setdefault('auth', {}).update(token=api_token, token_env=None)
-        if deployment:
-            effective.agent_config = config
-        else:
-            effective.agent_config = load_lightweight_config(config, strict=True)
-        for key in ('base_url',):
-            url = urlparse(config['llm'][key])
-            if url.scheme not in ('http', 'https') or not url.netloc or url.username:
-                raise ValueError('LLM 地址无效')
-        return effective
+            config['tools']['api']['auth']['token'] = credentials.api.get_secret_value()
+        url = urlparse(config['llm']['base_url'])
+        if url.scheme not in ('http', 'https') or not url.netloc or url.username:
+            raise ValueError('LLM 地址无效')
+        return config

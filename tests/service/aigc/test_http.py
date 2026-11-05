@@ -100,7 +100,7 @@ async def test_http_recipe_result_schema(settings):
 
 
 async def test_body_size_limit(settings):
-    settings.max_body_bytes = 1024
+    settings.server.max_body_bytes = 1024
     app = create_app(settings, llm_client=FakeLLM())
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:

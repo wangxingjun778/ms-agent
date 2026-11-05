@@ -59,17 +59,16 @@ class FileRunStore:
         locks: PathLocks | None = None,
         *,
         secret_values: tuple[str, ...] = (),
-        optimized: bool = False,
         cache_entries: int = 256,
         cache_bytes: int = 67108864,
-        projection: str = 'always',
+        projection: str = 'terminal',
     ) -> None:
         self.root = Path(root).expanduser().absolute()
         self.locks = locks or PathLocks()
         self.lease = FileLease(self.root)
         self.healthy = True
         self.secret_values = secret_values
-        self.optimized, self.projection = optimized, projection
+        self.projection = projection
         self.cache_entries, self.cache_bytes = cache_entries, cache_bytes
         self._cache: OrderedDict[str, tuple[dict, list, int, str, int, int]] = OrderedDict()
         self._cache_lock = threading.RLock()
@@ -86,8 +85,6 @@ class FileRunStore:
     def _remember(
         self, directory: Path, state: dict, events: list, seq: int, checksum: str, event_bytes: int | None = None
     ) -> None:
-        if not self.optimized:
-            return
         key = str(directory)
         if event_bytes is None:
             event_bytes = sum(len(canonical(event).encode('utf-8')) for event in events)
@@ -250,8 +247,8 @@ class FileRunStore:
 
     async def recover(self) -> None:
         manifest = safe_path(self.root, '.index-ready')
-        migration = self.optimized and not manifest.exists()
-        entries = await self.list_entries() if not self.optimized or migration else await self._io(self._index_entries)
+        initialize_index = not manifest.exists()
+        entries = await self.list_entries() if initialize_index else await self._io(self._index_entries)
         for user_id, kind, identifier in entries:
             async with self.lock(user_id, kind, identifier):
                 try:
@@ -260,9 +257,9 @@ class FileRunStore:
                     continue
                 if state is None:
                     continue
-                if self.optimized and state.get('status') in TERMINAL:
+                if state.get('status') in TERMINAL:
                     await self._io(self._unmark_active, self.directory(user_id, kind, identifier))
-                if migration and state.get('status') not in TERMINAL and state.get('status') != 'missing':
+                if initialize_index and state.get('status') not in TERMINAL and state.get('status') != 'missing':
                     await self._io(self._mark_active, self.directory(user_id, kind, identifier))
                 if state.get('status') not in TERMINAL and state.get('status') != 'missing':
                     commands = deepcopy(state.get('commands', {}))
@@ -283,7 +280,7 @@ class FileRunStore:
                         'run_interrupted' if kind == 'runs' else None,
                         {'status': 'interrupted'},
                     )
-        if migration:
+        if initialize_index:
             await self._io(atomic_write_text, manifest, '1', fsync=True, sync_directory=True)
 
     async def _io(self, function, *args, **kwargs):
@@ -298,7 +295,7 @@ class FileRunStore:
             raise PersistenceError('台账读取或提交失败') from exc
 
     def _ensure_directory(self, directory: Path) -> None:
-        if self.optimized and directory.exists():
+        if directory.exists():
             return
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         cursor = directory
@@ -342,10 +339,8 @@ class FileRunStore:
                 valid.extend(line)
             except (ValueError, KeyError, TypeError):
                 if index != len(lines) - 1 or line.endswith(b'\n'):
-                    if self.optimized:
-                        self.corrupted.add(str(directory))
-                        raise StorageCorrupted('已提交日志损坏，不能丢弃幂等记录') from None
-                    raise ValueError('已提交日志损坏，不能丢弃幂等记录') from None
+                    self.corrupted.add(str(directory))
+                    raise StorageCorrupted('已提交日志损坏，不能丢弃幂等记录') from None
                 backup = safe_path(directory, f'journal.corrupt-{uuid4().hex}.jsonl')
                 with backup.open('xb') as handle:
                     handle.write(raw)
@@ -372,7 +367,7 @@ class FileRunStore:
             last = json.loads(lines[-1]) if lines else {}
             record_seq, previous = last.get('record_seq', 0) + 1, last.get('checksum', '')
         next_status = updates.get('status', state.get('status'))
-        if self.optimized and next_status not in TERMINAL and next_status != 'missing':
+        if next_status not in TERMINAL and next_status != 'missing':
             # 标记必须先于 journal 持久化，崩溃至多产生可恢复的冗余标记。
             self._mark_active(directory)
         event = None
@@ -402,7 +397,7 @@ class FileRunStore:
         # journal 已成功提交；投影失败不撤销提交，但仍进入故障状态阻止后续副作用。
         if self.projection == 'always' or (self.projection == 'terminal' and state.get('status') in TERMINAL):
             atomic_write_json(safe_path(directory, 'state.json'), state, fsync=True, sync_directory=True)
-        if self.optimized and state.get('status') in TERMINAL:
+        if state.get('status') in TERMINAL:
             self._unmark_active(directory)
         if event:
             events.append(event)

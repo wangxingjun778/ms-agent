@@ -61,7 +61,7 @@ class Telemetry:
             'inflight': len(runtime._tasks) + len(runtime._reservations),
             'active': sum(runtime._scheduler.active.values()),
             'waiting': sum(control.pending is not None for control in runtime._controls.values()),
-            'active_ratio': sum(runtime._scheduler.active.values()) / runtime.max_runs,
+            'active_ratio': sum(runtime._scheduler.active.values()) / runtime.max_active_runs,
             'llm_inflight': limiters.get('llm').inflight if limiters.get('llm') else 0,
             'sse_subscribers': runtime.subscribers,
             'loop_lag_ms_p99': round(sorted(self.lags)[int(len(self.lags) * 0.99)] * 1000, 3) if self.lags else 0,

@@ -68,7 +68,7 @@ async def test_partial_result_survives_cancel_during_session_commit(runtime, mon
 
 
 async def test_complete_corrupt_record_must_not_erase_idempotency(runtime):
-    from ms_agent.session.locking import PersistenceError
+    from ms_agent.session.run_store import StorageCorrupted
 
     runs, _ = runtime
     body = request()
@@ -80,6 +80,9 @@ async def test_complete_corrupt_record_must_not_erase_idempotency(runtime):
     record['checksum'] = '0' * 64
     lines[-1] = json.dumps(record)
     path.write_text('\n'.join(lines) + '\n')
-    with pytest.raises(PersistenceError):
+    # 活跃服务禁止外部写者改文件；此处模拟重启后冷加载发现损坏。
+    runs.store._cache.clear()
+    runs.store._cached_bytes = 0
+    with pytest.raises(StorageCorrupted):
         await runs.start('u1', body)
-    assert not runs.store.healthy
+    assert runs.store.healthy

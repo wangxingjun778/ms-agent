@@ -26,7 +26,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(os.environ.get('AIGC_LOADTEST_ROOT', Path(__file__).resolve().parents[2]))
+ROOT = Path(__file__).resolve().parents[2]
 IMAGE_MODEL = 'Qwen/Qwen-Image-2.1-Turbo'
 TERMINAL = {'succeeded', 'failed', 'cancelled', 'interrupted'}
 
@@ -426,8 +426,8 @@ def summarize(args, test: LoadTest, outcome: dict, upstream: MockUpstream, count
                 'llm_429',
                 'submit_429',
                 'poll_429',
-                'max_runs',
-                'queue_limit',
+                'max_active_runs',
+                'max_inflight_runs',
                 'config',
             )
         },
@@ -455,7 +455,7 @@ def summarize(args, test: LoadTest, outcome: dict, upstream: MockUpstream, count
         'event_latency_ms_p95': None if not test.event_delays else round(percentile(test.event_delays, 95) * 1000, 2),
         'get_latency_ms_p95': None if not test.get_latencies else round(percentile(test.get_latencies, 95) * 1000, 2),
         'loop_lag_ms_p99': test.server_stats.get('loop_lag_ms_p99'),
-        'source_root': args.source_root or str(ROOT),
+        'source_root': str(ROOT),
     }
 
 
@@ -470,8 +470,8 @@ async def main_async(args) -> dict:
         'DATA_DIR': str(Path(data_dir) / 'data'),
         'AIGC_HOST': '127.0.0.1',
         'AIGC_PORT': str(port),
-        'AIGC_MAX_RUNS': str(args.max_runs),
-        'AIGC_QUEUE_LIMIT': str(args.queue_limit),
+        'AIGC_MAX_RUNS': str(args.max_active_runs),
+        'AIGC_MAX_INFLIGHT': str(args.max_inflight_runs),
         'AIGC_SERVICE_TOKEN': 'loadtest-service',
         'LLM_API_KEY': 'loadtest-llm',
         'API_TOKEN': 'loadtest-image',
@@ -479,16 +479,15 @@ async def main_async(args) -> dict:
         'API_BASE_URL': f'http://127.0.0.1:{mock_port}',
         'PYTHONDONTWRITEBYTECODE': '1',
         'AIGC_DRAIN_TIMEOUT': '0',
-        'AIGC_LOADTEST_ROOT': args.source_root or str(ROOT),
     }
-    for name in ('AIGC_CONFIG', 'API_TOOLS_CONFIG', 'AIGC_SERVICE_TOKEN_FILE', 'LLM_API_KEY_FILE', 'API_TOKEN_FILE'):
+    for name in ('AIGC_CONFIG', 'AIGC_SERVICE_TOKEN_FILE', 'LLM_API_KEY_FILE', 'API_TOKEN_FILE'):
         env.pop(name, None)
     if args.config:
         env['AIGC_CONFIG'] = str(Path(args.config).absolute())
     log = open(Path(data_dir) / 'service.log', 'wb')
     process = subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), '--child', str(stats_path)],
-        cwd=args.source_root or ROOT,
+        cwd=ROOT,
         env=env,
         stdout=log,
         stderr=subprocess.STDOUT,
@@ -532,7 +531,6 @@ async def main_async(args) -> dict:
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--child', help=argparse.SUPPRESS)
-    parser.add_argument('--source-root', help='使用另一份源码目录验证原版本基线')
     parser.add_argument('--max-seconds', type=float, default=300, help='压测最长时长，防止故障导致无限等待')
     parser.add_argument('--users', type=int, default=10)
     parser.add_argument('--sessions', type=int, default=2, help='每个用户的会话数')
@@ -547,8 +545,8 @@ def parse_args(argv=None):
     parser.add_argument('--llm-429', type=float, default=0.0, help='LLM 返回 429 的概率')
     parser.add_argument('--submit-429', type=float, default=0.0)
     parser.add_argument('--poll-429', type=float, default=0.0)
-    parser.add_argument('--max-runs', type=int, default=4, help='AIGC_MAX_RUNS')
-    parser.add_argument('--queue-limit', type=int, default=100, help='AIGC_QUEUE_LIMIT')
+    parser.add_argument('--max-active-runs', type=int, default=64, help='runtime.max_active_runs')
+    parser.add_argument('--max-inflight-runs', type=int, default=500, help='runtime.max_inflight_runs')
     parser.add_argument('--config', help='替换服务配置（AIGC_CONFIG）')
     parser.add_argument('--auth-header', default='Authorization')
     parser.add_argument('--auth-scheme', choices=['bearer', 'raw'], default='bearer')

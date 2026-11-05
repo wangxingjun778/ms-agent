@@ -9,8 +9,8 @@ import pytest
 from conftest import request, wait_for
 
 from ms_agent.agent.context import SkillService
-from ms_agent.config.lightweight import load_lightweight_config
 from ms_agent.session.locking import PersistenceError
+from service.aigc.settings import Settings
 
 
 def test_lightweight_import_without_legacy_modules():
@@ -44,13 +44,12 @@ def test_skills_full_injection_and_missing_directory(tmp_path):
     [
         {'modules': {'sandbox': True}},
         {'tools': {'builtin_enabled': True}},
-        {'memory': {'storage_backend': 'sqlite'}},
+        {'agent': {'memory_backend': 'sqlite'}},
     ],
 )
 def test_service_rejects_forbidden_modules(patch):
-    patch['llm'] = {'transport': 'http', 'model': 'test', 'api_key': 'fake', 'base_url': 'http://test/v1'}
     with pytest.raises(ValueError):
-        load_lightweight_config(patch, strict=True)
+        Settings.model_validate(patch)
 
 
 @pytest.mark.asyncio
