@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Optional
+
+
+class SubmissionNotSent(asyncio.CancelledError):
+    """传输尚未开始，门闩或取消阻止了本次 HTTP 提交。"""
 
 
 class ExternalTaskUnresolved(RuntimeError):
@@ -20,8 +25,10 @@ class ToolResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_error(cls, tool_name: str, error_msg: str, **metadata: Any) -> 'ToolResult':
-        return cls(tool_name, False, error_msg, error=error_msg, metadata=metadata)
+    def from_error(
+        cls, tool_name: str, error_msg: str, *, raw_data: Optional[Dict[str, Any]] = None, **metadata: Any
+    ) -> 'ToolResult':
+        return cls(tool_name, False, error_msg, raw_data=raw_data, error=error_msg, metadata=metadata)
 
     @classmethod
     def from_success(
@@ -54,6 +61,7 @@ class ToolInvocationContext:
     trace_id: str = ''
     credentials: Dict[str, str] = field(default_factory=dict, repr=False)
     record: Optional[Callable[[str, Dict[str, Any]], Awaitable[None]]] = field(default=None, repr=False)
+    guard: Optional[Callable[[], Awaitable[None]]] = field(default=None, repr=False)
 
     async def emit(self, event_type: str, data: Dict[str, Any]) -> None:
         if self.record is not None:

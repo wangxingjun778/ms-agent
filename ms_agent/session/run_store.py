@@ -15,10 +15,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from ms_agent.agent.protocol import PROTOCOL_VERSION
+from ms_agent.agent.public_state import public_patch, reduce_public
 from ms_agent.session.locking import FileLease, PathLocks, PersistenceError, durable_io, safe_path, validate_id
 from ms_agent.utils.atomic_file import atomic_write_json, atomic_write_text, fsync_directory
 
-TERMINAL = frozenset({'succeeded', 'failed', 'cancelled', 'interrupted'})
+TERMINAL = frozenset({'succeeded', 'partial_succeeded', 'failed', 'cancelled', 'interrupted'})
 _SECRET_KEYS = frozenset({'api_key', 'token', 'authorization', 'credentials', 'password', 'secret'})
 
 
@@ -50,6 +52,10 @@ class StorageCorrupted(PersistenceError):
     """已提交日志损坏；隔离记录且禁止使用其幂等键重新执行。"""
 
 
+class ProtocolVersionUnsupported(PersistenceError):
+    """旧记录不能被新版复用为新执行，不迁移、不删除。"""
+
+
 class FileRunStore:
     """调用方在 read/commit/snapshot 的整个事务外持有 lock。"""
 
@@ -75,6 +81,7 @@ class FileRunStore:
         self._cached_bytes = 0
         self._changes: weakref.WeakValueDictionary[str, asyncio.Event] = weakref.WeakValueDictionary()
         self.corrupted: set[str] = set()
+        self.unsupported: set[str] = set()
         self.epoch = ''
         self._epoch_path = safe_path(self.root, '.coordinator.epoch')
 
@@ -130,6 +137,8 @@ class FileRunStore:
         directory = self.directory(user_id, kind, identifier)
         if not self.healthy:
             raise PersistenceError('台账不可用')
+        if str(directory) in self.unsupported:
+            raise ProtocolVersionUnsupported('不支持旧台账协议')
         if str(directory) in self.corrupted:
             raise StorageCorrupted('已提交台账损坏')
         entry = self._cached(directory)
@@ -142,6 +151,8 @@ class FileRunStore:
         directory = self.directory(user_id, kind, identifier)
         if not self.healthy:
             raise PersistenceError('台账不可用')
+        if str(directory) in self.unsupported:
+            raise ProtocolVersionUnsupported('不支持旧台账协议')
         if str(directory) in self.corrupted:
             raise StorageCorrupted('已提交台账损坏')
         with self._cache_lock:
@@ -151,15 +162,16 @@ class FileRunStore:
                 return deepcopy(entry[0])
         return (await self.read(user_id, kind, identifier))[0]
 
-    async def read_events(self, user_id: str, kind: str, identifier: str, after_seq: int):
+    async def read_events(self, user_id: str, kind: str, identifier: str, after_seq: int, limit: int | None = None):
         state = await self.read_state(user_id, kind, identifier)
         directory = self.directory(user_id, kind, identifier)
+        end = after_seq + limit if limit is not None else None
         with self._cache_lock:
             entry = self._cache.get(str(directory))
             if entry:
-                return state, deepcopy(entry[1][after_seq:])
+                return state, deepcopy(entry[1][after_seq:end])
         state, events = await self.read(user_id, kind, identifier)
-        return state, events[after_seq:]
+        return state, events[after_seq:end]
 
     async def snapshot(self, user_id: str, kind: str, identifier: str, name: str, data: Any) -> None:
         if name not in {'input_snapshot.json', 'execution_context.json', 'request.json', 'result.json'}:
@@ -184,6 +196,8 @@ class FileRunStore:
         canonical(updates)
         canonical(data)
         directory = self.directory(user_id, kind, identifier)
+        if str(directory) in self.unsupported:
+            raise ProtocolVersionUnsupported('不支持旧台账协议')
         if str(directory) in self.corrupted:
             raise StorageCorrupted('已提交台账损坏')
         state = await self._io(self._commit_sync, directory, updates, event_type, data)
@@ -245,34 +259,44 @@ class FileRunStore:
             path.unlink()
             fsync_directory(path.parent)
 
-    async def recover(self) -> None:
+    async def recover(self) -> list[tuple[str, str, str]]:
         manifest = safe_path(self.root, '.index-ready')
         initialize_index = not manifest.exists()
         entries = await self.list_entries() if initialize_index else await self._io(self._index_entries)
+        recoverable = []
         for user_id, kind, identifier in entries:
             async with self.lock(user_id, kind, identifier):
                 try:
                     state, _ = await self.read(user_id, kind, identifier)
-                except StorageCorrupted:
+                except (StorageCorrupted, ProtocolVersionUnsupported):
                     continue
                 if state is None:
                     continue
-                if state.get('status') in TERMINAL:
+                settled = state.get('status') in TERMINAL and (
+                    kind == 'recipes' or state.get('can_release_activity', False)
+                )
+                if settled:
                     await self._io(self._unmark_active, self.directory(user_id, kind, identifier))
-                if initialize_index and state.get('status') not in TERMINAL and state.get('status') != 'missing':
+                elif state.get('status') != 'missing':
                     await self._io(self._mark_active, self.directory(user_id, kind, identifier))
-                if state.get('status') not in TERMINAL and state.get('status') != 'missing':
+                    recoverable.append((user_id, kind, identifier))
+                if kind == 'recipes' and state.get('status') not in TERMINAL:
                     commands = deepcopy(state.get('commands', {}))
                     for receipt in commands.values():
                         if receipt['status'] == 'accepted':
                             receipt.update(status='rejected', reason_code='SERVICE_INTERRUPTED')
+                    attempts = deepcopy(state.get('attempts', []))
+                    if attempts:
+                        attempts[-1].update(
+                            status='interrupted', error={'code': 'SERVICE_INTERRUPTED', 'message': '构建中断'}
+                        )
                     await self.commit(
                         user_id,
                         kind,
                         identifier,
                         {
                             'status': 'interrupted',
-                            'pending_interaction': None,
+                            'attempts': attempts,
                             'commands': commands,
                             'error': {'code': 'SERVICE_INTERRUPTED', 'message': '服务中断，未自动续跑'},
                             'requires_reconciliation': True,
@@ -281,14 +305,15 @@ class FileRunStore:
                         {'status': 'interrupted'},
                     )
         if initialize_index:
-            await self._io(atomic_write_text, manifest, '1', fsync=True, sync_directory=True)
+            await self._io(atomic_write_text, manifest, str(PROTOCOL_VERSION), fsync=True, sync_directory=True)
+        return recoverable
 
     async def _io(self, function, *args, **kwargs):
         if not self.healthy:
             raise PersistenceError('台账已进入只读故障状态')
         try:
             return await durable_io(function, *args, _executor=self.locks.executor, **kwargs)
-        except StorageCorrupted:
+        except (StorageCorrupted, ProtocolVersionUnsupported):
             raise
         except (OSError, ValueError, TypeError) as exc:
             self.healthy = False
@@ -324,6 +349,9 @@ class FileRunStore:
                 if not line.endswith(b'\n'):
                     raise ValueError('未提交的尾行')
                 payload = record['payload']
+                if payload.get('schema_version') != PROTOCOL_VERSION:
+                    self.unsupported.add(str(directory))
+                    raise ProtocolVersionUnsupported('台账格式与当前联调协议不匹配，禁止自动重执行')
                 if record['record_seq'] != index + 1 or record['previous'] != previous:
                     raise ValueError('日志顺序损坏')
                 expected = digest({'record_seq': index + 1, 'previous': previous, 'payload': payload})
@@ -367,24 +395,37 @@ class FileRunStore:
             last = json.loads(lines[-1]) if lines else {}
             record_seq, previous = last.get('record_seq', 0) + 1, last.get('checksum', '')
         next_status = updates.get('status', state.get('status'))
-        if next_status not in TERMINAL and next_status != 'missing':
+        settled = next_status in TERMINAL and (
+            directory.parent.name == 'recipes'
+            or updates.get('can_release_activity', state.get('can_release_activity', False))
+        )
+        if not settled and next_status != 'missing':
             # 标记必须先于 journal 持久化，崩溃至多产生可恢复的冗余标记。
             self._mark_active(directory)
         event = None
         updates = deepcopy(without_secrets(updates, self.secret_values))
         updates['updated_at'] = now()
+        updates['schema_version'] = PROTOCOL_VERSION
+        updates['state_revision'] = state.get('state_revision', 0) + 1
         if event_type:
             seq = len(events) + 1
             event = {
-                'schema_version': 1,
+                'schema_version': PROTOCOL_VERSION,
                 'run_uuid': directory.name,
                 'agent_seq': seq,
                 'event_type': event_type,
                 'timestamp': now(),
-                'data': without_secrets(data or {}, self.secret_values),
+                'payload': without_secrets(data or {}, self.secret_values),
             }
             updates['last_agent_seq'] = seq
-        payload = {'updates': updates, 'event': event}
+            updates['snapshot_agent_seq'] = seq
+            if directory.parent.name == 'runs' and 'run_uuid' in state | updates:
+                merged = state | updates
+                event['payload']['run_state'] = public_patch(
+                    state.get('public_snapshot'), merged, commands_changed='commands' in updates
+                )
+                updates['public_snapshot'] = reduce_public(state.get('public_snapshot'), None, event)
+        payload = {'schema_version': PROTOCOL_VERSION, 'updates': updates, 'event': event}
         record = {'record_seq': record_seq, 'previous': previous, 'payload': payload}
         record['checksum'] = digest(record)
         serialized = (canonical(record) + '\n').encode('utf-8')
@@ -397,7 +438,7 @@ class FileRunStore:
         # journal 已成功提交；投影失败不撤销提交，但仍进入故障状态阻止后续副作用。
         if self.projection == 'always' or (self.projection == 'terminal' and state.get('status') in TERMINAL):
             atomic_write_json(safe_path(directory, 'state.json'), state, fsync=True, sync_directory=True)
-        if state.get('status') in TERMINAL:
+        if settled:
             self._unmark_active(directory)
         if event:
             events.append(event)

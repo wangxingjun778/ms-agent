@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import time
+from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -32,6 +33,7 @@ from ms_agent.agent.schema import (
     StreamEvent,
     ToolResult,
 )
+from ms_agent.agent.snapshot import CapabilityError, constrain_arguments
 from ms_agent.session.locking import PersistenceError
 from ms_agent.tools.schema import ExternalTaskUnresolved, ToolInvocationContext
 
@@ -82,8 +84,13 @@ class AgentRunner:
 
         try:
             # 1. Load session history
-            history = self._history_window(
-                await ctx.session_store.load_history(ctx.session_id), ctx.config.get('history', {})
+            frozen = ctx.metadata.get('frozen')
+            history = (
+                []
+                if frozen
+                else self._history_window(
+                    await ctx.session_store.load_history(ctx.session_id), ctx.config.get('history', {})
+                )
             )
 
             # 2. Recall relevant memories
@@ -101,10 +108,14 @@ class AgentRunner:
             system_prompt = self._build_system_prompt(ctx, memory_entries)
 
             # 4. Assemble messages for LLM
-            llm_messages = self._assemble_messages(
-                system_prompt,
-                history,
-                ctx.messages,
+            llm_messages = (
+                deepcopy(frozen['messages'])
+                if frozen
+                else self._assemble_messages(
+                    system_prompt,
+                    history,
+                    ctx.messages,
+                )
             )
 
             if ctx.record is not None:
@@ -117,12 +128,29 @@ class AgentRunner:
                         'skills': ctx.skill_service.get_active_skills() if ctx.skill_service else [],
                     },
                 )
-            await ctx.session_store.append(ctx.session_id, ctx.messages)
+            if not frozen:
+                await ctx.session_store.append(ctx.session_id, ctx.messages)
             persisted = len(llm_messages)
             completed = False
 
             # 5. Function-calling loop
             tool_specs = ctx.tool_registry.get_tool_specs()
+            if frozen and ctx.control and frozen['mode'] == 'agent':
+                tool_specs.append(
+                    {
+                        'type': 'function',
+                        'function': {
+                            'name': 'ask_input',
+                            'description': '在原 Run 内澄清需求，不发起外部任务',
+                            'parameters': {
+                                'type': 'object',
+                                'properties': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 2000}},
+                                'required': ['question'],
+                                'additionalProperties': False,
+                            },
+                        },
+                    }
+                )
             usage_stats: Dict[str, int] = {
                 'prompt_tokens': 0,
                 'completion_tokens': 0,
@@ -137,11 +165,28 @@ class AgentRunner:
                 if ctx.record is not None:
                     await ctx.record('llm_started', {'round': round_count})
                 # Call LLM
-                llm_response = await self._call_llm(
-                    ctx,
-                    llm_messages,
-                    tool_specs,
-                )
+                if frozen and frozen['mode'] == 'custom':
+                    fixed = frozen['fixed_tool']
+                    if round_count == 0:
+                        llm_response = {
+                            'message': {
+                                'tool_calls': [
+                                    {
+                                        'id': 'custom',
+                                        'function': {
+                                            'name': fixed['name'],
+                                            'arguments': json.dumps(fixed['arguments']),
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    else:
+                        llm_response = {'message': {'content': '固定参数执行已结束。'}}
+                else:
+                    llm_response = await self._call_llm(ctx, llm_messages, tool_specs)
+                if ctx.control is not None:
+                    await ctx.control.guard()
 
                 # Accumulate usage
                 resp_usage = llm_response.get('usage')
@@ -165,7 +210,8 @@ class AgentRunner:
                 if not tool_calls and ctx.control is not None and ctx.control.interventions:
                     llm_messages.append({'role': 'assistant', 'content': content})
                     await ctx.control.boundary(llm_messages)
-                    await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
+                    if not frozen:
+                        await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
                     persisted = len(llm_messages)
                     round_count += 1
                     continue
@@ -253,7 +299,8 @@ class AgentRunner:
                         }
                     )
 
-                await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
+                if not frozen:
+                    await ctx.session_store.append(ctx.session_id, llm_messages[persisted:])
                 persisted = len(llm_messages)
                 round_count += 1
 
@@ -264,7 +311,7 @@ class AgentRunner:
             #    Compute new messages added during this run (after history +
             #    system prompt + request messages).
             new_messages = llm_messages[persisted:]
-            if new_messages:
+            if new_messages and not frozen:
                 await ctx.session_store.append(ctx.session_id, new_messages)
             if ctx.memory_enabled:
                 await ctx.memory_service.ingest(ctx.session_id, llm_messages[1 + len(history) :])
@@ -424,9 +471,24 @@ class AgentRunner:
             func['arguments'] = json.dumps(args, ensure_ascii=False)
             start = time.monotonic()
             try:
+                frozen = ctx.metadata.get('frozen')
+                if frozen and name != 'ask_input':
+                    args = constrain_arguments(frozen, name, args)
                 invocation_index = ctx.metadata.get('_invocation_index', 0)
                 ctx.metadata['_invocation_index'] = invocation_index + 1
                 invocation_id = f'{ctx.run_uuid}:tool:{invocation_index}'
+                if frozen and name == 'ask_input':
+                    if (
+                        ctx.control is None
+                        or set(args) != {'question'}
+                        or not isinstance(args['question'], str)
+                        or not 1 <= len(args['question']) <= 2000
+                    ):
+                        raise CapabilityError('澄清问题无效')
+                    answer = await ctx.control.ask_input(invocation_id, args['question'])
+                    if answer['action'] == 'skip':
+                        return ToolResult.from_error(name, '用户跳过澄清', skipped=True)
+                    return ToolResult.from_success(name, answer['input']['text'])
                 if ctx.control is not None:
                     args = await ctx.control.prepare_tool(
                         invocation_id,
@@ -438,10 +500,22 @@ class AgentRunner:
                     if args is None:
                         return ToolResult.from_error(name, '工具调用已跳过', skipped=True)
                 func['arguments'] = json.dumps(args, ensure_ascii=False)
+                if ctx.control is not None:
+                    await ctx.control.guard()
+                if frozen:
+                    args = constrain_arguments(frozen, name, args)
                 context = ToolInvocationContext(
-                    ctx.user_id, ctx.session_id, ctx.run_uuid, invocation_id, record=ctx.record
+                    ctx.user_id,
+                    ctx.session_id,
+                    ctx.run_uuid,
+                    invocation_id,
+                    record=ctx.record,
+                    guard=ctx.control.guard if ctx.control else None,
                 )
                 await context.emit('tool_started', {'tool_name': name, 'arguments': args})
+                permit = ctx.control.permit if ctx.control is not None else None
+                if permit:
+                    permit.release()
                 result = await ctx.tool_registry.execute(name, args, context)
                 result.metadata['duration_ms'] = int((time.monotonic() - start) * 1000)
                 await context.emit('tool_completed', {'tool_name': name, 'arguments': args, 'result': asdict(result)})
@@ -449,8 +523,11 @@ class AgentRunner:
                     result.metadata.get('unresolved') or result.metadata.get('delivery_unknown')
                 ):
                     raise ExternalTaskUnresolved('EXTERNAL_TASK_UNRESOLVED')
+                if permit:
+                    await ctx.control.guard()
+                    await permit.resume()
                 return result
-            except (PersistenceError, ExternalTaskUnresolved, InteractionTimeout):
+            except (PersistenceError, ExternalTaskUnresolved, InteractionTimeout, CapabilityError):
                 raise
             except KeyError:
                 return ToolResult.from_error(

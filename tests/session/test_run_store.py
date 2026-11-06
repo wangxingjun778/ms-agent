@@ -31,10 +31,11 @@ async def test_recover_incomplete_run_and_preserve_terminal(tmp_path):
             'run_started',
             {},
         )
-    await store.recover()
+    recovered = await store.recover()
+    assert ('u1', 'runs', 'r1') in recovered  # 执行恢复/收尾由 RunService 负责。
     first, _ = await store.read('u1', 'runs', 'r1')
     second, _ = await store.read('u1', 'runs', 'r2')
-    assert first['status'] == 'interrupted' and first['result']['content'] == '已提交'
+    assert first['status'] == 'running' and first['result']['content'] == '已提交'
     assert second['status'] == 'succeeded'
 
 

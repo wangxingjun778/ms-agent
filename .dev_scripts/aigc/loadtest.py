@@ -23,12 +23,12 @@ import sys
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_MODEL = 'Qwen/Qwen-Image-2.1-Turbo'
-TERMINAL = {'succeeded', 'failed', 'cancelled', 'interrupted'}
+TERMINAL = {'succeeded', 'partial_succeeded', 'failed', 'cancelled', 'interrupted'}
 
 
 def child_main(stats_path: str) -> None:
@@ -99,6 +99,20 @@ class MockUpstream:
             return web.json_response({'error': 'rate limited'}, status=429)
         await asyncio.sleep(max(0.0, self.random.gauss(self.args.llm_latency, self.args.llm_latency * 0.1)))
         last = body['messages'][-1]
+        if body.get('response_format'):
+            message = {
+                'role': 'assistant',
+                'content': json.dumps(
+                    {
+                        'prompt_template': '生成 {{subject}}',
+                        'negative_prompt_template': '',
+                        'variables': [{'name': 'subject', 'type': 'string', 'required': True, 'description': '主题'}],
+                        'examples': [{'description': '示例', 'inputs': {'subject': '猫'}}],
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+            return web.json_response({'choices': [{'message': message}]})
         usage = {'prompt_tokens': sum(len(str(m.get('content') or '')) for m in body['messages']) // 2}
         usage.update(completion_tokens=16, total_tokens=usage['prompt_tokens'] + 16)
         if last.get('role') == 'user' and '[image]' in str(last.get('content')):
@@ -197,6 +211,7 @@ class LoadTest:
         self.approvals: set[asyncio.Task] = set()
         self.event_delays = []
         self.get_latencies = []
+        self.get_final_latencies = []
         self.server_stats = {}
         image_rng = random.Random(args.seed)
         self.images = {
@@ -223,12 +238,19 @@ class LoadTest:
     def error(self, key: str) -> None:
         self.http_errors[key] = self.http_errors.get(key, 0) + 1
 
-    async def approve(self, client, user: str, run_uuid: str, interaction_id: str, record: dict) -> None:
+    async def approve(self, client, user: str, run_uuid: str, interaction: dict, record: dict) -> None:
+        interaction_id = interaction['interaction_id']
+        action = next(a for a in interaction['actions'] if a['action'] == 'approve')
         await asyncio.sleep(self.args.approve_delay)
         response = await client.post(
             f'/v1/aigc/runs/{run_uuid}/commands',
             headers=self.headers_for(user),
-            json={'command_id': f'approve-{interaction_id}', 'type': 'approve', 'interaction_id': interaction_id},
+            json={
+                'command_id': f'approve-{interaction_id}',
+                'action': 'approve',
+                'interaction_id': interaction_id,
+                'action_id': action['action_id'],
+            },
         )
         record['approvals'] += 1
         if response.status_code >= 400:
@@ -252,20 +274,25 @@ class LoadTest:
                         if not line.startswith('data: '):
                             continue
                         event = json.loads(line[6:])
+                        if 'agent_seq' not in event:
+                            self.error('stream_error')
+                            break
                         cursor = event['agent_seq']
                         record['events_seen'] += 1
                         stamp = datetime.fromisoformat(event['timestamp'])
                         self.event_delays.append((datetime.now(timezone.utc) - stamp).total_seconds())
-                        if event['event_type'] == 'interaction_requested':
-                            interaction = event['data']['interaction_id']
-                            if interaction not in approved:
-                                approved.add(interaction)
+                        if event['event_type'] == 'interaction.required':
+                            interaction = event['payload']
+                            if interaction['blocking'] and interaction['interaction_id'] not in approved:
+                                approved.add(interaction['interaction_id'])
                                 self.schedule_approval(
                                     self.approve(client, user, record['run_uuid'], interaction, record)
                                 )
-                        if event['event_type'] in {'run_terminal', 'run_interrupted', 'run_cancelled'}:
-                            record['status'] = event['data']['status']
+                        if event['event_type'] == 'run.completed':
+                            record['status'] = event['payload']['status']
                             return
+                        if self.args.sse_delay:
+                            await asyncio.sleep(self.args.sse_delay)
             except Exception as exc:  # noqa: BLE001 — 断流按游标重连
                 self.error(f'events_{type(exc).__name__}')
                 await asyncio.sleep(0.5)
@@ -274,17 +301,17 @@ class LoadTest:
         approved = set()
         while True:
             await asyncio.sleep(self.args.poll_interval)
+            started = time.monotonic()
             response = await client.get(f'/v1/aigc/runs/{record["run_uuid"]}', headers=self.headers_for(user))
+            self.get_latencies.append(time.monotonic() - started)
             if response.status_code != 200:
                 self.error(f'get_{response.status_code}')
                 continue
             view = response.json()
-            pending = view.get('pending_interaction')
+            pending = next((i for i in view['public_snapshot']['pending_interactions'] if i['blocking']), None)
             if pending and pending['interaction_id'] not in approved:
                 approved.add(pending['interaction_id'])
-                self.schedule_approval(
-                    self.approve(client, user, record['run_uuid'], pending['interaction_id'], record)
-                )
+                self.schedule_approval(self.approve(client, user, record['run_uuid'], pending, record))
             if view['status'] in TERMINAL:
                 record['status'] = view['status']
                 return
@@ -303,8 +330,18 @@ class LoadTest:
         self.runs.append(record)
         body = {
             'run_uuid': record['run_uuid'],
-            'session_id': session,
-            'messages': [{'role': 'user', 'content': f'第 {index} 轮{" [image]" if image else ""}'}],
+            'schema_version': 1,
+            'session_id': str(uuid.uuid5(uuid.NAMESPACE_DNS, user + ':' + session)),
+            'user_message_uuid': str(uuid.uuid4()),
+            'assistant_message_uuid': str(uuid.uuid4()),
+            'parent_message_uuid': str(uuid.uuid5(uuid.NAMESPACE_DNS, user + ':' + session + ':root')),
+            'execution_policy': {
+                'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=self.args.max_seconds)).isoformat(),
+            },
+            'input_snapshot': {
+                'context_mode': 'explicit_snapshot',
+                'effective': {'prompt': f'第 {index} 轮{" [image]" if image else ""}'},
+            },
         }
         record['submitted'] = time.monotonic()
         while True:
@@ -324,7 +361,28 @@ class LoadTest:
             await self.follow_sse(client, user, record)
         else:
             await self.follow_poll(client, user, record)
+        if self.args.recipe_ratio and random.random() < self.args.recipe_ratio and record['status'] == 'succeeded':
+            await self.build_recipe(client, user, record)
         record['finished'] = time.monotonic()
+
+    async def build_recipe(self, client, user: str, record: dict) -> None:
+        response = await client.get(f'/v1/aigc/runs/{record["run_uuid"]}', headers=self.headers_for(user))
+        view = response.json()
+        outputs = view['public_snapshot']['outputs']
+        payload = {'recipe_request_id': 'recipe-' + record['run_uuid'], 'output_ids': [o['output_id'] for o in outputs]}
+        while True:
+            response = await client.post(
+                f'/v1/aigc/runs/{record["run_uuid"]}/recipe', headers=self.headers_for(user), json=payload
+            )
+            if response.status_code not in (200, 202):
+                self.error(f'recipe_{response.status_code}')
+                record['recipe_status'] = f'http_{response.status_code}'
+                return
+            recipe = response.json()
+            if recipe['status'] not in ('queued', 'running'):
+                record['recipe_status'] = recipe['status']
+                return
+            await asyncio.sleep(0.05)
 
     async def session_worker(self, client, user: str, session: str) -> None:
         if self.args.mode == 'burst':
@@ -382,7 +440,9 @@ class LoadTest:
                 response = await client.get(
                     f'/v1/aigc/runs/{record["run_uuid"]}', headers=self.headers_for(record['user'])
                 )
-                self.get_latencies.append(time.monotonic() - get_started)
+                elapsed = time.monotonic() - get_started
+                self.get_latencies.append(elapsed)
+                self.get_final_latencies.append(elapsed)
                 if response.status_code == 200:
                     view = response.json()
                     events += int(view.get('last_agent_seq') or 0)
@@ -432,6 +492,13 @@ def summarize(args, test: LoadTest, outcome: dict, upstream: MockUpstream, count
             )
         },
         'runs_total': len(test.runs),
+        'protocol_version': 1,
+        'recipe_statuses': {
+            status: sum(r.get('recipe_status') == status for r in test.runs)
+            for status in {r['recipe_status'] for r in test.runs if 'recipe_status' in r}
+        },
+        'recipe_ratio': args.recipe_ratio,
+        'sse_delay': args.sse_delay,
         'statuses': statuses,
         'run_errors': errors,
         'http_errors': test.http_errors,
@@ -454,6 +521,9 @@ def summarize(args, test: LoadTest, outcome: dict, upstream: MockUpstream, count
         'mean_run_seconds': round(statistics.fmean(durations), 3) if durations else None,
         'event_latency_ms_p95': None if not test.event_delays else round(percentile(test.event_delays, 95) * 1000, 2),
         'get_latency_ms_p95': None if not test.get_latencies else round(percentile(test.get_latencies, 95) * 1000, 2),
+        'get_final_latency_ms_p95': None
+        if not test.get_final_latencies
+        else round(percentile(test.get_final_latencies, 95) * 1000, 2),
         'loop_lag_ms_p99': test.server_stats.get('loop_lag_ms_p99'),
         'source_root': str(ROOT),
     }
@@ -538,6 +608,8 @@ def parse_args(argv=None):
     parser.add_argument('--mode', choices=['closed', 'burst'], default='closed', help='closed：同会话串行提交')
     parser.add_argument('--follow', choices=['sse', 'poll'], default='sse')
     parser.add_argument('--poll-interval', type=float, default=1.0)
+    parser.add_argument('--recipe-ratio', type=float, default=0.0, help='生成完成后构建 Recipe 的比例，共享 LLM 配额')
+    parser.add_argument('--sse-delay', type=float, default=0.0, help='每条事件读取延迟，模拟慢 SSE 客户端')
     parser.add_argument('--image-ratio', type=float, default=0.3)
     parser.add_argument('--llm-latency', type=float, default=1.0)
     parser.add_argument('--image-seconds', type=float, default=6.0)

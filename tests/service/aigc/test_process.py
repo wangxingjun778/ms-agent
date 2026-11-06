@@ -94,9 +94,9 @@ async def test_process_restart_does_not_repeat_run(tmp_path, shutdown_signal):
             process = await launch()
             await ready(client)
             response = await client.get(f'/v1/aigc/runs/{body["run_uuid"]}')
-            assert response.status_code == 200 and response.json()['status'] == 'interrupted'
+            assert response.status_code == 200 and response.json()['status'] == 'failed'
             duplicate = await client.post('/v1/aigc/runs', json=body)
-            assert duplicate.status_code == 200 and duplicate.json()['status'] == 'interrupted'
+            assert duplicate.status_code == 200 and duplicate.json()['status'] == 'failed'
             assert len(calls) == 1
             replay = await client.get(f'/v1/aigc/runs/{body["run_uuid"]}/events')
             assert replay.status_code == 200 and 'interrupted' in replay.text

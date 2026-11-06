@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -64,6 +65,7 @@ def run(name, volume, port, secrets, *, read_only=True):
     if read_only:
         args += ['--read-only', '--tmpfs', '/tmp:size=64m,mode=1777']
     args += [
+        '--add-host=host.docker.internal:host-gateway',
         '-e',
         'DATA_DIR=/data',
         '-e',
@@ -111,7 +113,7 @@ def main():
         directory = Path(temporary)
         for file, value in [('service', 'smoke-service'), ('llm', 'smoke-llm'), ('api', 'smoke-api')]:
             (directory / file).write_text(value)
-            os.chmod(directory / file, 0o600)
+            os.chmod(directory / file, 0o444)  # 仅一次性 mock 凭据，供非 root 容器读取。
         try:
             os.environ['AIGC_SMOKE_LLM_PORT'] = str(server_port)
             run(name, volume, args.port, directory)
@@ -121,9 +123,13 @@ def main():
             assert inspect['HostConfig']['CapDrop'] == ['ALL']
             body = {
                 'run_uuid': str(uuid.uuid4()),
-                'session_id': 'smoke-session',
-                'profile_id': 'aigc_assistant',
-                'messages': [{'role': 'user', 'content': 'smoke'}],
+                'schema_version': 1,
+                'session_id': str(uuid.uuid4()),
+                'user_message_uuid': str(uuid.uuid4()),
+                'assistant_message_uuid': str(uuid.uuid4()),
+                'parent_message_uuid': str(uuid.uuid4()),
+                'execution_policy': {'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat()},
+                'input_snapshot': {'effective': {'prompt': 'smoke'}, 'context_mode': 'explicit_snapshot'},
             }
             status, accepted = request(args.port, 'POST', '/v1/aigc/runs', body)
             assert status == 202
@@ -139,8 +145,11 @@ def main():
             run(name, volume, args.port, directory)
             wait_ready(args.port, name)
             status, recovered = request(args.port, 'GET', f'/v1/aigc/runs/{body["run_uuid"]}')
-            assert status == 200 and recovered['status'] == 'interrupted', recovered
-            assert request(args.port, 'POST', '/v1/aigc/runs', body)[1]['status'] == 'interrupted'
+            assert status == 200 and recovered['status'] == 'failed', recovered
+            assert recovered['execution_closed'] and recovered['can_release_activity']
+            assert recovered['error']['code'] == 'SERVICE_INTERRUPTED'
+            assert request(args.port, 'POST', '/v1/aigc/runs', body)[1]['request_digest'] == accepted['request_digest']
+            assert request(args.port, 'POST', '/v2/aigc/runs', body)[0] == 404
             run(rival, volume, args.port + 1, directory, read_only=False)
             deadline = time.monotonic() + 10
             while (

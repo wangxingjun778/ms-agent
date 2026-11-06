@@ -95,7 +95,7 @@ class AgentService:
 
         upstreams = {'llm': self._config.get('llm', {}).get('upstream', {}), **tools_config.get('upstreams', {})}
         sessions = {}
-        for name in ('llm', 'submit', 'poll'):
+        for name in ('llm', 'submit', 'poll', 'settlement'):
             options = upstreams.get(name, {})
             sessions[name] = aiohttp.ClientSession(
                 connector=aiohttp.TCPConnector(
@@ -276,6 +276,56 @@ class AgentService:
         finally:
             # Close per-request resources
             await memory_service.close()
+
+    def frozen_registry(self, prepared, *, settlement=False):
+        """固定工具配置使用已拥有的连接池，仅在内存注入当前部署凭据。"""
+        tools = deepcopy(prepared['tools'])
+        if tools.get('api'):
+            tools['api'].setdefault('auth', {})['token'] = (
+                self._config['tools'].get('api', {}).get('auth', {}).get('token')
+            )
+        upstreams = deepcopy(tools['upstreams'])
+        limiters = self.limiters
+        if settlement:
+            upstreams['poll'] = upstreams['settlement']
+            limiters = {**limiters, 'poll': self.limiters['settlement']}
+        registry = APIToolRegistry(
+            self._sessions[1],
+            strict=True,
+            poll_client=self._sessions[3 if settlement else 2],
+            limiters=limiters,
+            upstreams=upstreams,
+        )
+        return registry, tools
+
+    async def run_frozen(self, prepared: dict, *, user_id: str, session_id: str, run_uuid: str, control, record):
+        registry, tools = self.frozen_registry(prepared)
+        if tools.get('api'):
+            await registry.load_from_dict(tools['api'])
+        llm_config = deepcopy(prepared['llm'])
+        llm_config['api_key'] = self._config['llm']['api_key']
+        ctx = RunContext(
+            user_id=user_id,
+            session_id=session_id,
+            messages=[],
+            config=deepcopy(prepared['agent']),
+            session_store=None,
+            memory_service=None,
+            tool_registry=registry,
+            llm_config=llm_config,
+            run_uuid=run_uuid,
+            control=control,
+            record=record,
+            memory_enabled=False,
+            max_rounds=prepared['agent']['max_chat_round'],
+            metadata={'frozen': prepared},
+        )
+        ctx.llm_client = self._llm_client or HTTPLLMClient(llm_config, self._http_session, limiter=self.limiters['llm'])
+        try:
+            async for event in self._runner.run(ctx):
+                yield event
+        finally:
+            await registry.close()
 
     async def run_sync(self, request: AgentRequest) -> AgentResponse:
         """Convenience: collect all events and return an :class:`AgentResponse`."""

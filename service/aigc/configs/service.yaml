@@ -39,6 +39,7 @@ events:
   heartbeat_seconds: 15
   max_stream_seconds: 540
   max_subscribers: 512
+  batch_size: 128
 
 # rpm=0 表示未设置本地 RPM 限制，生产需按账户实际配额设置。
 upstreams:
@@ -60,6 +61,13 @@ upstreams:
     concurrency: 32
     rpm: 0
     connections: 64
+    connect_timeout: 10
+    read_timeout: 60
+    retry: {initial: 1, maximum: 30, budget: 600}
+  settlement:
+    concurrency: 4
+    rpm: 0
+    connections: 8
     connect_timeout: 10
     read_timeout: 60
     retry: {initial: 1, maximum: 30, budget: 600}
@@ -108,15 +116,40 @@ agent:
     你是 AIGC 助手。只使用已声明的 HTTP API 工具。
     需要生成或编辑图片时保留参考图片 URL 的顺序，缺少参数时请求补充。
     不执行本地代码、不使用 sandbox，不展示内部推理过程。
-  history: {max_messages: 40, max_chars: 60000}
-  memory_enabled: true
-  memory_projection: false
-  memory_top_k: 5
-  skill_dirs: []
   model: "${LLM_MODEL:qwen-plus}"
   base_url: "${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
   temperature: 0.7
   max_tokens: 4096
+
+# capability 的名称是 backend 的 model_ref，必须显式约定映射。
+capabilities:
+  context: {max_messages: 200, max_chars: 60000, max_asset_bytes: 262144}
+  asset_transport: frozen_snapshot
+  connection_transport: disabled
+  models:
+    Qwen/Qwen-Image-2.1-Turbo:
+      model_id: Qwen/Qwen-Image-2.1-Turbo
+      modality: image
+      tool_name: image_generation
+      actions: [generate, continue_edit, regenerate, change_reference, rethink]
+      output_type: image
+      parameter_map:
+        image_count: n
+        negative_prompt: negative_prompt
+        seed: seed
+        input_refs: image_url
+        steps: steps
+        guidance_scale: guidance
+      sizes: {}
+      confirmed_path: null
+      poster_path: null
+
+settlement:
+  concurrency: 8
+  budget: 600
+  query_timeout: 60
+  retry_interval: 5
+  cancel_enabled: false
 
 tools:
   api:

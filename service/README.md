@@ -1,898 +1,466 @@
-# AIGC 服务接口说明
+# AIGC Agentic 服务接口说明
 
-## 1. 概述
+> 接口前缀：`/v1/aigc` · 服务声明：`1.0.0` · 文档修订日期：`2026-11-06`。
+> 当前处于联调阶段，尚未部署上线。本文按最新工作区实现描述，保留已完成的 Agentic 能力，不因功能迭代自动升级接口版本。任何接口版本变更必须先获得用户审批；版本约定与变更记录见第 10 节。
 
-AIGC 服务将 MS-Agent 的轻量执行能力封装为 HTTP 接口，供可信业务 backend 调用。接口层位于 `service/aigc`，运行、工具调用、会话、记忆及配方构建由 `ms_agent` 核心模块实现，部署方式为独立 Docker 镜像。
+## 1. 链路、职责与交付范围
 
 ```text
-业务 backend → Docker 服务 → service/aigc 接口层 → ms_agent 轻量核心 → 已配置的模型/工具 API
+前端登录态 / 用户操作
+  → modelscope_service（业务 DB 事务、消息树、快照、后台租约、事件投影）
+  → EAS 网关 → service/aigc FastAPI 服务
+  → ms_agent SDK（Agent/Custom、工具调用、持久事实、控制、收尾、Recipe）
+  → 已配置模型 / aigc_service HTTP API
 ```
 
-| 项目 | 说明 |
-|---|---|
-| 服务版本 | `1.0.0` |
-| 业务接口前缀 | `/v1/aigc` |
-| 本地访问地址 | `http://127.0.0.1:8000`；实际地址由部署环境决定 |
-| 请求格式 | `application/json`，UTF-8 |
-| 普通响应格式 | `application/json` |
-| 事件响应格式 | `text/event-stream`，SSE |
-| 在线接口文档 | `/docs` |
-| OpenAPI 描述 | `/openapi.json` |
-| 执行 profile | 当前仅接受 `aigc_assistant` |
+后端先在 DB 中创建 Run 和双消息，再由持久后台待办调用 ms-agent；后端的 202 与本服务的 202 分别表示各层受理，不代表模型开始或完成。后端负责会话归属、消息树、资源授权、偏好合并、前端版本及 Skill 管理；本服务负责执行和原任务查询，不创建后端消息或推理平台 task 表。
 
-本文按当前实现描述接口。示例中的用户、UUID、摘要、时间、任务 ID 和图片地址均为示意，不代表真实执行结果。
+当前已实现的业务接口如下：
 
-### 1.1 接口目录
+| 接口 | 方法及服务内路径 | 用途 |
+|---|---|---|
+| StartRun | POST `/v1/aigc/runs` | 固定 Run 与快照的持久幂等受理 |
+| GetRun | GET `/v1/aigc/runs/{run_uuid}` | 查询同水位完整公共快照、命令与收尾状态 |
+| SubscribeRunEvents | GET `/v1/aigc/runs/{run_uuid}/events` | Agent 事件按序回放与持续订阅 |
+| ControlRun | POST `/v1/aigc/runs/{run_uuid}/commands` | 精确交互及停止门闩 |
+| GetOrBuildRecipe | POST `/v1/aigc/runs/{run_uuid}/recipe` | 固定事实构建、查询及显式 attempt 重试 |
 
-| 接口名 / operationId | 方法 | 完整路径 | 功能 |
-|---|---|---|---|
-| StartRun | POST | `/v1/aigc/runs` | 持久幂等地受理一次执行 |
-| GetRun | GET | `/v1/aigc/runs/{run_uuid}` | 查询状态、关联、回执和已提交结果 |
-| SubscribeRunEvents | GET | `/v1/aigc/runs/{run_uuid}/events` | 订阅执行事件及按序号回放 |
-| ControlRun | POST | `/v1/aigc/runs/{run_uuid}/commands` | 授权、跳过、补充输入、干预或停止 |
-| GetOrBuildRecipe | POST | `/v1/aigc/runs/{run_uuid}/recipe` | 获取或异步生成可编辑配方 |
+`/health/live`、`/health/ready` 与 `/internal/stats` 是运维端点，与上述业务接口分开。`/docs`、`/openapi.json` 提供类型约束。SDK 类型源为 [protocol.py](../ms_agent/agent/protocol.py)。
+
+### 1.1 当前能力与依赖限制
+
+- 默认开放 `Qwen/Qwen-Image-2.1-Turbo` 的已配置图片工具。Agent 可返回纯文本或调用工具；Custom 直接调用固定工具，不调用规划 LLM。
+- 仅使用明确给出的显式祖先链、冻结 memory 和声明式资产；不自动拼接 session 历史、不读取最新用户偏好、不裁剪或自动摘要。
+- 视频输出/封面/confirmed 参数已具备配置适配及 mock 契约测试，但默认没有生产视频工具，不能宣称真实视频服务已接通。
+- BYOK 的 `ConnectionResolver` 接入边界已定义，当前配置为 disabled，调用明确拒绝。没有用户凭据解析服务的实际接口契约，不从连接 ID 猜测凭据或地址。
+- Skill/Recipe 通过可信 backend 提供的固定 `asset_snapshots` 解析，验证 revision/digest/变量；不从任意用户 URL 下载代码，不安装 Skill，不支持 MCP。
+- 原任务收尾只使用已配置 `poll_path` 查询 task_id。当前没有远端 cancel 或 invocation_id 查询接口，`request_id` 只用于追踪，不是任务查询键。
+- 本服务没有配方编辑、Skill 包构建或发布接口。后端确定性打包与调用 Skill 中心；需同步调整后端 V3 5.1.6 与划掉 BuildSkillPackage 的矛盾。
 
 ## 2. 公共约定
 
-### 2.1 认证与请求头
+### 2.1 认证与地址
 
-所有业务接口均需要以下请求头：
-
-| 请求头 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `Authorization` | string | 是 | `Bearer <service-token>`，用于服务间认证 |
-| `X-User-Id` | string | 是 | 可信 backend 解析登录身份后注入的用户标识 |
-| `Content-Type` | string | POST 时是 | `application/json` |
-| `Accept` | string | 否 | 普通请求使用 `application/json`；事件订阅建议使用 `text/event-stream` |
-| `Last-Event-ID` | string | 否 | 仅用于事件订阅，表示客户端已处理的最后一个事件序号 |
-
-安全边界：
-
-- `service-token` 是服务间凭据，不是用户登录令牌，也不是模型或图片 API Token。
-- 服务信任持有服务凭据的 backend 所传递的 `X-User-Id`；不自行校验终端用户登录会话。
-- 不向浏览器或不可信客户端暴露服务凭据；业务 backend 必须自行校验用户身份与业务权限。
-- 请求体不能传入 `user_id`。服务根据 `X-User-Id` 访问对应用户的数据；查询其他用户的 Run 返回 `404 RUN_NOT_FOUND`。
-- 所有用户、Run、事件、命令及 Recipe 请求应持续使用同一用户上下文。
-
-响应头 `X-Request-Id` 是服务为本次 HTTP 请求生成的追踪标识。它不参与幂等判断，不等同于 `run_uuid`、`command_id` 或外部 API 的 `request_id`。
-
-### 2.2 标识、时间与字段校验
-
-| 标识 | 约束 / 用途 |
-|---|---|
-| `run_uuid` | 调用方生成的合法 UUID 字符串；服务规范化后使用 |
-| `session_id` | 调用方指定的会话标识；同一用户下用于关联历史并串行执行 |
-| `command_id` | 调用方生成的控制命令标识；作用域为当前用户、当前 Run |
-| `recipe_request_id` | 调用方生成的配方构建请求标识；作用域为当前用户，不局限于单个 Run |
-| `interaction_id` | 服务生成的交互标识，须取自当前 `pending_interaction` |
-| `artifact_id` | 服务返回的产物标识；作为不透明字符串使用，不自行拼接 |
-| `recipe_uuid` | 服务生成的配方标识；不替代调用方的幂等键 `recipe_request_id` |
-
-`session_id`、`command_id`、`recipe_request_id` 长度为 1～128，格式为 `^[A-Za-z0-9_:@-][A-Za-z0-9_.:@-]{0,127}$`。
-
-`X-User-Id` 长度为 1～128，只允许 ASCII 字母、数字及 `_ . : @ -`，不能为 `.` 或 `..`。所有标识均不能包含路径分隔符。
-
-时间使用 ISO 8601 格式，例如 `2026-11-05T08:00:00+00:00`。摘要由服务生成，当前采用 SHA-256；调用方应存储返回值，不自行推断其内容。
-
-对外结构化请求拒绝未声明的字段，不将字符串自动转换为数字或布尔值。例如 `max_rounds` 应传 JSON 整数，不传 `"20"`。`payload` 等开放对象的具体内容另按交互规则校验。
-
-### 2.3 异步与持久化语义
-
-- `202 Accepted` 只表示请求已受理或命令已接收，不代表执行完成或动作已生效。
-- `200 OK` 表示 HTTP 请求成功，也可能返回仍在运行的已有 Run，或失败/中断的 Recipe 构建记录。必须继续检查响应体的 `status`。
-- Run 按 `(X-User-Id, run_uuid)` 幂等；命令按 `(X-User-Id, run_uuid, command_id)` 幂等；配方构建按 `(X-User-Id, recipe_request_id)` 幂等。
-- 同一幂等键、相同语义输入返回原记录；同一幂等键、不同输入返回 `409`。请求超时或回执丢失时，应先查询或使用原幂等键重试。
-- 相同用户和会话的 Run 按受理顺序串行执行；不同会话可受控并发。用户间采用轮询公平调度，并设每用户活跃/在途上限。会话历史和 memory 按用户/会话隔离。
-- 等待授权或补充输入时归还活跃执行槽，仍计入在途容量；默认 1800 秒超时后进入 `failed / INTERACTION_TIMEOUT`。配置为 0 可关闭超时。
-- 默认上下文只保留最近 40 条消息、最多 60,000 字符的完整用户回合，不拆开 tool call 与结果；会话文件仍保存完整历史。memory 只召回窗口之外的内容，默认不生成 MEMORY.md 投影。
-- 本地文件与 Docker 持久卷保存执行台账、事件、回执和结果。持久卷丢失后无法保持原幂等和回放保证。
-- 服务重启后，未完成的 Run/Recipe 标记为 `interrupted`，不自动续跑或重新提交图片任务。确需新的执行时使用新的 `run_uuid`，确需新的配方生成时使用新的 `recipe_request_id`。
-- 外部图片 API 没有已确认的幂等键或取消接口，本服务不承诺外部副作用 exactly-once，也不承诺停止后远端已取消生成或扣费。
-
-### 2.4 默认限制
-
-| 项目 | 默认值 / 限制 |
-|---|---|
-| JSON 请求体大小 | 最大 1 MiB；超出返回 413；EAS 网关可能先行拒绝 |
-| Run 活跃并发 | 64，可配置；等待交互不占活跃槽 |
-| Run 在途容量 | 500，含排队、执行和等待交互 |
-| 每用户活跃 / 在途容量 | 4 / 20，同一用户不同 session 共用配额 |
-| LLM 并发 | 32，Run 与 Recipe 共用；RPM 必须按实际账户配额配置 |
-| 图片提交 / 轮询并发 | 8 / 32，分别限流 |
-| SSE 订阅上限 | 512，单流默认最长 540 秒，心跳 15 秒 |
-| 单次 messages 数量 | 1～20 |
-| 单条 content 长度 | 1～20,000 字符 |
-| 单条消息图片附件数 | 最多 4 |
-| Recipe 并发 | 1，可配置 |
-| Recipe LLM 调用超时 | 120 秒，可配置；不含排队等待时间 |
-| Recipe 在途构建数量 | 当前实现上限 100，含排队/执行中的构建 |
-
-## 3. Run 状态
-
-| status | 含义 | 终态 |
-|---|---|---|
-| `missing` | 尚未绑定 StartRun 输入；可能已有被拒绝的提前控制命令记录 | 否 |
-| `queued` | 已受理，等待调度或同一会话的前序 Run | 否 |
-| `running` | 正在执行 | 否 |
-| `waiting_input` | 等待授权、跳过或补充参数，详见 `pending_interaction` | 否 |
-| `stopping` | 停止命令已接收，本地执行正在退出 | 否 |
-| `succeeded` | 执行成功完成 | 是 |
-| `failed` | 执行失败，或外部任务结果未确认而停止继续规划 | 是 |
-| `cancelled` | 本地执行已取消；不等于远端任务已取消 | 是 |
-| `interrupted` | 服务中断或本地状态不可用，未自动续跑 | 是 |
-
-常规链路：`queued → running ↔ waiting_input → succeeded / failed`。
-
-停止链路：`running / waiting_input → stopping → cancelled`。启动前停止可直接生成 `cancelled` 墓碑。
-
-终态不能重新进入执行状态。重复 StartRun 返回原终态，不能用它重置或恢复已结束的执行。
-
-## 4. 公共响应对象
-
-### 4.1 RunView
-
-StartRun 和 GetRun 均返回 RunView，无额外的 `data/success` 包装。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `run_uuid` | string | 执行标识 |
-| `session_id` | string / null | 关联会话；启动前取消墓碑尚未绑定会话时可为空 |
-| `profile_id` | string / null | 执行 profile；当前为 `aigc_assistant` |
-| `status` | string | Run 状态，见第 3 节 |
-| `request_digest` | string / null | 规范化请求的摘要；尚未 StartRun 时可为空 |
-| `snapshot_digest` | string / null | 首次输入与服务配置、工具、skills 快照的摘要 |
-| `last_agent_seq` | integer | 已提交的最新公开事件序号；不是会话消息 seq |
-| `pending_interaction` | object / null | 当前需要处理的交互 |
-| `result` | object / null | SDK 执行结果；中断时也可能保留已提交的部分结果 |
-| `artifacts` | array<object> | 已提交产物；无产物时为 `[]` |
-| `error` | object / null | Run 的业务错误，包含 `code`、`message` |
-| `external_tasks` | array<object> | 已提交外部任务或提交结果未确认的记录 |
-| `commands` | object | 以 `command_id` 为键的最新命令回执映射 |
-| `requires_reconciliation` | boolean | 需调用方核对执行/外部任务；不等于已经执行了自动对账 |
-| `created_at` | string | 创建时间 |
-| `updated_at` | string | 最新提交时间 |
-| `links` | object | `self`、`events`、`commands`、`recipe` 四个相对资源路径 |
-
-### 4.2 result：SDK 执行结果
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `session_id` | string | 结果关联会话 |
-| `messages` | array<object> | 消息集合，每项包含 `role`、`content`、`tool_calls` |
-| `messages[].role` | string | SDK 返回的消息角色；不据此单独判定 Run 成功 |
-| `messages[].content` | string | 消息正文 |
-| `messages[].tool_calls` | array<object> / null | 调用描述：`id`、`name`、`arguments` |
-| `tool_calls_made` | array<object> | 工具调用记录，每项包含 `tool_name`、`arguments`、`result`、`duration_ms` |
-| `usage` | object | `prompt_tokens`、`completion_tokens`、`total_tokens`、`rounds` 整数统计 |
-| `metadata` | object | 扩展信息；`partial: true` 表示已提交的部分结果，不能当成成功终态 |
-
-工具记录中的 `result` 包含：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `tool_name` | string | 工具名 |
-| `success` | boolean | 本次工具调用是否成功，不等同于整个 Run 的 status |
-| `content` | string | 工具结果文本 |
-| `raw_data` | object / null | 原始结构化 API 结果；字段由实际工具契约决定 |
-| `error` | string / null | 工具错误描述 |
-| `metadata` | object | 可包含 `task_id`、`duration_ms`、`unresolved`、`delivery_unknown` 等信息 |
-
-HTTP 成功响应、Run 成功、工具成功、外部任务成功是不同概念。判断执行是否结束以 Run 的 `status` 为准，不能只看有无 `result`。
-
-### 4.3 Artifact：产物
-
-| 字段 | 类型 | 适用类型 | 说明 |
-|---|---|---|---|
-| `artifact_id` | string | 全部 | 不透明的产物标识 |
-| `type` | string | 全部 | 当前为 `text` 或 `image` |
-| `media_type` | string | 全部 | 文本为 `text/plain`，图片当前为 `image/*` |
-| `content` | string | text | 已提交文本内容；当前最终文本产物 ID 为 `final_text` |
-| `url` | string | image | 外部 API 返回的图片地址 |
-| `invocation_id` | string | image | 来源工具调用标识 |
-| `tool_name` | string | image | 来源工具名，例如 `image_generation` |
-
-服务不自动下载或代理图片。图片 URL 的有效期、访问权限和长期可用性由远端服务决定，响应不保证有文件大小、校验和或有效期字段。
-
-### 4.4 pending_interaction：待处理交互
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `interaction_id` | string | 当前交互 ID |
-| `kind` | string | `approval`：授权；`input`：补充/修正工具参数 |
-| `invocation_id` | string | 对应工具调用 |
-| `tool_name` | string | 对应工具名 |
-| `arguments` | object | 当前工具参数 |
-| `input_schema` | object | 仅 `kind=input` 时提供，采用 JSON Schema 描述完整有效参数 |
-
-同一 Run 的交互按执行顺序出现。补充输入生效后，可能产生新的授权交互；必须重新读取新的 `interaction_id`，不能沿用上一交互 ID。
-
-### 4.5 external_tasks：外部任务记录
-
-记录可能包含 `invocation_id`、`tool_name`、`task_id`、`request_id`、`task_status`、`remote_cancel_supported`、`requires_reconciliation`。
-
-提交成功且收到 `task_id` 时，该 ID 按字符串保存；提交网络超时等情况下可能只记录提交未确认，不能假定每条记录都有 `task_id`。`request_id` 是外部 API 的追踪标识，不是执行 ID。
-
-本服务仅暴露已记录状态，不通过 GetRun 自动查询远端任务。`requires_reconciliation=true` 时，调用方应根据已有 `task_id` 等信息核对；不要为等待结果而重新发起生成。
-
-## 5. StartRun：受理执行
-
-### 5.1 基本信息
-
-| 项目 | 值 |
-|---|---|
-| 方法 | POST |
-| 路径 | `/v1/aigc/runs` |
-| operationId | `StartRun` |
-| 认证 | Bearer + X-User-Id |
-| 请求体 | StartRunRequest |
-| 响应体 | RunView |
-
-### 5.2 请求参数
-
-| 字段 | 类型 | 必填 | 默认值 / 约束 |
-|---|---|---|---|
-| `run_uuid` | string | 是 | 合法 UUID；调用方为同一次业务执行固定生成 |
-| `session_id` | string | 是 | 安全会话标识，见 2.2 |
-| `profile_id` | string | 否 | `aigc_assistant`，当前仅允许此值 |
-| `messages` | array<object> | 是 | 1～20 条消息 |
-| `parameters` | object | 否 | 默认 `{}`；仅允许下表字段 |
-
-消息字段：
-
-| 字段 | 类型 | 必填 | 默认值 / 约束 |
-|---|---|---|---|
-| `role` | string | 否 | 默认 `user`，当前仅允许 `user` |
-| `content` | string | 是 | 长度 1～20,000 |
-| `attachments` | array<object> | 否 | 默认 `[]`，最多 4 张图片 |
-| `attachments[].type` | string | 否 | 默认 `image`，当前仅允许 `image` |
-| `attachments[].url` | string | 是 | 长度 1～10,000，以 `http://` 或 `https://` 开头，须可由图片 API 读取 |
-
-不接受本地图片路径、独立 Base64 字段或 Data URI 附件。参考图顺序保留，但服务不保证任何模型都能执行图片编辑，应由部署方配置具备权限和对应能力的模型。
-
-parameters 字段：
-
-| 字段 | 类型 | 必填 | 约束 / 行为 |
-|---|---|---|---|
-| `max_rounds` | integer / null | 否 | 1～100；不传或 null 时使用服务端配置，默认配置为 20 |
-| `system_prompt` | string / null | 否 | 最多 20,000 字符；不传或 null 时使用服务端提示词 |
-| `temperature` | number / null | 否 | 0～2；不传或 null 时不覆盖服务端模型配置 |
-
-不能通过本接口设置模型 API 地址、凭据、工具注册、非核心模块或任意代码。图片模型和调用参数由后续工具调用与服务端工具 schema 决定。
-
-### 5.3 请求示例
-
-```bash
-curl -X POST "${AIGC_BASE_URL}/v1/aigc/runs" \
-  -H "Authorization: Bearer ${AIGC_SERVICE_TOKEN}" \
-  -H "X-User-Id: user-001" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "run_uuid": "11111111-1111-4111-8111-111111111111",
-    "session_id": "session-001",
-    "profile_id": "aigc_assistant",
-    "messages": [{"role": "user", "content": "介绍 AIGC 助手支持的能力"}],
-    "parameters": {"max_rounds": 20, "temperature": 0.7}
-  }'
-```
-
-其中 `AIGC_BASE_URL` 为服务根地址，例如 `http://127.0.0.1:8000`，不包含 `/v1/aigc`。
-
-图片编辑消息示例：
-
-```json
-{
-  "role": "user",
-  "content": "给参考图中的猫戴上生日帽",
-  "attachments": [{"type": "image", "url": "https://example.com/reference-cat.png"}]
-}
-```
-
-### 5.4 响应与幂等
-
-| HTTP 状态 | 含义 |
-|---|---|
-| 202 | 新执行已持久受理，状态为 queued |
-| 200 | 返回已有 Run，或返回启动前已取消的 Run |
-| 409 | 同一用户下 run_uuid 已绑定不同语义输入 |
-| 422 | UUID、请求字段、类型或参数范围无效 |
-| 429 | 运行任务容量已满 |
-| 503 | 服务暂不受理或本地存储不可用 |
-
-首次受理响应示例：
-
-```json
-{
-  "run_uuid": "11111111-1111-4111-8111-111111111111",
-  "session_id": "session-001",
-  "profile_id": "aigc_assistant",
-  "status": "queued",
-  "request_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "snapshot_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "last_agent_seq": 1,
-  "pending_interaction": null,
-  "result": null,
-  "artifacts": [],
-  "error": null,
-  "external_tasks": [],
-  "commands": {},
-  "requires_reconciliation": false,
-  "created_at": "2026-11-05T08:00:00+00:00",
-  "updated_at": "2026-11-05T08:00:00+00:00",
-  "links": {
-    "self": "/v1/aigc/runs/11111111-1111-4111-8111-111111111111",
-    "events": "/v1/aigc/runs/11111111-1111-4111-8111-111111111111/events",
-    "commands": "/v1/aigc/runs/11111111-1111-4111-8111-111111111111/commands",
-    "recipe": "/v1/aigc/runs/11111111-1111-4111-8111-111111111111/recipe"
-  }
-}
-```
-
-摘要基于规范化输入计算：默认字段补齐，parameters 内的 null 项不作为覆盖值保存。首次冻结服务配置/工具/skills 快照；后续同 ID 重试不会覆盖快照或读取新配置重新执行。更改消息、会话、有效参数等必须使用新的 run_uuid，否则返回冲突。
-
-## 6. GetRun：查询执行
-
-### 6.1 基本信息与请求
-
-| 项目 | 值 |
-|---|---|
-| 方法 | GET |
-| 路径 | `/v1/aigc/runs/{run_uuid}` |
-| operationId | `GetRun` |
-| 路径参数 | `run_uuid`：必填，UUID |
-| 请求体 / 查询参数 | 无 |
-| 响应体 | RunView |
-
-```bash
-curl "${AIGC_BASE_URL}/v1/aigc/runs/11111111-1111-4111-8111-111111111111" \
-  -H "Authorization: Bearer ${AIGC_SERVICE_TOKEN}" \
-  -H "X-User-Id: user-001"
-```
-
-### 6.2 响应
-
-成功返回 200，完整结构见 4.1。终态响应节选：
-
-```json
-{
-  "run_uuid": "11111111-1111-4111-8111-111111111111",
-  "session_id": "session-001",
-  "status": "succeeded",
-  "last_agent_seq": 7,
-  "pending_interaction": null,
-  "artifacts": [{
-    "artifact_id": "final_text",
-    "type": "text",
-    "media_type": "text/plain",
-    "content": "支持轻量对话以及已配置的图片生成与编辑能力。"
-  }],
-  "commands": {},
-  "error": null,
-  "requires_reconciliation": false
-}
-```
-
-Run 不存在或不属于当前用户时返回 404：
-
-```json
-{
-  "code": "RUN_NOT_FOUND",
-  "message": "RUN_NOT_FOUND",
-  "request_id": "example-http-request-id",
-  "details": null
-}
-```
-
-GetRun 不调用模型、不启动执行、不自动重提或查询外部任务。适用于启动回执丢失、服务重启、轮询状态及命令回执核对。
-
-响应携带 `ETag`（完整公开视图的摘要）。同用户查询可传 `If-None-Match`；视图未变化时返回无正文的 `304 Not Modified`。调用方按用户/Run 隔离缓存，不能跨用户复用；命令回执变化也会使 ETag 变化。
-
-## 7. SubscribeRunEvents：订阅与回放事件
-
-### 7.1 请求参数
-
-| 项目 | 值 |
-|---|---|
-| 方法 | GET |
-| 路径 | `/v1/aigc/runs/{run_uuid}/events` |
-| operationId | `SubscribeRunEvents` |
-| 响应类型 | `text/event-stream` |
-
-| 参数 | 位置 | 类型 | 必填 | 说明 |
-|---|---|---|---|---|
-| `run_uuid` | path | UUID string | 是 | 执行标识 |
-| `after_seq` | query | integer | 否 | 排他游标，只返回 `agent_seq > after_seq` 的事件 |
-| `Last-Event-ID` | header | integer string | 否 | 未提供 after_seq 时使用 |
-
-优先级：`after_seq → Last-Event-ID → 0`。同时提供时，以 after_seq 为准。
-
-游标须位于 `0～last_agent_seq`。`Last-Event-ID` 非整数、负数或游标超过末尾返回 `400 EVENT_CURSOR_INVALID`；查询参数类型/非负校验失败返回 `422 INPUT_INVALID`。
-
-### 7.2 请求和响应示例
-
-```bash
-curl -N "${AIGC_BASE_URL}/v1/aigc/runs/11111111-1111-4111-8111-111111111111/events?after_seq=2" \
-  -H "Authorization: Bearer ${AIGC_SERVICE_TOKEN}" \
-  -H "X-User-Id: user-001" \
-  -H "Accept: text/event-stream"
-```
+本地默认 `Authorization: Bearer <service-token>`；应用凭据格式由 `auth.header/auth.scheme` 唯一决定。EAS 生成配置采用：
 
 ```text
-id: 3
-event: step_started
-data: {"schema_version":1,"run_uuid":"11111111-1111-4111-8111-111111111111","agent_seq":3,"event_type":"step_started","timestamp":"2026-11-05T08:00:01+00:00","data":{"step":"llm","round":0}}
+Authorization: <EAS_TOKEN>                  # 网关鉴权
+X-AIGC-Service-Token: <service-token>       # FastAPI 服务间鉴权
+X-User-Id: <可信 backend 校验后的用户>
+Content-Type: application/json
+```
 
-id: 4
-event: public_summary
-data: {"schema_version":1,"run_uuid":"11111111-1111-4111-8111-111111111111","agent_seq":4,"event_type":"public_summary","timestamp":"2026-11-05T08:00:02+00:00","data":{"content":"支持轻量对话以及已配置的图片生成与编辑能力。"}}
+不要向浏览器暴露服务凭据；本服务信任持有凭据的 backend 注入用户标识，不验证站点登录态。查询他人 Run 返回 404。
+
+EAS 的 `<EAS_ENDPOINT>` 已含 `/api/predict/<service_name>`，调用时追加 `/v1/aigc/...`。响应 links 是含 `public_path_prefix` 的站点根相对路径，不重复添加 EAS 前缀。实际联调请求按上述配置传递鉴权头，不能混用网关 token 与应用 token。
+
+### 2.2 标识与版本
+
+- run_uuid、session_id、双消息 UUID、parent_message_uuid 均为合法 UUID；session_id 对应 backend conversation_uuid。后端选择和验证父链。
+- agent_run_id 固定等于 run_uuid，不产生第二套执行关联。
+- command_id、recipe_request_id、retry_command_id 是 1～128 字符的安全字符串。
+- snapshot/envelope/Recipe schema_version 固定 1；不等于 Agent 事件序号、后端 version 或构建 attempt。
+- state_revision 是本服务 journal 提交修订；后端 `version/applied_run_version` 仍由其 DB 事务产生。
+- 服务为每次 HTTP 请求生成追踪标识并在响应 `X-Request-Id` 返回；当前不复用调用方传入的同名头，不参与业务幂等。
+- `X-User-Id` 是可信后端提供的安全字符串，长度 1～128，允许字母、数字及 `_.:@-`，不接受 `.` 或 `..`；无效标识返回 400/USER_ID_INVALID。
+- 严格请求拒绝未知字段和隐式数字/布尔转换，时间为含时区 ISO 8601。
+
+### 2.3 摘要与幂等
+
+| 摘要 | 覆盖范围 |
+|---|---|
+| request_digest | 规范化完整 StartRun envelope、关联 UUID、快照和执行 deadline |
+| input_snapshot_digest | 冻结业务输入，保留 context/input_refs 数组顺序 |
+| execution_snapshot_digest | 固定模型映射、配置、工具声明、资产与实际消息上下文，排除凭据 |
+| backend_request_hash | 后端显式请求摘要，仅追踪，不要求与上述摘要相同 |
+| config_digest | 服务配置修订，与代码版本及生成结果分开 |
+
+Run 按 `(user_id, run_uuid)`；命令按 `(user_id, run_uuid, command_id)`；配方基础键按 `(user_id, recipe_request_id)` 幂等。同键异输入返回 409；网络重发复用原键，不重新执行或读取新资产版本。
+
+业务主动 retry 使用新 run_uuid、新消息对和新 deadline，复用来源原 input_snapshot、session 和父节点。不得用新的 Run 隐藏未核清外部副作用；当前仅允许来源 failed/cancelled 且 can_release_activity=true 的 retry。
+
+## 3. StartRun
+
+### 3.1 请求字段
+
+| 字段 | 必填 | 语义 |
+|---|---|---|
+| schema_version | 否 | 固定 1 |
+| run_uuid/session_id | 是 | 共同执行 ID / 会话 UUID |
+| user_message_uuid/assistant_message_uuid | 是 | backend 已创建的双消息，与彼此及父节点均不同；context 不能包含本轮消息 |
+| parent_message_uuid | 是 | backend 选定分支的父节点；context 非空时末尾须与它一致 |
+| backend_request_hash | 否 | SHA-256 追踪值 |
+| source_run_uuid | 否 | 已核清失败/取消后的主动 retry 来源 |
+| execution_policy.deadline_at | 是 | 本轮 deadline，不能沿用 retry 来源的已过期 deadline |
+| input_snapshot | 是 | 下述 InputSnapshot |
+
+`input_snapshot`：
+
+| 字段 | 语义 |
+|---|---|
+| schema_version | 固定 1 |
+| request | 规范化显式请求追溯；不再次合并，也不覆盖 effective |
+| effective | 执行权威参数 |
+| context_mode/context_policy | 固定 explicit_snapshot / preserve |
+| context[] | 有序 user/assistant 消息，含 message_uuid、文本 content blocks、output_refs；不能重复 ID |
+| input_refs[] | input_id、resource_ref、image/video 类型、稳定 URL、可选媒体 metadata；保持完整参考顺序 |
+| source_outputs[] | 来源助手/产物引用、URL/封面和已知 actual_generation；未知保持 null |
+| asset_refs[] | type=skill/recipe、resource_ref、固定 revision、variables |
+| asset_snapshots[] | 同引用/revision、content_digest、声明式 content，必须完整对应 asset_refs |
+| memory_snapshot[] | 明确冻结的参考文字，不加载动态 memory |
+| entry_context/provenance | 入口和来源追溯，不改变参数优先级 |
+
+`effective`：
+- generation_mode=agent/custom；model_source=community/byok；modality=image/video。
+- action=generate/continue_edit/regenerate/change_reference/rethink；主动 retry 复制原快照的生成 action，来源放顶层。
+- prompt 必填；negative_prompt 默认空字符串。
+- preferences：aspect_ratio、image_count（默认 1，1～4）、video_duration、resolution、seed、auto_evaluate、enabled_model_refs。Agent 未指定 enabled_model_refs 时只选服务配置中与当前 modality 匹配的模型；Custom 使用 custom_selection.model_ref。
+- custom_selection：model_ref、loras[{model_ref,weight}]、params。Custom 必填，Agent 不接受；LoRA 引用不能重复，seed 只在 preferences.seed，params 不得重复定义 effective/素材/LoRA 字段。
+- continue_edit/change_reference 必须有解析后的完整输入集合；结果操作必须有来源产物；regenerate 需要一个有已确认 prompt/model_ref 的来源。
+- 模型、操作、参数、比例/清晰度组合必须有服务端已验证映射；无映射明确拒绝，不静默降级。默认模型支持映射 steps→steps、guidance_scale→guidance、seed、n 和图片参考；未开放 sampler/LoRA 映射，sizes 为空，因此比例/分辨率组合默认拒绝。
+- 请求类型允许 prompt 最多 20,000 字符，但默认图片工具契约上限为 4,000；超过下游工具限制仍在能力校验阶段拒绝。默认最多 4 张图片参考、steps 1～50、guidance 1.5～20、seed -1～2147483647；以统一 YAML 中的工具 Schema 为最终执行范围。
+- 当前未配置 auto_evaluate，不接受启用。视频只在配置明确模型/工具及结果映射后开放。
+
+后端先完成“显式值＞允许继承值＞偏好＞冻结默认值”的字段合并。服务不二次读取偏好。`capabilities.context.max_chars` 统计最终序列化 LLM 消息（含 system prompt、effective、资产和 memory），不是只统计祖先文字；超预算返回 CONTEXT_TOO_LARGE，不自动摘要或截断。服务校验 UUID、唯一性和末尾父节点，但不访问后端 DB 验证完整祖先关系，父链授权与顺序仍由后端保证。
+
+### 3.2 示例
+
+```json
+{
+  "schema_version": 1,
+  "run_uuid": "11111111-1111-4111-8111-111111111111",
+  "session_id": "22222222-2222-4222-8222-222222222222",
+  "user_message_uuid": "33333333-3333-4333-8333-333333333333",
+  "assistant_message_uuid": "44444444-4444-4444-8444-444444444444",
+  "parent_message_uuid": "55555555-5555-4555-8555-555555555555",
+  "execution_policy": {"deadline_at": "2026-11-05T12:00:00+00:00"},
+  "input_snapshot": {
+    "schema_version": 1,
+    "context_mode": "explicit_snapshot",
+    "effective": {
+      "generation_mode": "custom",
+      "model_source": "community",
+      "modality": "image",
+      "action": "generate",
+      "prompt": "生成一只猫",
+      "preferences": {"image_count": 1, "seed": 42},
+      "custom_selection": {"model_ref": "Qwen/Qwen-Image-2.1-Turbo"}
+    },
+    "context": [],
+    "input_refs": [],
+    "asset_refs": [],
+    "asset_snapshots": []
+  }
+}
+```
+
+示例 deadline 需换成本轮真实时间；过去时间会生成截止停止事实，不执行工具。
+
+### 3.3 响应与特性
+
+首个请求 202 queued；原记录或取消墓碑 200。均返回 RunView：
+
+```text
+schema_version / run_uuid / agent_run_id / session_id / 双消息 / parent_message_uuid
+status / state_revision / last_agent_seq / snapshot_agent_seq
+request_digest / input_snapshot_digest / execution_snapshot_digest
+public_snapshot / completion / settlement
+execution_closed / can_release_activity
+created_at / updated_at / completed_at / error / links
+```
+
+请求先查幂等记录，再进行首次能力校验/准入和固定 snapshot，最后创建后台执行；请求断开不撤销已受理事务。Custom 直接调用固定工具，不调用规划 LLM；Agent 工具输入受同一能力约束。按用户公平调度，同 session FIFO；后端“每会话一个未结束 Run”仍由其 active_slot 约束保证。
+
+## 4. GetRun 与公共事实
+
+GET 无请求体，200 返回 RunView；同 `If-None-Match` 返回 304，无正文。ETag 覆盖完整公共视图，包括回执/收尾变化，不能跨用户共享缓存。
+
+`public_snapshot` 与 status、commands、settlement、snapshot_agent_seq 来自同一持久提交：
+
+```text
+schema_version / Run 关联 / state_revision / snapshot_agent_seq
+behavior_preview {summary,tools,assets,actions}
+steps[] {step_id,title,status,summary,tool,error}
+reasoning_summaries[] {summary_id,step_id,text}
+reply / outputs[] / result_actions[]
+pending_interactions[] / commands[]
+completion / settlement / execution_closed / can_release_activity / error
+```
+
+GetRun 不重新规划、不重提、不在 HTTP 请求内查询工具；后台查询的变化会持久化到后续水位。完整快照可覆盖原事件过程，backend 应用后从 snapshot_agent_seq 续订，并在自己的事务中生成 frontend version。
+
+### 4.1 产物
+
+Output 包含 output_id、type=text/image/video、content/url/poster_url、reference_inputs、asset_refs、generation、actual_generation、result_actions。
+
+- generation.requested 是冻结意图，submitted 是已提交参数，confirmed 是下游明确返回的事实或 null。
+- actual_generation 只来自 confirmed，不用 seed/model 请求值填未知实际值。
+- configured confirmed_path/poster_path 指向可信下游响应字段；当前默认 ModelScope 配置没有 confirmed 参数和封面映射。
+- 公共状态不包含工具 raw_data、system prompt、原始 reasoning、连接凭据或内部日志。
+- output_id 稳定，按完整对象 upsert，不随排序变更。
+- result_actions 依据产物和能力生成。只有 confirmed 带非空 prompt/model_ref 且模型允许 regenerate，才提供该动作；无确认实际参数时不会下发。图片修改/换参考还须有 input_refs 映射，rethink 仅用于 Agent 且模型允许；后端仍须过滤权限和业务状态。
+- URL 直接返回，不下载/入库。内部 aigc_service 的永久性由其契约保证；默认远端 URL 不自动获得永久保证。
+
+### 4.2 状态、完成度与活动位
+
+| 状态 | 执行事实 |
+|---|---|
+| missing | StartRun 尚未绑定输入，可能已有控制账本 |
+| queued/running | 排队 / 执行中 |
+| waiting_input | 阻断式交互，归还计算槽但仍占业务在途容量 |
+| stopping | 禁止新规划/提交，已知任务仍在收尾 |
+| interrupted | 执行链中断或外部结果未核清；不能自动映射为 backend FAILED |
+| succeeded/partial_succeeded | 有完成依据的完整 / 部分交付 |
+| failed/cancelled | 已核清失败 / 用户停止 |
+
+completion 含 completed_items[] 与 incomplete_items[{item_id,reason_code,message}]。图片/视频交付按冻结请求目标与确认产物核对；metadata.partial 和“有一张图”不是成功依据。纯文本回复可完成文本对话；当前没有开放复杂多目标规划或模型内部自动评估工具。
+
+settlement.status=none/tracking/resolved/unknown，tasks 给出 invocation_id、tool_name、task_id、request_id 和状态，不含凭据或完整原始参数。
+
+**后端只有看到 can_release_activity=true，并保存同水位完整结果后，才可以清空 active_slot/next_sync_at。** execution_closed 只表示本地不再规划/提交；控制 APPLIED、202、收到产物和 disconnected 都不是释放依据。
+
+## 5. SubscribeRunEvents
+
+游标优先级：after_seq＞Last-Event-ID＞0，只返回更高序号。无效游标 400；当前不自动删除事件，因此没有正常的历史过期窗口。未来启用保留水位时才能对真实过期返回 EVENT_CURSOR_EXPIRED，不能由连接 EOF 推断。
+
+```text
+id: 12
+event: step.upsert
+data: {"schema_version":1,"run_uuid":"...","agent_seq":12,"event_type":"step.upsert","timestamp":"...","payload":{"step_id":"...","title":"工具执行","status":"running","summary":"...","tool":{"type":"api","name":"image_generation"},"error":null,"run_state":{"state_revision":12}}}
 
 : heartbeat
-
 ```
 
-SSE 的每个事件以空行结束。`data` 是完整 EventEnvelope JSON，不是原始文本 token。
-
-| EventEnvelope 字段 | 类型 | 说明 |
-|---|---|---|
-| `schema_version` | integer | 当前为 1 |
-| `run_uuid` | string | 执行标识 |
-| `agent_seq` | integer | 从 1 开始的 Run 级单调递增序号，与 SSE id 一致 |
-| `event_type` | string | 事件类型，与 SSE event 一致 |
-| `timestamp` | string | 提交时间 |
-| `data` | object | 当前事件的数据 |
-
-### 7.3 事件类型
-
-| event_type | 含义 | data 主要字段 |
-|---|---|---|
-| `run_accepted` | 执行已受理 | `status` |
-| `run_started` | 开始执行 | `status` |
-| `run_cancelled` | 迟到 StartRun 绑定已取消墓碑 | `status` |
-| `action_preview` | 模型提出工具调用预告 | `tool_name`；预告不代表工具已执行 |
-| `step_started` | LLM 或工具步骤开始 | LLM：`step`、`round`；工具：`invocation_id`、`tool_name`、`arguments` |
-| `step_completed` | 步骤结束 | LLM：`step`、`round`；工具：`invocation_id`、`tool_name`、`success`、`artifacts` |
-| `public_summary` | 可公开展示的模型回复文本 | `content`；不承诺逐 token 增量 |
-| `interaction_requested` | 请求授权或补充输入 | pending_interaction 的字段 |
-| `task_submitted` | 已取得外部 task_id | `invocation_id`、`tool_name`、`task_id`、`request_id`、`task_status` |
-| `delivery_unknown` | 外部提交结果未确认 | `invocation_id`、`tool_name`、`remote_cancel_supported` |
-| `artifact_committed` | 产物已提交 | `artifacts` |
-| `command_receipt` | 控制命令回执或状态更新 | CommandReceipt 字段 |
-| `run_terminal` | 正常结束、失败或本地取消 | `status`、`commands`、`artifacts` |
-| `run_interrupted` | 重启恢复时记录中断 | `status` |
-
-### 7.4 消费规则
-
-1. 事件先持久提交，再发送给订阅方；客户端成功处理事件后保存 `agent_seq`。
-2. 断流后使用最后已处理序号重新订阅；客户端按 `(run_uuid, agent_seq)` 去重。
-3. 未提供游标会从 0 开始回放，可能再次收到历史事件。心跳是 SSE 注释，不占用事件序号。
-4. 订阅断开不会取消 Run；停止执行必须调用 ControlRun。
-5. 当前实现由持久提交唤醒订阅者，默认每 15 秒心跳，不做 250ms 全量读盘轮询。单条连接默认最长 540 秒，到时正常关闭，Run 继续；调用方按最后已处理序号重连。慢订阅者不阻塞提交，缓存淘汰时可从 journal 回放。
-6. 对已终态 Run，发送当前游标后的已存事件后关闭连接。终态后新的控制请求仍可能提交回执；若需核对最新回执，使用 GetRun 或重新订阅，不依赖已关闭的连接。
-7. 流已返回 200 后发生存储故障时会关闭连接，不能再返回普通 JSON 错误体，也不能仅凭 EOF 判定成功；应重新查询 Run。
-8. 网关须关闭响应缓冲，设置合适的 SSE 空闲超时。响应携带 `Cache-Control: no-cache` 和 `X-Accel-Buffering: no`。
-
-## 8. ControlRun：控制执行
-
-### 8.1 请求参数
-
-| 项目 | 值 |
+| 事件 | 消费语义 |
 |---|---|
-| 方法 | POST |
-| 路径 | `/v1/aigc/runs/{run_uuid}/commands` |
-| operationId | `ControlRun` |
-| 路径参数 | `run_uuid`：必填，UUID |
-| 响应体 | CommandReceipt；拒绝时位于 ErrorResponse.details |
+| run.status | 执行状态事实 |
+| behavior.preview | 使用工具、资产及公共执行预告 |
+| step.upsert | 按 step_id 替换完整步骤 |
+| summary.delta | 按 summary_id 追加公共执行说明，不含私有推理 |
+| reply.delta | 追加回复正文；模型非流式时可以一次返回完整段落 |
+| output.upsert | 按 output_id 更新完整产物 |
+| interaction.required/resolved | 有效交互 / RESOLVED 或 EXPIRED |
+| command.result | accepted/applied/rejected/no_op 回执事实 |
+| recipe.suggested | 建议保存事实配方，不自动构建或发布 |
+| settlement.upsert | 收尾状态更新 |
+| run.completed | 已提交最终完整水位，can_release_activity=true |
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `command_id` | string | 是 | 安全命令标识，同一次命令重试保持不变 |
-| `type` | string | 是 | `approve`、`skip`、`input`、`intervene`、`stop` |
-| `interaction_id` | string / null | 条件必填 | approve/skip/input 必填；stop/intervene 不允许指定非 null 值 |
-| `payload` | object | 否 | 默认 `{}`；按命令类型校验 |
+先 journal 提交和公共 reducer，再唤醒 SSE。每条 `payload.run_state` 带变化的公共生命周期字段及 state_revision；首次事件带完整关联，命令更新带公开 commands，snapshot_agent_seq 从 envelope.agent_seq 推导。消费 step/output/interaction 等完整对象时先去掉 run_state，再按该补丁更新顶层事实和回执的状态水位。这些补丁不包含内部 request/prepared/raw_data。
 
-| type | 适用场景 | payload / 行为 |
-|---|---|---|
-| `approve` | 当前 kind=approval 的交互 | payload 为空；只授权对应一次待执行工具调用 |
-| `skip` | 当前 approval 或 input 交互 | payload 为空；跳过对应工具调用，不是取消整个 Run |
-| `input` | 当前 kind=input 的交互 | 提交要补充/修正的参数对象，与 arguments 顶层合并后按 input_schema 校验 |
-| `intervene` | 可控制的运行中执行 | 仅允许 `{"content":"用户指令"}`，长度 1～20,000；在下一个安全边界追加指令 |
-| `stop` | 执行前、执行中或已终态 | payload 为空；取消本地执行，支持启动前取消墓碑 |
+[共享 reducer](../ms_agent/agent/public_state.py) 支持 `reduce_public(previous_snapshot, None, event)`：仅用 SSE 即可独立重建完整公共快照；重复/已覆盖序号不会再追加 delta。backend 在每个 Run 的有序通路内，事务保存事件、消息、状态与水位；若过滤事件，序号允许跳号，但不能只凭高序号推断此前事件已被覆盖。完整 GetRun 快照可一次覆盖至 snapshot_agent_seq，之后只应用更高序号。
 
-图片生成工具默认要求授权。收到 `action_preview` 不能直接推断已生成图片，只有对应步骤、外部 task_id 与产物提交才说明执行进度。
+服务每批最多 `events.batch_size`（默认 128）条；网络发送在提交锁外。终态连接仍须发送该水位剩余全部批次，再关闭。
 
-### 8.2 请求示例
+backend 的 applied_run_version 不由 ms-agent 生成；后端自产 `run.snapshot` 无 Agent id。服务错误可发送无 id 的 `stream.error` 控制帧后断开，不伪造终态。心跳不落盘不占序号，事件生成循环默认预算 540 秒、15 秒心跳，到时按最后成功游标重连；网络阻塞或正在发送的批次可能延后实际断流，不应把该值当硬性 TCP 关闭保证。慢连接网络写出不持有提交锁，不能阻塞工具；公开快照是追赶兜底。
 
-以下命令体均发送到同一 `/commands` 路径；command_id 每个逻辑命令只生成一次。
+## 6. ControlRun
 
-授权：
-
-```json
-{"command_id":"approve-001","type":"approve","interaction_id":"22222222-2222-4222-8222-222222222222"}
-```
-
-跳过：
-
-```json
-{"command_id":"skip-001","type":"skip","interaction_id":"22222222-2222-4222-8222-222222222222"}
-```
-
-补充输入：
+POST 输入：
 
 ```json
 {
-  "command_id": "input-001",
-  "type": "input",
-  "interaction_id": "33333333-3333-4333-8333-333333333333",
-  "payload": {"prompt": "生成一张戴生日帽的猫的图片"}
+  "command_id": "approve-001",
+  "action": "approve",
+  "interaction_id": "从当前交互读取",
+  "action_id": "从该交互允许动作读取"
 }
 ```
 
-干预：
+非 stop 必须携带两个目标 ID，action=approve/skip/submit_input/intervene。输入使用 `input.text/values/input_refs`，按 interaction.actions 的 input_schema 校验；不得携带凭据。stop 不携带交互/输入，仅可携带 stop_reason=USER_STOP/DEADLINE，默认 USER_STOP。
 
 ```json
-{"command_id":"intervene-001","type":"intervene","payload":{"content":"后续图片改用水彩风格"}}
+{"command_id":"stop-001","action":"stop","stop_reason":"USER_STOP"}
 ```
 
-停止：
+交互最多一个阻断和一个非阻断干预入口；互斥动作只能一个成功。Agent 可通过 ask_input 在原 Run 内澄清，submit_input 返回后继续原轮，不创建新的 Run。工具授权只针对一次提交，Custom 不接受用户借补充输入暗中改写冻结参数。
 
-```bash
-curl -X POST "${AIGC_BASE_URL}/v1/aigc/runs/11111111-1111-4111-8111-111111111111/commands" \
-  -H "Authorization: Bearer ${AIGC_SERVICE_TOKEN}" \
-  -H "X-User-Id: user-001" \
-  -H "Content-Type: application/json" \
-  -d '{"command_id":"stop-001","type":"stop"}'
-```
+回执：run_uuid、command_id、action、command_status、reason_code、目标 ID、applied_agent_seq、state_revision、run_status、execution_closed、settlement_status、can_release_activity、远端取消提示。
 
-### 8.3 回执字段与状态
+- accepted：202，尚未应用；applied/no_op：200；状态拒绝 409，交互输入无效 422。
+- 重复命令先返回原回执，再检查当前交互；异输入 COMMAND_KEY_CONFLICT。
+- 干预在下一个安全边界应用，只影响未执行的步骤；不取消已提交任务，不代替阻断授权。
+- stop 立即持久设置门闩，阻止新提交；APPLIED 不意味着远端取消。首次停止原因固定，后续命令不覆盖。
+- 未启动 stop 保存墓碑；迟到 StartRun 仍不执行。正常完成先持久提交则不改写终态。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `command_id` | string | 命令标识 |
-| `type` | string | 命令类型 |
-| `digest` | string | 命令内容摘要 |
-| `status` | string | `accepted`、`applied`、`rejected`、`no_op` |
-| `reason_code` | string | 接收、生效、拒绝或无操作的原因码 |
-| `applied_agent_seq` | integer / null | 命令生效或最终处理的事件序号；尚未处理时为 null |
-| `remote_cancel_supported` | boolean / null | stop 时当前为 false；其他命令通常为空 |
-| `remote_task_may_continue` | boolean / null | stop 时按已有外部任务记录给出提示；不是远端实时查询结论 |
+### 6.1 工具与收尾边界
 
-| 回执 status | HTTP | 含义 |
-|---|---|---|
-| `accepted` | 202 | 已收到，尚未确认生效 |
-| `applied` | 200 | 已生效，例如启动前取消或重复查询已生效命令 |
-| `no_op` | 200 | 无需再次动作，例如对终态 Run 调用 stop |
-| `rejected` | 409 | 不满足执行条件，回执放在错误体 details 中 |
+每次新副作用先持久化 submission intent，成功取得 task_id 后提交关联；批准后及取得实际 HTTP 调用槽后、POST 前再次校验门闩。在连接槽等待期间被停止属于已知未发送，可核清；已进入传输的超时/断连/5xx 保持未知，不能重提。远端轮询和收尾均不持有 Run 计算槽；收尾使用独立 `upstreams.settlement` 连接池、并发/RPM 限流，不占普通 poll 或 LLM 配额。
 
-停止命令已接收示例：
+收尾预算耗尽返回 interrupted/unknown，保留原任务与活动位判据。重启只查询原任务，不续跑 agent；无法按 task_id 查询的未知提交持续告警，不用 request_id 猜测查询路径。当前不提供 cancel/lookup_submission transport，接口名称不代表已接通。
+
+SIGTERM 停止受理、结束 SSE、立即取消本地执行和收尾监督器，并等待必要持久提交后释放租约；不等待远端任意长任务完成。`runtime.drain_timeout` 当前传入 close 并参与 EAS 退出预算校验，但 close 未用它实现“继续正常执行 N 秒”的等待，不能据此承诺按此时长平滑跑完。ASGI 优雅退出由 `server.graceful_shutdown_timeout` 控制，底层持久 IO 仍须等完成；EAS/NAS 故障与信号链路需真实验证，不承诺无损热更新。
+
+## 7. GetOrBuildRecipe
 
 ```json
-{
-  "command_id": "stop-001",
-  "type": "stop",
-  "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "status": "accepted",
-  "reason_code": "ACCEPTED",
-  "applied_agent_seq": null,
-  "remote_cancel_supported": false,
-  "remote_task_may_continue": true
-}
+{"recipe_request_id":"recipe-001","output_ids":["final_text"],"context":"整理本次能力说明"}
 ```
 
-交互过期示例，HTTP 409：
+首次构建 202；重复相同 POST 查询现状，queued/running 202，终态 200。来源必须同用户、同 Run 且 can_release_activity=true；不重读最新偏好/分支。选定 output_ids 排序去重，不接受旧 artifact_ids。
+
+输出 RecipeView：schema_version=1、recipe_request_id、recipe_uuid、run_uuid、attempt、status、input_digest、result、error、retry_receipts、attempts、时间。
+
+result：schema_version=1、content_revision=1、source、prompt_template、negative_prompt_template、parameters（submitted/confirmed）、variables{name,type,required,description,default?,target?}、dependencies{type,resource_ref,revision,content_digest}、examples、artifact_refs、provenance。
+
+参数仅来自选定产物关联的提交事实；不把其他步骤参数混入该配方，未知 confirmed 保持 null。source 包含助手消息 UUID 和执行快照摘要。固定资产的 dependency digest 来自已验证内容；模型/工具 digest 覆盖冻结配置声明，没有上游权重/实现 revision 的依赖仍标记 unversioned，不承诺精确复现。模板变量、必填值、示例和事实绑定都校验。
+
+### 7.1 显式 attempt 重试
 
 ```json
 {
-  "code": "INTERACTION_EXPIRED",
-  "message": "INTERACTION_EXPIRED",
-  "request_id": "example-http-request-id",
-  "details": {
-    "command_id": "approve-001",
-    "type": "approve",
-    "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "status": "rejected",
-    "reason_code": "INTERACTION_EXPIRED",
-    "applied_agent_seq": null
-  }
+  "recipe_request_id":"recipe-001",
+  "output_ids":["final_text"],
+  "context":"整理本次能力说明",
+  "retry_command_id":"recipe-retry-001",
+  "expected_attempt":1
 }
 ```
 
-### 8.4 幂等与竞争处理
+- 普通查询失败记录不隐式重试。只有 failed/interrupted 可开启 attempt；原输入摘要不变。
+- retry_command_id 与 expected_attempt 一起提供；同 retry 命令重投返回它关联的 attempt，不重复调用 LLM。
+- 并发不同命令争用同 expected_attempt 只有一个成功，其余 RECIPE_ATTEMPT_CONFLICT。
+- attempt 历史、失败原因和 retry 回执先持久提交，再调用 LLM；每次使用第一次冻结的事实。
+- 成功后基础键持续返回成功结果，不允许重试覆盖成功。content_revision 与 attempt/backend 编辑 version 分开。
+- 构建取得 Recipe 槽后默认超时 120 秒，包含共享 LLM 限流、连接等待及重试；不含 Recipe 槽排队。
 
-- 相同 command_id 和相同命令内容返回最新已存回执，不重复执行。修改类型、payload 或 interaction_id 需新 command_id，否则返回 `COMMAND_INPUT_CONFLICT`。
-- 可通过重复 ControlRun、GetRun 的 `commands` 或 SSE 的 `command_receipt` 获取生效回执；不能将 accepted 当作 applied。
-- 一个 interaction 只能被处理一次。迟到、已消费或类型不匹配的交互命令被拒绝；收到 INPUT_INVALID 后如修正参数，使用新的 command_id。
-- stop 可先于 StartRun：持久保存 cancelled 墓碑，迟到 StartRun 绑定其输入后仍返回 cancelled，不重新激活执行。
-- 对终态 Run 再次 stop 返回 no_op；其他新命令返回拒绝。此前已接收但未生效的非停止命令可在终态处理时变为 rejected。
-- 停止与执行完成按持久台账提交顺序仲裁。stop 只能控制本地执行，不能撤销已经提交的外部生成任务。
-- `remote_task_may_continue=false` 不能排除在途提交尚未拿到 task_id 的情况；下游没有取消保证时应继续按不确定副作用处理。
+后端草稿/编辑 UUID 和版本自管。只有取得结构化结果并 DB 提交后返回前端 201；HTTP 等待超预算时保留原键并明确暂态错误，下次继续查构建，不能返回空 DRAFT 或盲目再 retry。
 
-## 9. GetOrBuildRecipe：获取或构建配方
+### 7.2 后端 Skill 包规范
 
-### 9.1 基本信息与请求参数
+后端在固定编辑版本上确定性构建 manifest、SKILL.md 和 recipe.json，记录每个文件 SHA-256；只允许安全相对路径，拒绝绝对路径、`..`、符号链接和可执行脚本。完成权限/变量/引用校验后调用既有 SkillService.CreateSkill/UpdateSkill；本服务不上传文件、不替代发布/审核；资产发布职责不并入配方构建接口。
 
-| 项目 | 值 |
+复用已编辑 Recipe 时，backend 将变量与参数渲染为 effective，并提供受控声明式资产快照。当前 Recipe 资产快照格式为 schema_version=1、prompt_template、variables_schema、parameters、可选 negative_prompt_template/dependencies；backend 将参数渲染到 effective 后，资产快照的 parameters 必须为空对象，非空会拒绝，而不是被服务暗中覆盖或忽略。Skill content 只接受 instructions 和 variables_schema；变量 Schema 必须为 object，不允许远程引用/$id/$dynamicRef。不从外部 URL 解析资产或凭据。
+
+## 8. 统一配置、依赖与 EAS
+
+唯一配置：[service.yaml](aigc/configs/service.yaml)。Settings.load() 校验嵌套配置，ServiceCredentials 单独加载，不合并其他默认 YAML。不支持旧配置文件、别名、API_TOOLS_CONFIG、AIGC_QUEUE_LIMIT。
+
+| 配置段 | 当前作用 |
 |---|---|
-| 方法 | POST |
-| 路径 | `/v1/aigc/runs/{run_uuid}/recipe` |
-| operationId | `GetOrBuildRecipe` |
-| 路径参数 | `run_uuid`：必填，来源 Run UUID |
-| 响应体 | RecipeView |
+| server/auth | 单 worker、端口/HTTP 并发、SSE 回源 keep-alive、应用鉴权 |
+| runtime/events | 活跃/在途配额、每用户限制、交互期限、SSE 512 上限、128 条批次及连接时长 |
+| capabilities | model_ref 映射、modality/操作、允许参数/size 组合、confirmed/poster 响应路径、上下文/资产预算 |
+| settlement | 查询监督器并发 8、总预算 600 秒、单次查询 60 秒、5 秒间隔；不支持远端取消 |
+| upstreams | LLM 32、图片提交 8、轮询 32、收尾 HTTP 4（8 条连接）的独立并发/RPM/连接池及重试 |
+| recipe | 并发 1、在途 100、构建超时 120 秒 |
+| storage | journal、恢复索引、缓存 256 条/64MiB、8 个 IO 线程、可靠 flock |
+| agent | 规划提示词、模型、回合/token 上限；没有动态 session memory/历史入口 |
+| observability/eas/secrets | 指标、探针/部署、凭据引用 |
 
-| 字段 | 类型 | 必填 | 约束 / 默认值 |
-|---|---|---|---|
-| `recipe_request_id` | string | 是 | 安全请求标识，作用域为当前用户 |
-| `artifact_ids` | array<string> | 是 | 1～100 项，全部取自来源 Run 已提交的 artifacts；服务排序并去重 |
-| `context` | string | 否 | 补充配方背景，最多 20,000 字符，默认空字符串 |
+默认 Run 活跃 64、总在途 500、每用户活跃 4/在途 20。计算完成但未核清的 Run 仍计入服务在途配额，不能让未知副作用无限突破准入。RPM=0 表示没有本地 RPM 限制，不表示远端无限额；多个 Pod 共用凭据仍需 backend 账户 RPM/TPM 预算。
 
-来源 Run 必须属于当前用户并已到达终态；所选产物必须归属该 Run，且用于构建的输入及执行上下文仍可读取。只有取消墓碑而无产物的 Run 不能构建配方。
+### 8.1 部署与扩容
 
-### 9.2 请求示例
-
-```bash
-curl -X POST "${AIGC_BASE_URL}/v1/aigc/runs/11111111-1111-4111-8111-111111111111/recipe" \
-  -H "Authorization: Bearer ${AIGC_SERVICE_TOKEN}" \
-  -H "X-User-Id: user-001" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "recipe_request_id": "recipe-request-001",
-    "artifact_ids": ["final_text"],
-    "context": "将本次回答整理为可复用的能力介绍配方"
-  }'
-```
-
-### 9.3 RecipeView 响应
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `recipe_request_id` | string | 调用方请求标识 |
-| `recipe_uuid` | string | 服务生成的配方标识 |
-| `run_uuid` | string | 来源 Run |
-| `status` | string | queued/running/succeeded/failed/interrupted |
-| `result` | Recipe / null | 配方内容，构建成功时返回 |
-| `error` | object / null | 构建失败或中断原因，包含 code、message |
-| `created_at` | string | 受理时间 |
-| `updated_at` | string | 最新提交时间 |
-
-首次受理返回 202：
-
-```json
-{
-  "recipe_request_id": "recipe-request-001",
-  "recipe_uuid": "44444444-4444-4444-8444-444444444444",
-  "run_uuid": "11111111-1111-4111-8111-111111111111",
-  "status": "queued",
-  "result": null,
-  "error": null,
-  "created_at": "2026-11-05T08:01:00+00:00",
-  "updated_at": "2026-11-05T08:01:00+00:00"
-}
-```
-
-没有独立的 Recipe GET 接口。调用方使用同一路径、同一 recipe_request_id、同一 artifact_ids/context 重复 POST 查询：queued/running 返回 202，succeeded/failed/interrupted 返回 200。
-
-### 9.4 Recipe 内容
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `recipe_uuid` | string | 配方 UUID |
-| `version` | integer | 当前为 1；配方对象版本，不是自动修改的编辑版本 |
-| `source` | object | `run_uuid`、`snapshot_digest`、`artifact_ids` |
-| `prompt_template` | string | LLM 辅助提炼的提示词模板，使用 `{{variable_name}}` 占位符 |
-| `parameters` | object | 以 invocation_id 为键，保存该调用实际工具参数；无已记录工具调用时为 `{}` |
-| `variables` | array<object> | 模板变量定义 |
-| `dependencies` | array<object> | 工具依赖 `{"type":"tool","name":"..."}` 和模型依赖 `{"type":"llm","model":"..."}` |
-| `examples` | array<object> | `description` 与 `inputs` 组成的变量输入示例 |
-| `artifact_refs` | array<object> | 选定产物的结构化引用，字段同 Artifact |
-| `provenance` | object | `template_version`、`fact_digest`、`generated_at`，用于追溯来源事实 |
-
-variables 中的每项：
-
-| 字段 | 类型 | 必有 | 说明 |
-|---|---|---|---|
-| `name` | string | 是 | 唯一变量名，格式 `^[A-Za-z_][A-Za-z0-9_]{0,63}$` |
-| `type` | string | 是 | string/integer/number/boolean/array/object |
-| `description` | string | 是 | 变量含义，最多 2,000 字符 |
-| `default` | 任意 JSON | 否 | 默认值，类型须匹配 type |
-| `target` | object | 否 | `invocation_id` 和 `parameter`，只能绑定已记录调用中的实际参数 |
-
-模板最多 20,000 字符，变量最多 50 个，示例最多 10 个。模板占位符和示例 inputs 的键只能使用已定义变量。来源、工具参数、依赖与产物引用由 SDK 根据事实填充，不由 LLM 自行指定。
-
-配方 result 示例：
-
-```json
-{
-  "recipe_uuid": "44444444-4444-4444-8444-444444444444",
-  "version": 1,
-  "source": {
-    "run_uuid": "11111111-1111-4111-8111-111111111111",
-    "snapshot_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "artifact_ids": ["final_text"]
-  },
-  "prompt_template": "面向 {{audience}}，介绍 AIGC 助手已配置的能力及使用边界。",
-  "parameters": {},
-  "variables": [{"name":"audience","type":"string","description":"目标读者","default":"业务开发者"}],
-  "dependencies": [{"type":"llm","model":"qwen-plus"}],
-  "examples": [{"description":"面向业务开发者","inputs":{"audience":"业务开发者"}}],
-  "artifact_refs": [{
-    "artifact_id": "final_text",
-    "type": "text",
-    "media_type": "text/plain",
-    "content": "支持轻量对话以及已配置的图片生成与编辑能力。"
-  }],
-  "provenance": {
-    "template_version": 1,
-    "fact_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "generated_at": "2026-11-05T08:01:10+00:00"
-  }
-}
-```
-
-### 9.5 构建与幂等规则
-
-- 配方使用独立构建台账，不修改来源 Run 终态，也不在原 Run SSE 中输出配方生成进度。
-- 同一用户的 recipe_request_id 绑定来源 Run、产物选择和 context；换来源或更改 context 时使用新 ID。
-- artifact_ids 先排序去重，单纯调整选择顺序不会创建第二个构建。
-- 已提交配方取原结果；失败或 interrupted 不隐式调用 LLM 重试，新构建使用新 recipe_request_id。
-- LLM 超时、非法 JSON、schema 校验失败等记录为 failed；HTTP 查询仍可返回 200，必须看 RecipeView.status/error。
-- 配方是可编辑 JSON，本服务没有配方编辑保存或直接执行配方的接口。不执行 dependencies，也不承诺相同模板能精确复现随机生成或已过期图片。
-
-## 10. 错误说明
-
-### 10.1 HTTP 业务错误结构
-
-```json
-{
-  "code": "RUN_INPUT_CONFLICT",
-  "message": "RUN_INPUT_CONFLICT",
-  "request_id": "example-http-request-id",
-  "details": null
-}
-```
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `code` | string | 稳定的业务错误标识 |
-| `message` | string | 当前 HTTP 错误处理通常返回与 code 相同的字符串 |
-| `request_id` | string | 本次 HTTP 请求追踪 ID |
-| `details` | 任意 JSON / null | 参数错误列表、命令拒绝回执等补充信息 |
-
-字段校验失败时 details 为数组，例如 `[{"location":["body","run_uuid"],"type":"value_error"}]`；不包含完整原始请求或凭据。
-
-以下为业务接口已定义的可预期错误。未知路径、错误方法、代理错误或未处理的内部异常，可能使用框架/网关默认响应，不能假定所有 404/405/500 都是上述结构。
-
-### 10.2 HTTP 错误码
-
-| HTTP | code | 含义 / 建议处理 |
-|---|---|---|
-| 400 | `USER_ID_INVALID` | 缺少或无效的 X-User-Id；由 backend 修正身份传递 |
-| 400 / 422 | `INPUT_INVALID` | 通用参数、类型或字段校验失败；修正请求 |
-| 400 | `EVENT_CURSOR_INVALID` | SSE header 游标不能解析，或游标不在合法范围 |
-| 401 | `UNAUTHORIZED` | 缺少或错误的服务间 Bearer 凭据 |
-| 404 | `RUN_NOT_FOUND` | Run 不存在或不属于当前用户 |
-| 404 | `ARTIFACT_NOT_FOUND` | 选定产物不属于来源 Run，或不存在 |
-| 409 | `RUN_INPUT_CONFLICT` | run_uuid 已绑定不同输入，不能更改原请求 |
-| 409 | `COMMAND_INPUT_CONFLICT` | command_id 已绑定不同命令内容 |
-| 409 | `RUN_NOT_CONTROLLABLE` | 当前 Run 不可执行此控制动作 |
-| 409 | `INTERACTION_EXPIRED` | 无对应当前交互，或交互已变化 |
-| 409 | `INTERACTION_CONSUMED` | 该交互已被其他命令处理 |
-| 409 | `INTERACTION_TYPE_MISMATCH` | 命令类型与交互 kind 不一致 |
-| 409 | `INPUT_INVALID` | input 命令合并后的工具参数不符合 input_schema；details 含拒绝回执 |
-| 409 | `RECIPE_INPUT_CONFLICT` | recipe_request_id 已绑定不同构建输入 |
-| 409 | `SOURCE_RUN_NOT_TERMINAL` | 来源 Run 尚未终态，稍后查询后再构建 |
-| 413 | `REQUEST_TOO_LARGE` | JSON 请求体超出服务大小限制 |
-| 429 | `RUN_QUEUE_FULL` | 全局或每用户容量已满，`details.scope=global|user`；遵守 Retry-After 后用原请求重试 |
-| 429 | `EVENT_SUBSCRIBERS_FULL` | SSE 订阅容量已满，退避重连或改用 ETag 查询 |
-| 429 | `RECIPE_QUEUE_FULL` | 配方在途构建容量已满，退避后使用原请求重试 |
-| 503 | `SERVICE_UNAVAILABLE` | 服务当前不受理新执行/构建 |
-| 503 | `STORAGE_UNAVAILABLE` | 本地台账不可读写；停止自动重提并联系运维 |
-| 503 | `STORAGE_CORRUPTED` | 当前 Run/Recipe 的已提交日志损坏，不能清空原记录重新执行；其他健康记录仍可服务 |
-
-`profile_id` 当前在请求 schema 中限制为 `aigc_assistant`，其他值通常返回 422。SDK 还定义了 profile 查找失败的 `PROFILE_NOT_FOUND`，不应以此代替 HTTP 字段校验。
-
-### 10.3 命令 reason_code
-
-| reason_code | 含义 |
-|---|---|
-| `ACCEPTED` | 已接收、尚未生效 |
-| `APPLIED` | 已生效 |
-| `CANCELLED_BEFORE_START` | 启动前取消已生效，不是 HTTP 错误码 |
-| `RUN_TERMINAL` | 对终态 Run 停止无需动作，回执为 no_op |
-| `RUN_TERMINATED` | 命令未生效前 Run 已终止，回执变为 rejected |
-| `SERVICE_INTERRUPTED` | 服务恢复时未生效命令被中断 |
-| `RUN_NOT_CONTROLLABLE` / `INTERACTION_EXPIRED` / `INTERACTION_CONSUMED` / `INTERACTION_TYPE_MISMATCH` / `INPUT_INVALID` | 对应拒绝原因，见 10.2 |
-
-### 10.4 异步执行错误
-
-下列 code 位于 RunView.error 或 RecipeView.error，不直接代表 HTTP 500。GetRun 或配方状态查询可以成功返回 200，但对象本身已经失败或中断。
-
-| error.code | 对象 / 状态 | 说明 |
-|---|---|---|
-| `EXECUTION_FAILED` | Run / failed | 模型调用或执行过程失败 |
-| `INTERACTION_TIMEOUT` | Run / failed | 等待授权或输入超过配置期限，未自动执行工具 |
-| `EXTERNAL_TASK_UNRESOLVED` | Run / failed | 外部提交/查询结果未确认，停止继续规划，不自动重提 |
-| `STORAGE_UNAVAILABLE` | Run / interrupted | 本地会话/记忆状态损坏或不可写，且台账仍能提交中断记录 |
-| `SERVICE_INTERRUPTED` | Run/Recipe / interrupted | 服务中断或重启恢复，未自动续跑 |
-| `RECIPE_BUILD_FAILED` | Recipe / failed | 配方 LLM 调用、解析或结构校验失败 |
-
-若台账本身已无法写入，可能不能立即生成终态回执；应将 503/断流视作状态不确定并保留原幂等键，不能直接新建重复任务。
-
-## 11. 推荐对接流程
-
-1. backend 校验终端用户身份，固定生成 run_uuid 和 session_id，调用 StartRun。
-2. 收到 202 后订阅 SSE；请求超时或回执丢失时调用 GetRun，必要时原 ID/原输入重试 StartRun。
-3. 出现 waiting_input 时按 pending_interaction.kind 提交 approve、skip 或 input，保留 command_id。
-4. 控制请求返回 accepted 后通过 GetRun、重复 ControlRun 或 SSE 核对最终回执。
-5. Run 达到终态后读取 result/artifacts；存在 partial 或 requires_reconciliation 时按不确定执行处理。
-6. 需要配方时选择已有 artifact_id，固定生成 recipe_request_id，重复相同 POST 直到配方终态。
-7. 服务重启后继续使用原 ID 查询和回放；只有明确需要新业务执行/新构建时才生成新 ID。
-
-建议采用有限退避轮询，避免高频读取全部台账；不要通过重复发送生成任务等待图片完成。
-
-## 12. 健康检查与部署入口
-
-| 方法 | 路径 | 认证 | 正常响应 | 非就绪响应 |
-|---|---|---|---|---|
-| GET | `/health/live` | 无 | 200 `{"status":"live"}` | 进程未提供服务时可能连接失败 |
-| GET | `/health/ready` | 无 | 200 `{"status":"ready","config_digest":"..."}` | 503 `{"status":"unavailable","config_digest":"..."}` |
-
-ready 检查运行服务是否接受任务、台账是否健康以及协调器是否持有文件租约，不发送收费模型请求，也不证明远端图片 API 可用。
-
-- [统一服务配置](aigc/configs/service.yaml)：server、auth、storage、runtime、events、upstreams、agent、recipe、observability、eas、tools.api、secrets。图片工具 schema 和白名单也在该文件。
-- 旧 `service/aigc/configs/api_tools.yaml` 已删除。只通过 `AIGC_CONFIG` 选择统一配置；`API_TOOLS_CONFIG`、`AIGC_QUEUE_LIMIT` 均在启动时拒绝。
-- [Dockerfile](../docker/aigc.Dockerfile)、[Compose](../docker/aigc.compose.yaml)：Python 3.12、单协调器、非 root、只读根文件系统、本地数据卷。
-- [中文启动说明](../README_ZH.md#aigc-轻量服务)：镜像构建、部署凭据与本地调试。
-
-当前服务保持单进程、单协调器，不支持同一数据目录多副本写入。本地 POSIX 文件系统可用；NAS 必须验证 NFSv4 跨客户端 flock，生产锁策略 require 会拒绝 NFSv3/本地锁退化及对象存储/FUSE。epoch 仅作意外接管检测，不能替代互斥或提供分布式 fencing。存储故障会停止新副作用并使探针失败；日志损坏只隔离对应记录。
-
-journal 是唯一事实来源，内存缓存只缓存已持久提交的状态和事件；缓存按条数/序列化大小限额淘汰，冷查询会读盘。热提交不重读 journal，常规事件做 journal 与目录各一次 fsync；受理、快照、终态投影和索引变更会有额外同步。活跃索引先于首次 journal 提交写入、终态提交后清理；首次建立恢复索引时仍需校验现有 journal，后续只恢复活跃项；这是持久化完整性检查，不提供旧配置或旧格式转换。不提供自动删除历史数据；清理必须另行授权，不能删除仍需保持幂等的记录。
-
-## 13. 配置、单 Pod 调优与 EAS 部署
-
-### 13.1 配置生效规则
-
-唯一运行配置是 `service/aigc/configs/service.yaml`，由类型化 Settings 校验。所有环境覆盖在 YAML 的 `${VAR:default}` 中显式列出；凭据名由 `secrets` 声明，读取 `NAME` 或 `NAME_FILE`，凭据不进入冻结快照、部署 JSON 或日志。`AIGC_MAX_RUNS` 控制活跃槽，`AIGC_MAX_INFLIGHT` 控制总在途容量。旧配置字段、环境入口及程序化构造别名不再支持。
-
-程序化使用 `Settings.load()` 加载配置，访问 `settings.server`、`settings.runtime` 等嵌套对象；不接受根层 `data_dir`、`max_runs`、`queue_limit`、`agent_config` 等旧字段。测试或嵌入调用的凭据使用 `ServiceCredentials` 单独注入，再通过 `settings.to_agent_config()` 派生 SDK 参数。服务入口不再合并 SDK 的另一份默认 YAML。
-
-存储统一使用带缓存、活跃索引和批量持久化的新实现，不提供 `optimized=False` 双轨。轻量执行只使用显式注入的 LLM 客户端和 aiohttp API 工具，不回退到旧模型调用或 urllib；通用 SDK 的独立功能不属于服务配置入口。
-
-修改配置后重启生效，不提供热更新。可通过 `/health/ready` 与受服务凭据保护的 `/internal/stats` 核对 `config_digest`。初始 64 活跃槽 / 32 LLM 并发不是压测保证，须按上游 RPM/TPM、响应时长、RSS 和 p95 排队时间校准。RPM=0 表示不做本地 RPM 限制，不表示远端无限额。上游连接池、IO 线程数、重试次数/总预算、交互超时、SSE 时长、keep-alive 和 drain 都集中在此文件。
-
-LLM 对明确 429/502/503/504 及连接建立失败做有界重试；图片提交仅对明确 429 和未发出请求的连接建立失败重试，超时和 5xx 不重提。图片轮询在 poll_timeout 内容忍暂态 429/5xx/网络故障，按 Retry-After/退避等待；终态失败、非法状态或期限耗尽仍会失败。不能据此宣称 exactly-once。
-
-### 13.2 EAS 部署流程
-
-1. 使用 `docker/aigc.Dockerfile` 构建匹配目标 CPU 架构的镜像；常见 EAS x86 实例用 `--platform linux/amd64`。推送到同地域 ACR 内网仓库。应用端口 8000，避开平台的 8080/9090。
-2. 在同一份 YAML 填写 `eas.image`、`eas.nas_server`、`eas.nas_path` 和网关类型；生产推荐同地域 VPC 的 MSE 专属网关，需填写 `eas.gateway_id`。ALB 的实际请求超时必须在网关配置和实测中确认，不能通过 rpc.keepalive 修改。
-3. 在 NAS 预建 `shard-N`、`config`、`secrets` 子目录。数据目录给 UID/GID 10001 写权限；将该份 service.yaml 放入 `config/service.yaml`，凭据文件名分别为 secrets 中声明的环境变量名。配置和密钥目录只读挂载，与各分片可写目录分离。确认 NFSv4 跨客户端锁，不满足时不要绕过 require。
-4. 生成部署 JSON（不创建云资源）：
+1. [Dockerfile](../docker/aigc.Dockerfile) 构建 `linux/amd64`（目标 x86 机型），推送同地域 ACR 内网仓库；应用端口 8000，避开 EAS 8080/9090。
+2. 填写 eas.image/nas_server/nas_path/gateway，生产专属网关需 gateway_id。预建 NAS shard-N、config、secrets；配置和密钥只读挂载，数据给 UID/GID 10001 写权限。
+3. 生成 JSON，不创建云资源：
 
    ```bash
    AIGC_CONFIG=/absolute/path/service.yaml python -m service.aigc.deploy eas --shard 0 --output eas-service.json
    ```
 
-   用控制台自定义镜像部署或 eascmd 提交该 JSON。生成器固定 `instance=1`，使用 `metadata.rpc` 嵌套结构、探针、SIGTERM 和先停后起策略；不设置仅适用于 processor 的 worker_threads 或异步队列 max_queue_size。不依赖 Docker HEALTHCHECK 替代 EAS 探针。
-5. 配置 VPC/安全组、ACR 内网拉取权限、到 DashScope/ModelScope 的 NAT 或私网出路。验证 DNS、TLS、SNAT 和远端账户配额；镜像已预装依赖，不在启动时安装。
-6. backend 的调用地址为 `<EAS_ENDPOINT>/v1/aigc/...`。网关凭据用 `Authorization: <EAS_TOKEN>`，应用凭据用 `X-AIGC-Service-Token: <service-token>`，再传可信 `X-User-Id`。不要向终端用户泄露任一服务凭据。服务 links 和 /docs 使用配置的公开路径前缀。
-7. 开启 EAS startup/readiness/liveness 探针。SIGTERM 到达时停止受理、关闭 SSE、取消排队或等待交互的 Run；执行中 Run 最多等待 drain_timeout，剩余任务中断并释放租约。控制命令在摘流量后不保证可达。SSE EOF 不表示 Run 成功，重连查询。
+4. 使用真实 EAS 控制台/eascmd 部署，配置 VPC/ACR/出网权限、NAT 与上游账户配额。生成器不替代这些平台配置。
+5. 每服务固定一个 Pod；NAS 要求 NFSv4 跨客户端 flock，拒绝本地锁退化/FUSE。epoch 检测不构成分布式 fencing。生成器不设置 NFS 协议选项，实际挂载需验证。
+6. 配置 startup/readiness/liveness、SIGTERM、先停后起滚动策略。ALB 不支持用 rpc.keepalive 修改实际请求超时，需人工对齐；NLB 生成当前拒绝。
+7. 人工横向扩容按稳定 user→shard 路由增加独立服务/目录，新用户去低负载分片；不要 hash(user)%N 自动重映射在途用户。迁移和数据清理必须单独授权。
 
-生成器只生成配置，没有执行云部署或平台验证。部署 JSON 中的资源、挂载和指标仍需真实 EAS 验收。先停后起更新会短暂不可用，backend 应保留原幂等键并退避重试，不能期待无损热升级。
+### 8.2 运维与验收
 
-### 13.3 压测与扩容操作指引
+- `/health/live`：全局台账故障返回 503；`/health/ready`：受理中、健康、持租约，返回 config_digest。
+- `/internal/stats` 使用同一服务鉴权和 X-User-Id，返回 Pod 级统计，不向终端用户开放。
+- 不自动清理 journal、取消墓碑或历史 attempt。当前新台账 payload 标识为 schema_version=1；缺少此标识的早期格式及此前误标 2 的联调记录均不自动转换，访问返回 PROTOCOL_VERSION_UNSUPPORTED，保留原数据、不重新执行。路径恢复不等于旧请求/旧记录兼容；处理已有联调数据须另行明确授权。
+- 事件缓存只保存已提交事实；冷记录从 journal 重放。常规热事件有 journal/目录同步，快照/受理/终态和索引还需额外 IO，不宣称全部提交恒 O(1)。
+- [本地压测](../.dev_scripts/aigc/loadtest.py) 只使用 mock 上游，参数按用户/会话/Run、活跃/在途容量配置；不代表 EAS 生产吞吐。
+- [EAS 探针](../.dev_scripts/aigc/eas_probe.py) 在隔离服务验证流、鉴权、锁与挂载；真实 EAS、BYOK、视频、永久 URL 和 backend Go 联调尚需环境/实际契约。
+- [Compose](../docker/aigc.compose.yaml) 与 Docker HEALTHCHECK 默认 8000；修改端口须同步健康命令，不能用 Docker HEALTHCHECK 代替 EAS 探针。
 
-本地 mock 压测不访问收费上游：
+### 8.3 本地验证与联调门槛
 
 ```bash
-python .dev_scripts/aigc/loadtest.py --users 10 --sessions 2 --runs 3 --image-ratio 0.3 --output baseline.json
+python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py
+python .dev_scripts/aigc/loadtest.py --users 8 --sessions 2 --runs 3 --mode burst --image-ratio 0.5 --recipe-ratio 0.5 --sse-delay 0.01 --output /tmp/aigc-agentic-load.json
+docker build --platform linux/amd64 -f docker/aigc.Dockerfile -t ms-agent-aigc:dev .
+python .dev_scripts/aigc/container_smoke.py
 ```
 
-压测报告包含成功吞吐、受理/执行时延、CPU/RSS、fsync 和 journal 读取计数。健康请求时延不是事件循环延迟；后者应读取 `/internal/stats` 的 loop_lag_ms_p99。生产吞吐必须用目标 Pod 规格和实际配额复测。EAS 平台验证脚本 `.dev_scripts/aigc/eas_probe.py` 的 serve/client 两种模式分别部署和调用，验证头透传、请求体、SSE、keep-alive、挂载与跨副本 flock；仅在隔离测试服务运行，报告不返回原始凭据。
+压测仅启动本地 mock LLM/图片 API，使用当前 `/v1/aigc` 的 UUID/冻结输入、精确授权和 run.completed 水位；支持 SSE/轮询、慢事件读取、429 注入和 Recipe 共享 LLM 竞争。报告包含成功/失败、GetRun/SSE p95、RSS、事件循环延迟、fsync/journal 读取次数。容器冒烟只创建一次性本地卷与 mock 凭据，验证只读根目录、非 root、崩溃恢复/幂等、租约互斥及旧路径拒绝；不会操作已有执行数据。
 
-先调单 Pod：分别观察排队、waiting_input、LLM/图片在途、RSS 和事件循环延迟，再调整活跃槽/IO 线程/连接池与限流；不能只看 HTTP QPS，因为 StartRun 的执行发生在 202 之后。LLM 的 token 消耗也受历史窗口影响。
+2026-11-06 版本恢复验证：定向测试 119 项通过，包含业务接口路径、OpenAPI/公开 schema 固定值、台账与事件版本一致性、README 示例/链接校验及不匹配联调记录安全拒绝；相关 SDK 回归 241 项通过、66 项跳过。当前 `/v1/aigc` 本地 mock 冒烟的 8 个 Run、5 个 Recipe 全部成功（`temp/aigc-agentic-v1-check.json`）。Docker daemon 未运行，本轮未完成镜像重建或容器复验；不能沿用旧镜像声称已验证恢复后的入口。
 
-人工横向扩容：生成 aigc_0、aigc_1 等独立 EAS 服务，每个固定一个 Pod、独立 NAS shard 子目录。backend 维护稳定 user→shard 表，新用户分配低负载分片，现有用户不因分片数量变化自动重映射。迁移时停止该用户所有 session 的新受理、等待在途任务清零、经授权迁移整个用户目录，再原子切换路由。禁止直接用 hash(user)%N 扩容重映射在途用户。
+上一轮能力改造的定向契约测试 115 项通过；SDK 离线回归 424 项通过、86 项跳过，另排除依赖真实模型凭据的两个旧 memory 测试文件。以下性能表为 2026-11-05 的历史联调样本，接口标签曾误写为 v2，不能作为本次版本恢复后的新验收结果。上一轮 `ruff check .`、变更 Python 文件的格式校验及 `git diff --check` 通过；全仓 `make lint` 的格式阶段仍受既存 Markdown 格式问题影响，未扩大格式化范围。
 
-上游限流器是 Pod 内限流，不是模型账户的全局配额。多个分片共用凭据时，backend 需要统一控制账户 RPM/TPM，或给各分片静态分配 RPM 并预留余量；重启会清空本地速率窗口。当前不提供分布式 TPM 限流，不能把各 Pod 的配置直接乘以副本数当作账户可用吞吐。
+同机顺序执行的固定 mock 样本（8 用户 × 2 会话 × 3 Run，28 次图片提交、76 次 LLM 调用，无 429/Recipe）：
 
-不在同一服务启用多副本自动扩缩容；新增副本不会获得正在执行的内存控制对象。自动弹性需要单独批准的共享状态与执行认领设计，不能仅靠共享 NAS 或粘性路由。当前自定义指标仅用于监控与人工扩容决策。
+| 指标 | 原实现基线 ba6b49f2 | Agentic 改造后历史样本 |
+|---|---|---|
+| 成功 Run | 48/48 | 48/48 |
+| Run/分钟 | 167.68 | 167.04 |
+| 峰值 RSS MiB | 79 | 81 |
+| 最终 GetRun p95 ms | 2.7 | 2.2 |
+| loop lag p99 ms | 15 | 12 |
+| 事件数 / fsync 每事件 | 588 / 3.73 | 844 / 2.73 |
 
-平台事实参见官方[镜像部署](https://help.aliyun.com/zh/pai/deploy-a-model-service-by-using-a-custom-image)、[参数说明](https://help.aliyun.com/zh/pai/parameters-of-model-services)、[优雅退出](https://help.aliyun.com/zh/pai/scrolling-updates-with-graceful-exit)、[网关超时](https://help.aliyun.com/zh/pai/dedicated-gateway-timeout-best-practices)。
+这是单次本地样本，不代表统计改善或生产吞吐上限；默认工具轮询间隔主导 Run 时长，Agentic 改造后的事件语义更丰富。新版额外度量全部轮询 GetRun p95（本样本 50.5 ms），不能与旧脚本只度量最终 GET 的字段混比。独立慢 SSE + Recipe 样本的 48 个 Run、28 个 Recipe 全部成功；429 注入样本也完成 48 个 Run。amd64 镜像及非 root/只读容器崩溃恢复冒烟通过。结果保存在本地 `temp/aigc-v1-fixed.json`、`temp/aigc-v2-fixed.json`、`temp/aigc-v2-load-sse.json`、`temp/aigc-v2-load-poll.json`，不作为发布产物或线上保证。
+
+发布前仍需外部环境与授权验证：真实 EAS/NAS 跨客户端锁及 fsync、网关 SSE/鉴权与 SIGTERM、BYOK 归属/凭据解析、视频实际响应、永久 URL 和后端 DB 活动位/事件投影。不得用本地 mock 通过代替生产验收。
+
+## 9. 错误与后端同步
+
+| HTTP | code / 场景 |
+|---|---|
+| 400 | EVENT_CURSOR_INVALID，游标不合法；USER_ID_INVALID，可信用户标识不合法 |
+| 400/422 | INPUT_INVALID，非法字段/UUID/请求结构 |
+| 401 | UNAUTHORIZED；网关错误不保证应用 JSON 包装 |
+| 404 | RUN_NOT_FOUND/OUTPUT_NOT_FOUND，不存在或不属于用户 |
+| 409 | RUN_INPUT_CONFLICT、COMMAND_KEY_CONFLICT、RECIPE_INPUT_CONFLICT/RETRY_CONFLICT/ATTEMPT_CONFLICT |
+| 409 | INTERACTION_EXPIRED、RUN_STATE_CONFLICT、SOURCE_RUN_NOT_RETRYABLE、SOURCE_RUN_NOT_TERMINAL、RETRY_SNAPSHOT_CONFLICT |
+| 409 | PROTOCOL_VERSION_UNSUPPORTED，旧记录不可变为新版执行 |
+| 422 | CAPABILITY_NOT_SUPPORTED、CONTEXT_TOO_LARGE、INVALID_INTERACTION_INPUT |
+| 413 | REQUEST_TOO_LARGE，默认 1MiB；网关可能更早拒绝 |
+| 429 | RUN_QUEUE_FULL（scope=global/user）、EVENT_SUBSCRIBERS_FULL、RECIPE_QUEUE_FULL；遵守 Retry-After |
+| 503 | DEPENDENCY_UNAVAILABLE（未配置 BYOK/缺失资产）、SERVICE_UNAVAILABLE、STORAGE_UNAVAILABLE、STORAGE_CORRUPTED；不能仅凭 HTTP 推断原任务未执行 |
+
+Run/Recipe 的 error 在查询成功的 200 中返回，常见 EXECUTION_FAILED、INTERACTION_TIMEOUT、DEADLINE_EXCEEDED、EXTERNAL_TASK_UNRESOLVED、SERVICE_INTERRUPTED、RECIPE_BUILD_FAILED。settlement.error 可为 SETTLEMENT_UNRESOLVED。
+
+后端对接顺序：DB 持久受理→后台 StartRun→GetRun 恢复关联→SSE 有序应用或完整快照→精确 ControlRun→核清 can_release_activity 后保存最终消息并释放活动位。超时、断流、202 和 APPLIED 不代替这一流程。GetOrBuildRecipe 复用基础键，显式重试才开启 attempt；Skill 编辑/打包/发布保持 backend 职责。
+
+### 9.1 接口联调响应节选
+
+以下为响应字段节选，完整严格对象以 OpenAPI 类型为准：
+
+```json
+{"schema_version":1,"status":"queued","state_revision":1,"last_agent_seq":1,"snapshot_agent_seq":1,"execution_closed":false,"can_release_activity":false}
+```
+
+StartRun 首次返回 202；GetRun 返回相同结构的完整 RunView（200/304）。后端收到快照后保存其关联、public_snapshot 与 snapshot_agent_seq，再订阅该水位之后的 SSE；SubscribeRunEvents 帧见第 5 节。快照和事件只能使用同一个 Run 有序 reducer，不能混用另一份 session 历史。
+
+```json
+{"command_id":"stop-001","action":"stop","command_status":"applied","reason_code":"APPLIED","run_status":"stopping","execution_closed":false,"settlement_status":"tracking","can_release_activity":false,"remote_cancel_supported":false,"remote_task_may_continue":true}
+```
+
+这是在途任务的 ControlRun 200 回执示意；远端结果仍未核清，必须继续 GetRun/SSE。只有最终 can_release_activity=true 才能释放后端活动位。
+
+```json
+{"schema_version":1,"recipe_request_id":"recipe-001","attempt":2,"status":"queued","result":null,"error":null,"retry_receipts":[{"retry_command_id":"recipe-retry-001","expected_attempt":1,"attempt":2}]}
+```
+
+这是 GetOrBuildRecipe 显式 retry 的 202 响应示意；同 retry ID 重投仍返回 attempt 2，不再调用 LLM。另一个 retry ID 竞争 expected_attempt=1 返回 409/RECIPE_ATTEMPT_CONFLICT；后端继续查原基础键，不创建第二草稿。成功响应的 result 类型见第 7 节，只有 backend DB 提交后才对前端返回 201。
+
+## 10. 版本与变更记录
+
+- 当前接口前缀固定 `/v1/aigc`，服务/OpenAPI 声明固定 `1.0.0`；输入、事件、公开快照和 Recipe 的 schema_version 均为 1，统一源为 SDK `protocol.py`。
+- 目前仅联调，未上线；增加功能或刷新文档不自动升版。任何接口版本变更须先向用户说明影响范围并获得明确审批，不能由助手自行决定。
+- 文档按修订日期及变更记录跟踪，不等同于接口发布。content_revision、attempt、state_revision、backend version 与 agent_seq 各自独立，不能混作接口主版本。
+- 正式交付记录 Git SHA、镜像 digest、config_digest 与真实验收范围，不把 mock 或开发提交当作线上保证。
+
+| 日期 | 修订 / 基线 | 变更 |
+|---|---|---|
+| 2026-11-06 | 联调版本恢复与文档刷新 | 按用户要求恢复 /v1、服务 1.0.0 与 schema 1；同步实现/脚本/测试；保留已实现功能；接口升版需事先审批；纠正参数范围、错误码、追踪头和退出预算说明 |
+| 2026-11-05 | Agentic 边界补齐（未发布） | SSE 独立回放/去重与批次、同水位回执、HTTP 调用槽前门闩、独立收尾限流、原停止原因恢复、所选产物 Recipe 事实与重试竞争；压测/容器脚本及中英 README 迁移 |
+| 2026-11-05 | Agentic 工作区改造（未发布） | 完整冻结输入、显式分支、Custom 固定执行、同水位公共 reducer、action_id、submission intent、有限原任务收尾、Recipe attempt/CAS；曾误标 v2/2.0.0，已按 2026-11-06 要求恢复原接口版本；外部未配置能力明确拒绝 |
+| 2026-11-05 | 文档 1.1.0，核对 ba6b49f2 | 澄清 v1 自动历史/memory、受理快照、SSE 与停止边界，增加版本管理；本行是历史文档修订，不表示当前请求结构退回早期格式 |
+| 2026-11-05 | ba6b49f2 | 删除旧工具配置/Settings 别名/optimized 双轨与 LLM/urllib 回退 |
+| 2026-11-05 | 327086e9 | 单 Pod 公平调度、SSE 唤醒/ETag、缓存/索引、上游限流、EAS 生成器 |
+| 2026-11-05 | 605f3e74 / 2ff24172 | 初版接口说明书及持久幂等、取消墓碑、文件台账基础实现 |
+
+本轮不修改后台 Go/V3 原始文档、不创建 tag、不 commit/push 或部署云资源。联调 backend 需对齐当前 `/v1/aigc` 的最新类型，增补 interrupted/settlement/活动位判据，并将 Skill 打包与长上下文处理按本协议调整。

@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
+from ms_agent.agent.protocol import API_PREFIX
 from ms_agent.agent.run_service import RunError
 from ms_agent.session.locking import PersistenceError
 from ms_agent.session.run_store import digest
@@ -27,7 +28,7 @@ _ERRORS = {code: {'model': ErrorResponse} for code in (400, 401, 404, 409, 422, 
 
 
 def with_links(view: dict, path_prefix: str = '') -> dict:
-    prefix = f'{path_prefix}/v1/aigc/runs/{view["run_uuid"]}'
+    prefix = f'{path_prefix}{API_PREFIX}/runs/{view["run_uuid"]}'
     return {
         **view,
         'links': {
@@ -66,9 +67,11 @@ async def get_run(run_uuid: UUID, request: Request, response: Response, user: Us
 @router.post('/{run_uuid}/commands', response_model=CommandReceipt, operation_id='ControlRun', responses=_ERRORS)
 async def control_run(run_uuid: UUID, body: ControlRunRequest, response: Response, user: User, runs: Runs) -> dict:
     receipt = await runs.command(user, str(run_uuid), body.model_dump())
-    if receipt['status'] == 'rejected':
-        raise RunError(receipt['reason_code'], 409, receipt)
-    response.status_code = 202 if receipt['status'] == 'accepted' else 200
+    if receipt['command_status'] == 'rejected':
+        raise RunError(
+            receipt['reason_code'], 422 if receipt['reason_code'] == 'INVALID_INTERACTION_INPUT' else 409, receipt
+        )
+    response.status_code = 202 if receipt['command_status'] == 'accepted' else 200
     return receipt
 
 
@@ -113,8 +116,8 @@ async def subscribe_run_events(
                 else:
                     yield f'id: {event["agent_seq"]}\nevent: {event["event_type"]}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n'
         except PersistenceError:
-            # 已发送响应头后不可伪造成功终态；关闭连接让调用方重连查询。
-            return
+            # 控制帧无 Agent id，不能伪造业务终态。
+            yield 'event: stream.error\ndata: {"code":"STORAGE_UNAVAILABLE","message":"请重新查询快照"}\n\n'
         finally:
             try:
                 await source.aclose()

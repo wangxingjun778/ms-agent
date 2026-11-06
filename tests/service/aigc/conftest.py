@@ -1,24 +1,26 @@
-"""不访问收费接口的服务测试资源。"""
+"""联调合同测试资源；不访问收费模型或推理平台。"""
 
 import asyncio
 from copy import deepcopy
-from uuid import uuid4
+from datetime import datetime, timedelta, timezone
+from uuid import NAMESPACE_DNS, uuid4, uuid5
 
 import pytest
 import pytest_asyncio
 
 from ms_agent.agent.api import AgentService
+from ms_agent.agent.protocol import StartRunRequest
 from ms_agent.agent.run_service import RunService
 from ms_agent.session.run_store import FileRunStore
 from service.aigc.settings import ServiceCredentials, Settings
+
+MODEL = 'Qwen/Qwen-Image-2.1-Turbo'
 
 
 class FakeLLM:
     def __init__(self, messages=None, delay=0):
         self.messages = messages or [{'role': 'assistant', 'content': '完成'}]
-        self.delay = delay
-        self.calls = []
-        self.closed = False
+        self.delay, self.calls, self.closed = delay, [], False
 
     async def complete(self, messages, tools=None, **kwargs):
         self.calls.append(deepcopy(messages))
@@ -32,43 +34,53 @@ class FakeLLM:
         self.closed = True
 
 
-def request(run_uuid=None, session_id='s1', content='你好'):
-    return {
+def request(run_uuid=None, session_id='s1', content='你好', *, custom=False, deadline=None):
+    sid = str(uuid5(NAMESPACE_DNS, session_id))
+    parent = str(uuid5(NAMESPACE_DNS, session_id + ':root'))
+    body = {
         'run_uuid': run_uuid or str(uuid4()),
-        'session_id': session_id,
-        'profile_id': 'aigc_assistant',
-        'messages': [{'role': 'user', 'content': content, 'attachments': []}],
-        'parameters': {},
+        'session_id': sid,
+        'user_message_uuid': str(uuid4()),
+        'assistant_message_uuid': str(uuid4()),
+        'parent_message_uuid': parent,
+        'execution_policy': {
+            'deadline_at': deadline or (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
+        },
+        'input_snapshot': {
+            'effective': {
+                'prompt': content,
+                'generation_mode': 'custom' if custom else 'agent',
+                'custom_selection': {'model_ref': MODEL} if custom else None,
+            }
+        },
     }
+    return StartRunRequest.model_validate(body).sdk_input()
 
 
-async def wait_for(runs, identifier, status=None):
+async def wait_for(runs, identifier, status=None, user='u1'):
     async with asyncio.timeout(5):
         while True:
-            view = await runs.get('u1', identifier)
-            if (
-                view['status'] == status
-                if status
-                else view['status'] in {'succeeded', 'failed', 'cancelled', 'interrupted'}
-            ):
+            view = await runs.get(user, identifier)
+            if view['status'] == status if status else view['execution_closed']:
                 return view
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.002)
 
 
 @pytest.fixture
-def settings(tmp_path):
-    return Settings(
-        storage={'data_dir': str(tmp_path)},
-        runtime={
-            'max_active_runs': 4,
-            'max_inflight_runs': 104,
-            'per_user_active': 4,
-            'per_user_inflight': 104,
-            'interaction_timeout': 0,
-            'drain_timeout': 0,
-        },
-        agent={'max_chat_round': 5, 'model': 'test', 'base_url': 'http://unused.invalid/v1'},
-    ).bind_credentials(
+def settings(tmp_path, monkeypatch):
+    for key in ('AIGC_CONFIG', 'API_TOOLS_CONFIG', 'AIGC_QUEUE_LIMIT', 'AIGC_EAS_ENABLED', 'AIGC_EAS_GATEWAY'):
+        monkeypatch.delenv(key, raising=False)
+    settings = Settings.load(deployment=True)
+    settings.storage.data_dir = str(tmp_path)
+    settings.runtime.max_active_runs = 4
+    settings.runtime.max_inflight_runs = 104
+    settings.runtime.per_user_inflight = 104
+    settings.runtime.interaction_timeout = 0
+    settings.runtime.drain_timeout = 0
+    settings.settlement.budget = 0.2
+    settings.settlement.retry_interval = 0.005
+    settings.settlement.query_timeout = 0.05
+    return settings.bind_credentials(
         ServiceCredentials(service='test-service-secret', llm='test-model-secret', api='test-image-secret')
     )
 

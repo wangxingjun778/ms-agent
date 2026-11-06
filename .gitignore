@@ -32,6 +32,7 @@ wheels/
 .installed.cfg
 *.egg
 *output*
+!ms_agent/agent/outputs.py
 /package
 /temp
 **/tmp/

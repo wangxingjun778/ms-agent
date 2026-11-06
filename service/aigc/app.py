@@ -14,11 +14,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from ms_agent.agent.api import AgentService
+from ms_agent.agent.protocol import API_PREFIX, SERVICE_VERSION
 from ms_agent.agent.recipe import RecipeService
 from ms_agent.agent.run_service import RunError, RunService
 from ms_agent.llm.http_client import HTTPLLMClient
 from ms_agent.session.locking import PersistenceError
-from ms_agent.session.run_store import FileRunStore, StorageCorrupted
+from ms_agent.session.run_store import FileRunStore, ProtocolVersionUnsupported, StorageCorrupted
 from service.aigc.dependencies import User
 from service.aigc.routers import recipes, runs
 from service.aigc.settings import Settings
@@ -161,10 +162,10 @@ def create_app(settings: Settings | None = None, *, llm_client=None, recipe_llm=
             finally:
                 executor.shutdown(wait=True)
 
-    application = FastAPI(title='MS-Agent AIGC Service', version='1.0.0', lifespan=lifespan)
+    application = FastAPI(title='MS-Agent AIGC Service', version=SERVICE_VERSION, lifespan=lifespan)
     application.add_middleware(RequestBoundary, application=application)
-    application.include_router(runs.router, prefix='/v1/aigc')
-    application.include_router(recipes.router, prefix='/v1/aigc')
+    application.include_router(runs.router, prefix=API_PREFIX)
+    application.include_router(recipes.router, prefix=API_PREFIX)
     default_openapi = application.openapi
 
     def openapi():
@@ -188,6 +189,10 @@ def create_app(settings: Settings | None = None, *, llm_client=None, recipe_llm=
             response.headers['Retry-After'] = str(application.state.settings.runtime.retry_after)
         return response
 
+    @application.exception_handler(ProtocolVersionUnsupported)
+    async def protocol_error(request: Request, exc: ProtocolVersionUnsupported):
+        return error_response(request.state.request_id, 'PROTOCOL_VERSION_UNSUPPORTED', 409)
+
     @application.exception_handler(StorageCorrupted)
     async def corrupted_error(request: Request, exc: StorageCorrupted):
         return error_response(request.state.request_id, 'STORAGE_CORRUPTED', 503)
@@ -199,6 +204,8 @@ def create_app(settings: Settings | None = None, *, llm_client=None, recipe_llm=
     @application.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
         details = [{'location': list(error['loc']), 'type': error['type']} for error in exc.errors()]
+        if request.url.path.endswith('/events') and any(item['location'] == ['query', 'after_seq'] for item in details):
+            return error_response(request.state.request_id, 'EVENT_CURSOR_INVALID', 400, details)
         return error_response(request.state.request_id, 'INPUT_INVALID', 422, details)
 
     @application.exception_handler(ValueError)

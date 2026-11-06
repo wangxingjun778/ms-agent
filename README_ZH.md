@@ -344,7 +344,7 @@ pip install -e '.[all]'
 
 ### AIGC 轻量服务
 
-`service/aigc` 提供独立 FastAPI 服务，直接调用轻量 SDK，默认只开放图片推理 HTTP API；不启用本地工具、sandbox、MCP、workflow 或数据库。Docker 使用 Python 3.12，单协调器和本机持久卷。
+`service/aigc` 提供 Agentic 联调五接口（`/v1/aigc`，服务声明 `1.0.0`）FastAPI 服务，直接调用轻量 SDK。当前尚未上线，任何接口版本变更均需用户事先审批。Agent 使用受约束规划，Custom 固定模型与参数执行、不调用规划 LLM；默认只开放已配置的图片 HTTP API，不启用本地工具、sandbox、MCP、workflow 或数据库。Docker 使用 Python 3.12，单协调器和持久卷。
 
 在仓库根目录构建：
 
@@ -365,25 +365,25 @@ docker compose -f docker/aigc.compose.yaml up -d --build
 
 源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `DATA_DIR`、`AIGC_SERVICE_TOKEN`、`LLM_API_KEY`、`API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
 
-所有业务请求必须带 `Authorization: Bearer <service-token>` 和可信 backend 注入的 `X-User-Id`。不要向浏览器泄露服务凭据，也不要允许客户端直接自报用户身份访问。接口前缀为 `/v1/aigc`；完整模型与错误定义见 `/docs`、`/openapi.json`。
+所有业务请求必须带 `Authorization: Bearer <service-token>` 和可信 backend 注入的 `X-User-Id`。不要向浏览器泄露服务凭据，也不要允许客户端直接自报用户身份访问。仅提供 `/v1/aigc` 的最新冻结输入契约；拒绝弃用的 messages/parameters 输入及不匹配的台账格式，不自动迁移或重执行。恢复路径不回滚已实现的 Agentic 能力；完整类型与错误定义见 `/docs`、`/openapi.json`。
 
 | 接口 | HTTP | 关键契约 |
 |---|---|---|
-| StartRun | `POST /runs` | 必填 `run_uuid`、`session_id`、`messages`；固定 ID 同输入不重复执行，冲突返回 409 |
-| GetRun | `GET /runs/{run_uuid}` | 查询状态、命令回执、完整结果、产物和外部 task_id；不触发执行 |
+| StartRun | `POST /runs` | Run/会话/双消息/父节点 UUID、`execution_policy.deadline_at`、冻结 `input_snapshot`；同输入不重复执行，冲突 409 |
+| GetRun | `GET /runs/{run_uuid}` | 同水位公共快照、产物、命令、完成度与 settlement；不执行或查询下游 |
 | SubscribeRunEvents | `GET /runs/{run_uuid}/events` | SSE，`after_seq` 或 `Last-Event-ID` 排他回放；断流不停止执行 |
-| ControlRun | `POST /runs/{run_uuid}/commands` | `command_id` 幂等；支持 approve/skip/input/intervene/stop，按 interaction_id 响应待输入 |
-| GetOrBuildRecipe | `POST /runs/{run_uuid}/recipe` | `recipe_request_id`、`artifact_ids`、可选 context；LLM 辅助生成可编辑 JSON，相同 ID 取原构建状态/结果 |
+| ControlRun | `POST /runs/{run_uuid}/commands` | `command_id` 幂等；approve/skip/submit_input/intervene/stop；非 stop 精确绑定 interaction_id/action_id |
+| GetOrBuildRecipe | `POST /runs/{run_uuid}/recipe` | `recipe_request_id`、`output_ids`、冻结 context；查询原 attempt，failed/interrupted 显式 retry_command_id + expected_attempt CAS 重试 |
 
-StartRun 示例：`{"run_uuid":"11111111-1111-4111-8111-111111111111","session_id":"session-1","profile_id":"aigc_assistant","messages":[{"role":"user","content":"生成一张猫的图片"}]}`。图片调用默认等待授权，使用 GetRun 的 `pending_interaction.interaction_id` 提交 `{"command_id":"approve-1","type":"approve","interaction_id":"<id>"}`。
+完整请求见 [StartRun 示例](service/README.md#32-示例)及[版本审批约定](service/README.md#10-版本与变更记录)。后端冻结 effective、指定祖先链、素材 URL、Skill/Recipe revision 与参考 memory；服务不合并动态历史或偏好。图片调用默认等待授权：从 `public_snapshot.pending_interactions` 读取允许动作，提交 `{"command_id":"approve-1","action":"approve","interaction_id":"<id>","action_id":"<action-id>"}`。
 
-受理返回 202，结果通过 GetRun / SSE 取得。Recipe 正在构建时返回 202，重复调用同一请求取得终态。停止先于启动时保存取消墓碑；停止本地轮询不意味着远端推理已取消，当前图片 API 不支持取消。相同会话串行，不同 user/session 的记忆隔离。公开事件不包含模型私有推理。
+受理返回 202，事实通过 GetRun / SSE 取得。产物区分 requested/submitted/confirmed，不补造未知实际参数。只有 execution_closed 与 can_release_activity 确认后，后端才能释放活动位；202、APPLIED stop 与断流均不是判据。停止先于启动保存取消墓碑。公共事件可通过共享 reducer 独立还原快照，不公开私有推理或工具 raw_data。Recipe 冻结选定产物事实，编辑、确定性打包与 Skill 发布仍由后端负责。
 
-重启保留已提交事件和产物，未终态标为 `interrupted`，**不自动续跑或重提图片任务**；新执行必须换 `run_uuid`。不要移除持久卷，否则幂等/回放记录会丢失。当前不自动清理数据，不支持同目录多写者副本。NAS 需验证 NFSv4 跨客户端 flock；拒绝 NFSv3/本地锁退化及对象存储/FUSE 台账。epoch 检测只识别意外接管，不构成分布式 fencing。图片产物只保存远端 URL，不能保证 URL 永不过期。
+重启不续跑规划或重提交生成；独立收尾监督器可以查询已知原 task_id。未知提交保持 `interrupted/unknown`、can_release_activity=false；核清后按已保存的停止/deadline/失败原因收尾。主动 retry 只在来源核清后，使用新 Run/双消息 UUID、新 deadline，复用原输入快照。持久卷和 journal 不自动清理，不支持同目录多写者副本。NAS 需验证 NFSv4 跨客户端 flock，epoch 不是分布式 fencing。默认远端 URL 不保证永久；BYOK、视频、外部 resolver 仍需真实契约与联调，mock 不代表生产支持。
 
-单 Pod 默认 64 活跃 / 500 在途 Run、每用户 4 活跃 / 20 在途、共享 LLM 并发 32；这些只是起步参数，不是压测保证。限流按 Pod 计算；共用上游凭据的分片需由 backend 统一管理账户 RPM/TPM，当前未实现分布式 TPM 限流。同 session 保持 FIFO，用户间公平调度；等待交互归还活跃槽，1800 秒超时（0 关闭）。上下文保留 40 条消息 / 60,000 字符以内的完整回合，文件保留完整历史。SSE 由提交驱动、心跳 15 秒、单连接最长 540 秒，断开后按游标重连；GetRun 支持 ETag/304。
+单 Pod 默认 64 活跃 / 500 在途 Run、每用户 4 活跃 / 20 在途、共享 LLM 并发 32；这些只是起步参数，不是压测保证。限流按 Pod 计算；共用上游凭据的分片需由 backend 统一管理账户 RPM/TPM，当前未实现分布式 TPM 限流。同 session 保持 FIFO，用户间公平调度；等待交互归还活跃槽，1800 秒超时（0 关闭）。上下文仅使用显式快照（默认 200 条消息 / 60,000 字符预算），超预算拒绝，不暗中裁剪。远端轮询与收尾归还 Run 计算槽；收尾使用独立连接池与限流。SSE 由提交驱动、心跳 15 秒、单连接最长 540 秒，断开后按游标重连；GetRun 支持 ETag/304。
 
-EAS x86 实例构建 `linux/amd64` 镜像并推送到同地域 ACR。填写 YAML 的 eas.image/NAS/网关字段后，运行 `python -m service.aigc.deploy eas --shard 0 --output eas-service.json` 生成部署配置，不会创建云资源。生成器固定每服务一个 Pod，分离可写分片目录与只读配置/密钥目录，配置 startup/readiness/liveness、SIGTERM 和先停后起更新。EAS 请求传 `Authorization: <EAS_TOKEN>`、`X-AIGC-Service-Token: <service-token>` 及可信 `X-User-Id`。人工横向扩容使用 backend 稳定的 user→shard 路由，不启用共享目录多副本。完整步骤见 [部署与调优说明](service/README.md#13-配置单-pod-调优与-eas-部署)。
+EAS x86 实例构建 `linux/amd64` 镜像并推送到同地域 ACR。填写 YAML 的 eas.image/NAS/网关字段后，运行 `python -m service.aigc.deploy eas --shard 0 --output eas-service.json` 生成部署配置，不会创建云资源。生成器固定每服务一个 Pod，分离可写分片目录与只读配置/密钥目录，配置 startup/readiness/liveness、SIGTERM 和先停后起更新。EAS 请求传 `Authorization: <EAS_TOKEN>`、`X-AIGC-Service-Token: <service-token>` 及可信 `X-User-Id`。人工横向扩容使用 backend 稳定的 user→shard 路由，不启用共享目录多副本。完整步骤见 [部署与调优说明](service/README.md#8-统一配置依赖与-eas)。
 
 健康检查：`/health/live`、`/health/ready`（含 config_digest）；认证监控接口 `/internal/stats`；网关需要关闭 SSE 缓冲。开发测试：`python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`，需安装 pytest、pytest-asyncio、httpx。
 

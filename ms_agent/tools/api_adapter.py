@@ -29,7 +29,7 @@ from urllib.parse import quote
 import aiohttp
 
 from ms_agent.session.locking import PersistenceError
-from ms_agent.tools.schema import ToolInvocationContext, ToolResult
+from ms_agent.tools.schema import SubmissionNotSent, ToolInvocationContext, ToolResult
 from ms_agent.utils.limiter import retry_delay
 
 logger = logging.getLogger(__name__)
@@ -211,11 +211,13 @@ class APIToolAdapter:
         else:
             yield
 
-    async def _submit(self, url, headers, args):
+    async def _submit(self, url, headers, args, context=None):
         policy = self.upstreams.get('submit', {}).get('retry', {'attempts': 1})
 
         async def send():
             for attempt in range(policy['attempts']):
+                if context:
+                    await context.emit('submission_intent', {'tool_name': self.name, 'arguments': args})
                 try:
                     data = await self._request(
                         self._spec.api_config.method,
@@ -223,6 +225,7 @@ class APIToolAdapter:
                         headers,
                         json_body=args,
                         timeout=self._spec.api_config.timeout,
+                        context=context,
                     )
                     if data.get('_http_status', 200) != 429 or attempt + 1 == policy['attempts']:
                         return data
@@ -297,9 +300,27 @@ class APIToolAdapter:
         """Single HTTP request, extract success/error directly from body."""
         url = self._build_url(self._spec.api_config.path)
         headers = self._build_headers(context)
-        data = await self._request(
-            self._spec.api_config.method, url, headers, json_body=args, timeout=self._spec.api_config.timeout
-        )
+        if context:
+            await context.emit('submission_intent', {'tool_name': self.name, 'arguments': args})
+        try:
+            data = await self._request(
+                self._spec.api_config.method,
+                url,
+                headers,
+                json_body=args,
+                timeout=self._spec.api_config.timeout,
+                context=context,
+            )
+        except (SubmissionNotSent, PersistenceError):
+            raise
+        except BaseException:
+            if context:
+                await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
+            raise
+        if data.get('_http_status', 200) >= 500 or data.get('_http_status') == 408:
+            if context:
+                await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
+            return ToolResult.from_error(self.name, '外部提交结果未确认', delivery_unknown=True)
         return self._shape_result(data)
 
     async def _async_call(self, args: Dict[str, Any], context: Optional[ToolInvocationContext] = None) -> ToolResult:
@@ -312,7 +333,11 @@ class APIToolAdapter:
         submit_url = self._build_url(self._spec.api_config.path)
         headers = self._build_headers(context)
         try:
-            submit_resp = await self._submit(submit_url, headers, args)
+            submit_resp = await self._submit(submit_url, headers, args, context)
+        except (SubmissionNotSent, PersistenceError):
+            raise
+        except _CONNECTOR_ERRORS:
+            return ToolResult.from_error(self.name, '连接未建立，请求未发送')
         except BaseException as exc:
             if context is not None:
                 await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
@@ -334,13 +359,13 @@ class APIToolAdapter:
         task_id = self._extract_value(submit_resp, self._spec.output_mapping.task_id_path)
         if not task_id:
             err = self._extract_value(submit_resp, self._spec.output_mapping.error_path)
-            if context is not None and not err:
+            if context is not None:
                 await context.emit('delivery_unknown', {'tool_name': self.name, 'remote_cancel_supported': False})
             return ToolResult.from_error(
                 self._spec.name,
                 f'Task submission did not return task_id: {err or submit_resp}',
                 raw=submit_resp,
-                delivery_unknown=not bool(err),
+                delivery_unknown=True,
             )
 
         if context is not None:
@@ -368,6 +393,25 @@ class APIToolAdapter:
                 and self._extract_value(final, self._spec.output_mapping.status_path)
                 not in self._spec.output_mapping.failure_statuses
             )
+        )
+        return result
+
+    async def query_task(self, task_id: str):
+        """只查询原任务；返回 pending=None、确认结果或未确认错误，绝不 POST。"""
+        if not self._spec.api_config.poll_path:
+            return ToolResult.from_error(self.name, '工具不支持原任务查询', unresolved=True)
+        url = self._build_url(self._spec.api_config.poll_path, task_id=quote(str(task_id), safe=''))
+        data = await self._request(
+            'GET', url, self._build_headers(None), json_body=None, timeout=self._spec.api_config.timeout
+        )
+        status = self._extract_value(data, self._spec.output_mapping.status_path)
+        if data.get('_http_status', 200) == 429 or data.get('_http_status', 200) >= 500:
+            return ToolResult.from_error(self.name, '原任务查询暂不可用', unresolved=True)
+        if status in ('PENDING', 'PROCESSING', 'RUNNING'):
+            return None
+        result = self._shape_result(data)
+        result.metadata['unresolved'] = (
+            status not in self._spec.output_mapping.success_statuses + self._spec.output_mapping.failure_statuses
         )
         return result
 
@@ -431,6 +475,7 @@ class APIToolAdapter:
         headers: Dict[str, str],
         json_body: Optional[Dict[str, Any]],
         timeout: float,
+        context: Optional[ToolInvocationContext] = None,
     ) -> Dict[str, Any]:
         """Perform one HTTP request and parse the JSON body.
 
@@ -444,13 +489,25 @@ class APIToolAdapter:
             tmo = aiohttp.ClientTimeout(
                 total=timeout, connect=options.get('connect_timeout'), sock_read=options.get('read_timeout')
             )
-            async with self._slot(method):
-                async with client.request(method.upper(), url, headers=headers, json=json_body, timeout=tmo) as resp:
-                    text = await resp.text()
-                    data = _parse_json_or_wrap(text, resp.status)
-                    if 'Retry-After' in resp.headers:
-                        data['_retry_after'] = resp.headers['Retry-After']
-                    return data
+            started = False
+            try:
+                async with self._slot(method):
+                    if context and context.guard:
+                        await context.guard()
+                    started = True
+                    async with client.request(
+                        method.upper(), url, headers=headers, json=json_body, timeout=tmo
+                    ) as resp:
+                        text = await resp.text()
+                        data = _parse_json_or_wrap(text, resp.status)
+                        if 'Retry-After' in resp.headers:
+                            data['_retry_after'] = resp.headers['Retry-After']
+                        return data
+            except asyncio.CancelledError:
+                if context and not started:
+                    await context.emit('submission_not_sent', {'tool_name': self.name})
+                    raise SubmissionNotSent from None
+                raise
         raise RuntimeError('API 工具需要生命周期所有者注入 aiohttp ClientSession')
 
     def _shape_result(self, data: Dict[str, Any]) -> ToolResult:
@@ -468,18 +525,18 @@ class APIToolAdapter:
             or self._extract_value(data, self._spec.output_mapping.status_path)
             in self._spec.output_mapping.failure_statuses
         ):
-            return ToolResult.from_error(self.name, '外部 API 请求失败', raw=data, http_status=status)
+            return ToolResult.from_error(self.name, '外部 API 请求失败', raw_data=data, http_status=status)
         if data.get('_poll_timeout'):
             return ToolResult.from_error(
                 self._spec.name,
                 f'Polling exceeded {self._spec.api_config.poll_timeout:.0f}s without a terminal status',
-                raw=data,
+                raw_data=data,
             )
 
         err = self._extract_value(data, self._spec.output_mapping.error_path)
         if err:
             msg = err if isinstance(err, str) else json.dumps(err, ensure_ascii=False)
-            return ToolResult.from_error(self._spec.name, msg, raw=data)
+            return ToolResult.from_error(self._spec.name, msg, raw_data=data)
 
         success_path = self._spec.output_mapping.success_path
         if success_path:
@@ -488,7 +545,7 @@ class APIToolAdapter:
                 return ToolResult.from_error(
                     self._spec.name,
                     f'Response missing success field at {success_path!r}',
-                    raw=data,
+                    raw_data=data,
                 )
             content = _stringify(value)
         else:
@@ -607,6 +664,7 @@ def _parse_json_or_wrap(text: str, status: int) -> Dict[str, Any]:
         parsed = json.loads(text) if text else {}
     except json.JSONDecodeError:
         return {
+            '_http_status': status,
             '_raw': text,
             'errors': {
                 'message': f'Non-JSON response (HTTP {status})',

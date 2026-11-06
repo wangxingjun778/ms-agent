@@ -51,7 +51,7 @@ async def test_submit_persist_before_poll_and_full_images(monkeypatch):
         if method == 'POST':
             assert headers['X-ModelScope-Async-Mode'] == 'true'
             return {'task_id': 'task/a', 'task_status': 'SUCCEED', 'request_id': 'request1'}
-        assert log[0][0] == 'task_submitted' and log[0][1]['task_id'] == 'task/a'
+        assert any(kind == 'task_submitted' and data['task_id'] == 'task/a' for kind, data in log)
         assert url.endswith('task%2Fa') and headers['X-ModelScope-Task-Type'] == 'image_generation'
         return {
             'task_id': 'task/a',
@@ -79,7 +79,7 @@ async def test_submission_not_retried_and_delivery_unknown(monkeypatch):
 
     monkeypatch.setattr(tool, '_request', transport)
     result = await tool.execute({}, ToolInvocationContext('u1', 's1', 'r1', 'call1', record=record))
-    assert not result.success and len(attempts) == 1 and records == ['delivery_unknown']
+    assert not result.success and len(attempts) == 1 and records == ['submission_intent', 'delivery_unknown']
 
 
 @pytest.mark.asyncio
@@ -87,8 +87,9 @@ async def test_persistence_failure_prevents_poll(monkeypatch):
     tool = adapter()
     calls = []
 
-    async def record(*args):
-        raise PersistenceError('disk full')
+    async def record(kind, *args):
+        if kind == 'task_submitted':
+            raise PersistenceError('disk full')
 
     async def transport(method, *args, **kwargs):
         calls.append(method)
@@ -145,7 +146,7 @@ async def test_cancel_poll_preserves_submitted_task(monkeypatch):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert records[0][1]['task_id'] == 't1'
+    assert any(data.get('task_id') == 't1' for kind, data in records if kind == 'task_submitted')
 
 
 @pytest.mark.asyncio

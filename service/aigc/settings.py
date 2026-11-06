@@ -80,6 +80,7 @@ class EventSettings(ConfigNode):
     heartbeat_seconds: float = Field(default=15, gt=0)
     max_stream_seconds: float = Field(default=540, gt=0)
     max_subscribers: int = Field(default=512, ge=1)
+    batch_size: int = Field(default=128, ge=1, le=1024)
 
 
 class RetrySettings(ConfigNode):
@@ -112,21 +113,54 @@ class UpstreamsSettings(ConfigNode):
     llm: UpstreamSettings = Field(default_factory=UpstreamSettings)
     submit: UpstreamSettings = Field(default_factory=lambda: UpstreamSettings(concurrency=8))
     poll: PollUpstreamSettings = Field(default_factory=PollUpstreamSettings)
+    settlement: PollUpstreamSettings = Field(default_factory=lambda: PollUpstreamSettings(concurrency=4, connections=8))
 
 
-class HistorySettings(ConfigNode):
-    max_messages: int = Field(default=40, ge=0)
-    max_chars: int = Field(default=60000, ge=0)
+class ContextLimits(ConfigNode):
+    max_messages: int = Field(default=200, ge=1)
+    max_chars: int = Field(default=60000, ge=1)
+    max_asset_bytes: int = Field(default=262144, ge=1024)
+
+
+class ModelCapability(ConfigNode):
+    model_id: str
+    modality: Literal['image', 'video']
+    tool_name: str
+    actions: list[Literal['generate', 'continue_edit', 'regenerate', 'change_reference', 'rethink']]
+    parameter_map: dict[str, str]
+    sizes: dict[str, str] = Field(default_factory=dict)
+    output_type: Literal['image', 'video'] = 'image'
+    confirmed_path: str | None = None
+    poster_path: str | None = None
+
+    @model_validator(mode='after')
+    def validate_mapping(self):
+        if self.output_type != self.modality:
+            raise ValueError('模型输出类型必须与 modality 一致')
+        targets = list(self.parameter_map.values())
+        if len(targets) != len(set(targets)) or {'model', 'prompt', 'size'} & set(targets):
+            raise ValueError('参数映射不能重复或覆盖模型/提示词/尺寸')
+        return self
+
+
+class CapabilitiesSettings(ConfigNode):
+    context: ContextLimits = Field(default_factory=ContextLimits)
+    models: dict[str, ModelCapability] = Field(default_factory=dict)
+    asset_transport: Literal['frozen_snapshot'] = 'frozen_snapshot'
+    connection_transport: Literal['disabled'] = 'disabled'
+
+
+class SettlementSettings(ConfigNode):
+    concurrency: int = Field(default=8, ge=1)
+    budget: float = Field(default=600, gt=0)
+    query_timeout: float = Field(default=60, gt=0)
+    retry_interval: float = Field(default=5, gt=0)
+    cancel_enabled: Literal[False] = False
 
 
 class AgentSettings(ConfigNode):
     max_chat_round: int = Field(default=20, ge=1, le=100)
     system_prompt: str = '你是 AIGC 助手。只使用已声明的 HTTP API 工具。'
-    history: HistorySettings = Field(default_factory=HistorySettings)
-    memory_enabled: bool = True
-    memory_projection: bool = False
-    memory_top_k: int = Field(default=5, ge=0)
-    skill_dirs: list[str] = Field(default_factory=list)
     model: str = 'qwen-plus'
     base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     temperature: float = Field(default=0.7, ge=0, le=2)
@@ -261,6 +295,8 @@ class Settings(ConfigNode):
     upstreams: UpstreamsSettings = Field(default_factory=UpstreamsSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     recipe: RecipeSettings = Field(default_factory=RecipeSettings)
+    capabilities: CapabilitiesSettings = Field(default_factory=CapabilitiesSettings)
+    settlement: SettlementSettings = Field(default_factory=SettlementSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     eas: EASSettings = Field(default_factory=EASSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
@@ -280,7 +316,7 @@ class Settings(ConfigNode):
             raise ValueError('EAS service_name 必须为字母开头的字母数字下划线')
         if self.runtime.max_inflight_runs < self.runtime.max_active_runs:
             raise ValueError('在途容量不能小于活跃容量')
-        for upstream in (self.upstreams.llm, self.upstreams.submit, self.upstreams.poll):
+        for upstream in (self.upstreams.llm, self.upstreams.submit, self.upstreams.poll, self.upstreams.settlement):
             if upstream.connections < upstream.concurrency:
                 raise ValueError('连接池容量不能小于上游并发容量')
         if self.eas.enabled:
@@ -369,8 +405,6 @@ class Settings(ConfigNode):
                 'mode': 'lightweight',
                 'max_chat_round': self.agent.max_chat_round,
                 'system_prompt': self.agent.system_prompt,
-                'history': self.agent.history.model_dump(),
-                'memory_top_k': self.agent.memory_top_k,
             },
             'llm': {
                 'transport': 'http',
@@ -391,17 +425,19 @@ class Settings(ConfigNode):
                 'base_dir': self.storage.data_dir,
                 'storage_backend': 'file',
                 'scope': 'session',
-                'enabled': self.agent.memory_enabled,
-                'projection': self.agent.memory_projection,
-                'top_k': self.agent.memory_top_k,
+                'enabled': False,
+                'projection': False,
             },
-            'skills': {'enabled': bool(self.agent.skill_dirs), 'dirs': self.agent.skill_dirs},
+            'skills': {'enabled': False, 'dirs': []},
+            'capabilities': self.capabilities.model_dump(),
+            'settlement': self.settlement.model_dump(),
             'tools': {
                 'builtin_enabled': False,
                 'api': deepcopy(self.tools.api),
                 'upstreams': {
                     'submit': self.upstreams.submit.model_dump(),
                     'poll': self.upstreams.poll.model_dump(),
+                    'settlement': self.upstreams.settlement.model_dump(),
                 },
             },
         }
