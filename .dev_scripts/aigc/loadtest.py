@@ -4,7 +4,7 @@
     .venv-aigc/bin/python .dev_scripts/aigc/loadtest.py --users 20 --sessions 2 --runs 3 \\
         --image-ratio 0.3 --output /tmp/aigc-baseline.json
 
-服务子进程只通过环境变量和 ``--config``（AIGC_CONFIG）接收配置；打点仅统计
+服务子进程只通过环境变量和 ``--config``（AGENTIC_AIGC_CONFIG）接收配置；打点仅统计
 ``os.fsync`` 与 journal 全量读取次数，不修改服务代码。
 """
 
@@ -537,23 +537,28 @@ async def main_async(args) -> dict:
     stats_path = Path(data_dir) / 'loadtest-counters.json'
     env = {
         **os.environ,
-        'DATA_DIR': str(Path(data_dir) / 'data'),
-        'AIGC_HOST': '127.0.0.1',
-        'AIGC_PORT': str(port),
-        'AIGC_MAX_RUNS': str(args.max_active_runs),
-        'AIGC_MAX_INFLIGHT': str(args.max_inflight_runs),
-        'AIGC_SERVICE_TOKEN': 'loadtest-service',
-        'LLM_API_KEY': 'loadtest-llm',
-        'API_TOKEN': 'loadtest-image',
-        'LLM_BASE_URL': f'http://127.0.0.1:{mock_port}/v1',
-        'API_BASE_URL': f'http://127.0.0.1:{mock_port}',
+        'AGENTIC_AIGC_DATA_DIR': str(Path(data_dir) / 'data'),
+        'AGENTIC_AIGC_HOST': '127.0.0.1',
+        'AGENTIC_AIGC_PORT': str(port),
+        'AGENTIC_AIGC_MAX_RUNS': str(args.max_active_runs),
+        'AGENTIC_AIGC_MAX_INFLIGHT': str(args.max_inflight_runs),
+        'AGENTIC_AIGC_SERVICE_TOKEN': 'loadtest-service',
+        'AGENTIC_AIGC_LLM_API_KEY': 'loadtest-llm',
+        'AGENTIC_AIGC_API_TOKEN': 'loadtest-image',
+        'AGENTIC_AIGC_LLM_BASE_URL': f'http://127.0.0.1:{mock_port}/v1',
+        'AGENTIC_AIGC_API_BASE_URL': f'http://127.0.0.1:{mock_port}',
         'PYTHONDONTWRITEBYTECODE': '1',
-        'AIGC_DRAIN_TIMEOUT': '0',
+        'AGENTIC_AIGC_DRAIN_TIMEOUT': '0',
     }
-    for name in ('AIGC_CONFIG', 'AIGC_SERVICE_TOKEN_FILE', 'LLM_API_KEY_FILE', 'API_TOKEN_FILE'):
+    for name in (
+        'AGENTIC_AIGC_CONFIG',
+        'AGENTIC_AIGC_SERVICE_TOKEN_FILE',
+        'AGENTIC_AIGC_LLM_API_KEY_FILE',
+        'AGENTIC_AIGC_API_TOKEN_FILE',
+    ):
         env.pop(name, None)
     if args.config:
-        env['AIGC_CONFIG'] = str(Path(args.config).absolute())
+        env['AGENTIC_AIGC_CONFIG'] = str(Path(args.config).absolute())
     log = open(Path(data_dir) / 'service.log', 'wb')
     process = subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), '--child', str(stats_path)],
@@ -619,7 +624,7 @@ def parse_args(argv=None):
     parser.add_argument('--poll-429', type=float, default=0.0)
     parser.add_argument('--max-active-runs', type=int, default=64, help='runtime.max_active_runs')
     parser.add_argument('--max-inflight-runs', type=int, default=500, help='runtime.max_inflight_runs')
-    parser.add_argument('--config', help='替换服务配置（AIGC_CONFIG）')
+    parser.add_argument('--config', help='替换服务配置（AGENTIC_AIGC_CONFIG）')
     parser.add_argument('--auth-header', default='Authorization')
     parser.add_argument('--auth-scheme', choices=['bearer', 'raw'], default='bearer')
     parser.add_argument('--seed', type=int, default=7)

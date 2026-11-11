@@ -15,6 +15,25 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, model
 from ms_agent.session.run_store import digest, without_secrets
 from ms_agent.tools.api_registry import _resolve_env
 
+ENV_PREFIX = 'AGENTIC_AIGC_'
+
+# 环境变量重命名后不接受别名：旧名为 AIGC_* 时失败关闭，避免静默回退到默认值。
+RENAMED_ENVIRONMENTS = {
+    'AIGC_HOST': 'AGENTIC_AIGC_HOST',
+    'AIGC_PORT': 'AGENTIC_AIGC_PORT',
+    'AIGC_PUBLIC_PATH_PREFIX': 'AGENTIC_AIGC_PUBLIC_PATH_PREFIX',
+    'AIGC_AUTH_HEADER': 'AGENTIC_AIGC_AUTH_HEADER',
+    'AIGC_AUTH_SCHEME': 'AGENTIC_AIGC_AUTH_SCHEME',
+    'AIGC_MAX_RUNS': 'AGENTIC_AIGC_MAX_RUNS',
+    'AIGC_MAX_INFLIGHT': 'AGENTIC_AIGC_MAX_INFLIGHT',
+    'AIGC_DRAIN_TIMEOUT': 'AGENTIC_AIGC_DRAIN_TIMEOUT',
+    'AIGC_METRICS_ENABLED': 'AGENTIC_AIGC_METRICS_ENABLED',
+    'AIGC_EAS_ENABLED': 'AGENTIC_AIGC_EAS_ENABLED',
+    'AIGC_EAS_GATEWAY': 'AGENTIC_AIGC_EAS_GATEWAY',
+    'AIGC_CONFIG': 'AGENTIC_AIGC_CONFIG',
+    'AIGC_SERVICE_TOKEN': 'AGENTIC_AIGC_SERVICE_TOKEN',
+}
+
 
 def read_secret(name: str) -> str:
     path = os.environ.get(f'{name}_FILE')
@@ -159,12 +178,12 @@ class SettlementSettings(ConfigNode):
 
 
 class AgentSettings(ConfigNode):
+    """只保存服务端必须决定的规划参数，采样参数用上游模型默认值。"""
+
     max_chat_round: int = Field(default=20, ge=1, le=100)
     system_prompt: str = '你是 AIGC 助手。只使用已声明的 HTTP API 工具。'
     model: str = 'qwen-plus'
     base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-    temperature: float = Field(default=0.7, ge=0, le=2)
-    max_tokens: int = Field(default=4096, ge=1)
 
 
 class RecipeSettings(ConfigNode):
@@ -273,9 +292,9 @@ class ToolsSettings(ConfigNode):
 
 
 class SecretsSettings(ConfigNode):
-    service: str = 'AIGC_SERVICE_TOKEN'
-    llm: str = 'LLM_API_KEY'
-    api: str = 'API_TOKEN'
+    service: str = f'{ENV_PREFIX}SERVICE_TOKEN'
+    llm: str = f'{ENV_PREFIX}LLM_API_KEY'
+    api: str = f'{ENV_PREFIX}API_TOKEN'
 
 
 class ServiceCredentials(ConfigNode):
@@ -366,10 +385,15 @@ class Settings(ConfigNode):
     def load(
         cls, path: str | Path | None = None, *, deployment: bool = False, credentials: ServiceCredentials | None = None
     ) -> 'Settings':
-        path = Path(path or os.environ.get('AIGC_CONFIG', Path(__file__).parent / 'configs' / 'service.yaml'))
+        path = Path(path or os.environ.get('AGENTIC_AIGC_CONFIG', Path(__file__).parent / 'configs' / 'service.yaml'))
         obsolete = {'API_TOOLS_CONFIG', 'AIGC_QUEUE_LIMIT'} & os.environ.keys()
         if obsolete:
             raise ValueError(f'已移除的配置入口：{", ".join(sorted(obsolete))}')
+        renamed = sorted(
+            f'{old} → {new}' for old, new in RENAMED_ENVIRONMENTS.items() if old in os.environ and new not in os.environ
+        )
+        if renamed:
+            raise ValueError(f'环境变量已重命名为 {ENV_PREFIX}*：{", ".join(renamed)}')
         source = path.read_text(encoding='utf-8')
         raw = _resolve_env(yaml.safe_load(source) or {})
         effective = cls.model_validate(raw)
@@ -411,8 +435,6 @@ class Settings(ConfigNode):
                 'model': self.agent.model,
                 'base_url': self.agent.base_url,
                 'api_key': credentials.llm.get_secret_value(),
-                'temperature': self.agent.temperature,
-                'max_tokens': self.agent.max_tokens,
                 'timeout': self.upstreams.llm.read_timeout,
                 'upstream': self.upstreams.llm.model_dump(),
             },

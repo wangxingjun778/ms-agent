@@ -67,17 +67,17 @@ def run(name, volume, port, secrets, *, read_only=True):
     args += [
         '--add-host=host.docker.internal:host-gateway',
         '-e',
-        'DATA_DIR=/data',
+        'AGENTIC_AIGC_DATA_DIR=/data',
         '-e',
-        'AIGC_SERVICE_TOKEN_FILE=/run/secrets/service',
+        'AGENTIC_AIGC_SERVICE_TOKEN_FILE=/run/secrets/service',
         '-e',
-        'LLM_API_KEY_FILE=/run/secrets/llm',
+        'AGENTIC_AIGC_LLM_API_KEY_FILE=/run/secrets/llm',
         '-e',
-        'API_TOKEN_FILE=/run/secrets/api',
+        'AGENTIC_AIGC_API_TOKEN_FILE=/run/secrets/api',
         '-e',
-        f'LLM_BASE_URL=http://host.docker.internal:{os.environ["AIGC_SMOKE_LLM_PORT"]}/v1',
+        f'AGENTIC_AIGC_LLM_BASE_URL=http://host.docker.internal:{os.environ["AGENTIC_AIGC_SMOKE_LLM_PORT"]}/v1',
         '-e',
-        'API_BASE_URL=http://127.0.0.1:1',
+        'AGENTIC_AIGC_API_BASE_URL=http://127.0.0.1:1',
         '-v',
         f'{secrets}/service:/run/secrets/service:ro',
         '-v',
@@ -115,7 +115,7 @@ def main():
             (directory / file).write_text(value)
             os.chmod(directory / file, 0o444)  # 仅一次性 mock 凭据，供非 root 容器读取。
         try:
-            os.environ['AIGC_SMOKE_LLM_PORT'] = str(server_port)
+            os.environ['AGENTIC_AIGC_SMOKE_LLM_PORT'] = str(server_port)
             run(name, volume, args.port, directory)
             wait_ready(args.port, name)
             inspect = json.loads(docker('inspect', name).stdout)[0]

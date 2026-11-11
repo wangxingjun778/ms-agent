@@ -44,15 +44,15 @@ def render_eas(settings: Settings, shard: int) -> dict:
 
     env = {
         **settings._environment_overrides,
-        'DATA_DIR': data_dir,
-        'AIGC_PUBLIC_PATH_PREFIX': prefix,
-        'AIGC_AUTH_HEADER': effective.auth.header,
-        'AIGC_AUTH_SCHEME': effective.auth.scheme,
-        'AIGC_EAS_ENABLED': 'true',
-        'AIGC_EAS_GATEWAY': effective.eas.gateway,
+        'AGENTIC_AIGC_DATA_DIR': data_dir,
+        'AGENTIC_AIGC_PUBLIC_PATH_PREFIX': prefix,
+        'AGENTIC_AIGC_AUTH_HEADER': effective.auth.header,
+        'AGENTIC_AIGC_AUTH_SCHEME': effective.auth.scheme,
+        'AGENTIC_AIGC_EAS_ENABLED': 'true',
+        'AGENTIC_AIGC_EAS_GATEWAY': effective.eas.gateway,
         # Pod 与生成器读取同一份 YAML，配置挂载与可写数据目录分离。
-        'AIGC_CONFIG': '/aigc-config/service.yaml',
-        'AIGC_METRICS_ENABLED': 'true',
+        'AGENTIC_AIGC_CONFIG': '/aigc-config/service.yaml',
+        'AGENTIC_AIGC_METRICS_ENABLED': 'true',
     }
     # 密钥由部署方提供在独立、只读的目录中，绝不将真实凭据渲染进 JSON。
     for secret in (settings.secrets.service, settings.secrets.llm, settings.secrets.api):

@@ -1,11 +1,11 @@
 services:
   aigc:
-    image: ms-agent-aigc:${AIGC_IMAGE_TAG:-dev}
+    image: ms-agent-aigc:${AGENTIC_AIGC_IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: docker/aigc.Dockerfile
       args:
-        GIT_SHA: ${AIGC_IMAGE_TAG:-dev}
+        GIT_SHA: ${AGENTIC_AIGC_IMAGE_TAG:-dev}
     init: true
     restart: unless-stopped
     read_only: true
@@ -16,20 +16,20 @@ services:
     pids_limit: 128
     stop_grace_period: 120s
     ports:
-      - "127.0.0.1:${AIGC_PORT:-8000}:8000"
+      - "127.0.0.1:${AGENTIC_AIGC_PORT:-8000}:8000"
     volumes:
       - aigc_data:/data
-      - ${AIGC_CONFIG_PATH:-../service/aigc/configs/service.yaml}:/app/service/aigc/configs/service.yaml:ro
+      - ${AGENTIC_AIGC_CONFIG_PATH:-../service/aigc/configs/service.yaml}:/app/service/aigc/configs/service.yaml:ro
     tmpfs:
       - /tmp:size=64m,mode=1777
     environment:
-      DATA_DIR: /data
-      LLM_MODEL: ${LLM_MODEL:-qwen-plus}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-      API_BASE_URL: ${API_BASE_URL:-https://api-inference.modelscope.cn}
-      AIGC_SERVICE_TOKEN_FILE: /run/secrets/service_token
-      LLM_API_KEY_FILE: /run/secrets/llm_api_key
-      API_TOKEN_FILE: /run/secrets/api_token
+      AGENTIC_AIGC_DATA_DIR: /data
+      AGENTIC_AIGC_LLM_MODEL: ${AGENTIC_AIGC_LLM_MODEL:-qwen-plus}
+      AGENTIC_AIGC_LLM_BASE_URL: ${AGENTIC_AIGC_LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      AGENTIC_AIGC_API_BASE_URL: ${AGENTIC_AIGC_API_BASE_URL:-https://api-inference.modelscope.cn}
+      AGENTIC_AIGC_SERVICE_TOKEN_FILE: /run/secrets/service_token
+      AGENTIC_AIGC_LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      AGENTIC_AIGC_API_TOKEN_FILE: /run/secrets/api_token
     secrets:
       - service_token
       - llm_api_key
@@ -40,8 +40,8 @@ volumes:
 
 secrets:
   service_token:
-    file: ${AIGC_SERVICE_TOKEN_PATH:?指定服务间凭据文件绝对路径}
+    file: ${AGENTIC_AIGC_SERVICE_TOKEN_PATH:?指定服务间凭据文件绝对路径}
   llm_api_key:
-    file: ${LLM_API_KEY_PATH:?指定模型凭据文件绝对路径}
+    file: ${AGENTIC_AIGC_LLM_API_KEY_PATH:?指定模型凭据文件绝对路径}
   api_token:
-    file: ${API_TOKEN_PATH:?指定图片API凭据文件绝对路径}
+    file: ${AGENTIC_AIGC_API_TOKEN_PATH:?指定图片API凭据文件绝对路径}

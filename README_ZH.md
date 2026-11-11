@@ -355,15 +355,15 @@ docker build -f docker/aigc.Dockerfile --build-arg GIT_SHA="$(git rev-parse --sh
 准备三个仅部署环境可读的凭据文件，分别用于服务间认证、LLM、图片 API，再启动：
 
 ```bash
-export AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
-export LLM_API_KEY_PATH=/absolute/path/llm-api-key
-export API_TOKEN_PATH=/absolute/path/image-api-token
+export AGENTIC_AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
+export AGENTIC_AIGC_LLM_API_KEY_PATH=/absolute/path/llm-api-key
+export AGENTIC_AIGC_API_TOKEN_PATH=/absolute/path/image-api-token
 docker compose -f docker/aigc.compose.yaml up -d --build
 ```
 
-默认仅映射 `127.0.0.1:8000`。运行、上游、图片工具/schema、凭据引用和 EAS 部署配置全部集中在 `service/aigc/configs/service.yaml`；环境覆盖在该 YAML 中显式列出。替换配置时只读挂载该文件，通过 `AIGC_CONFIG` 选择。旧 service api_tools.yaml、配置别名和兼容分支已删除；`API_TOOLS_CONFIG`、`AIGC_QUEUE_LIMIT` 均在启动时拒绝。程序化配置使用 `Settings.load()`、嵌套字段及独立的 `ServiceCredentials`，不支持旧 Settings 构造或 SDK 默认 YAML 合并。模型权限和真实接口可用性需部署方确认。
+默认仅映射 `127.0.0.1:8000`。运行、上游、图片工具/schema、凭据引用和 EAS 部署配置全部集中在 `service/aigc/configs/service.yaml`；服务环境变量统一使用 `AGENTIC_AIGC_` 前缀，并在该 YAML 中显式列出，旧 `AIGC_*` 名称启动时拒绝。替换配置时只读挂载该文件，通过 `AGENTIC_AIGC_CONFIG` 选择。旧 service api_tools.yaml、配置别名和兼容分支已删除；`API_TOOLS_CONFIG`、`AIGC_QUEUE_LIMIT` 均在启动时拒绝。程序化配置使用 `Settings.load()`、嵌套字段及独立的 `ServiceCredentials`，不支持旧 Settings 构造或 SDK 默认 YAML 合并。模型权限和真实接口可用性需部署方确认。
 
-源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `DATA_DIR`、`AIGC_SERVICE_TOKEN`、`LLM_API_KEY`、`API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
+源码本地调试使用 Python 3.12，安装 `requirements/aigc-lock.txt`（`--require-hashes`）后，在仓库根目录设置 `AGENTIC_AIGC_DATA_DIR`、`AGENTIC_AIGC_SERVICE_TOKEN`、`AGENTIC_AIGC_LLM_API_KEY`、`AGENTIC_AIGC_API_TOKEN`，运行 `python -m service.aigc`。不要使用 `pip install .` 获取最小服务依赖；完整 SDK 的 `[aigc]` extra 仍包含基础 framework 依赖。
 
 所有业务请求必须带 `Authorization: Bearer <service-token>` 和可信 backend 注入的 `X-User-Id`。不要向浏览器泄露服务凭据，也不要允许客户端直接自报用户身份访问。仅提供 `/v1/aigc` 的最新冻结输入契约；拒绝弃用的 messages/parameters 输入及不匹配的台账格式，不自动迁移或重执行。恢复路径不回滚已实现的 Agentic 能力；完整类型与错误定义见 `/docs`、`/openapi.json`。
 

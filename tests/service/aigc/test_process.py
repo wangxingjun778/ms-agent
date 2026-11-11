@@ -39,18 +39,24 @@ async def test_process_restart_does_not_repeat_run(tmp_path, shutdown_signal):
     root = Path(__file__).resolve().parents[3]
     env = {
         **os.environ,
-        'DATA_DIR': str(tmp_path),
-        'AIGC_HOST': '127.0.0.1',
-        'AIGC_PORT': str(port),
-        'AIGC_SERVICE_TOKEN': 'test-service',
-        'LLM_API_KEY': 'test-llm',
-        'API_TOKEN': 'test-image',
-        'AIGC_DRAIN_TIMEOUT': '0',
-        'LLM_BASE_URL': f'http://127.0.0.1:{mock_port}/v1',
-        'API_BASE_URL': 'http://127.0.0.1:1',
+        'AGENTIC_AIGC_DATA_DIR': str(tmp_path),
+        'AGENTIC_AIGC_HOST': '127.0.0.1',
+        'AGENTIC_AIGC_PORT': str(port),
+        'AGENTIC_AIGC_SERVICE_TOKEN': 'test-service',
+        'AGENTIC_AIGC_LLM_API_KEY': 'test-llm',
+        'AGENTIC_AIGC_API_TOKEN': 'test-image',
+        'AGENTIC_AIGC_DRAIN_TIMEOUT': '0',
+        'AGENTIC_AIGC_LLM_BASE_URL': f'http://127.0.0.1:{mock_port}/v1',
+        'AGENTIC_AIGC_API_BASE_URL': 'http://127.0.0.1:1',
         'PYTHONDONTWRITEBYTECODE': '1',
     }
-    for name in ('AIGC_CONFIG', 'API_TOOLS_CONFIG', 'AIGC_SERVICE_TOKEN_FILE', 'LLM_API_KEY_FILE', 'API_TOKEN_FILE'):
+    for name in (
+        'AGENTIC_AIGC_CONFIG',
+        'API_TOOLS_CONFIG',
+        'AGENTIC_AIGC_SERVICE_TOKEN_FILE',
+        'AGENTIC_AIGC_LLM_API_KEY_FILE',
+        'AGENTIC_AIGC_API_TOKEN_FILE',
+    ):
         env.pop(name, None)
     process = None
 

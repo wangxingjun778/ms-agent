@@ -15,7 +15,7 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUTF8=1 \
     PYTHONPATH=/app \
-    DATA_DIR=/data
+    AGENTIC_AIGC_DATA_DIR=/data
 RUN groupadd --gid 10001 aigc \
     && useradd --uid 10001 --gid 10001 --no-create-home aigc \
     && mkdir -p /app /data \

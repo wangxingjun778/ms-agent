@@ -360,15 +360,15 @@ docker build -f docker/aigc.Dockerfile --build-arg GIT_SHA="$(git rev-parse --sh
 Prepare three deployment-only credential files for service authentication, the LLM, and the image API, then start:
 
 ```bash
-export AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
-export LLM_API_KEY_PATH=/absolute/path/llm-api-key
-export API_TOKEN_PATH=/absolute/path/image-api-token
+export AGENTIC_AIGC_SERVICE_TOKEN_PATH=/absolute/path/service-token
+export AGENTIC_AIGC_LLM_API_KEY_PATH=/absolute/path/llm-api-key
+export AGENTIC_AIGC_API_TOKEN_PATH=/absolute/path/image-api-token
 docker compose -f docker/aigc.compose.yaml up -d --build
 ```
 
-The default binding is `127.0.0.1:8000`. All runtime, upstream, image tool/schema, credential-reference and EAS deployment settings are centralized in `service/aigc/configs/service.yaml`. Environment overrides are explicitly listed in that YAML. Mount it read-only and select it with `AIGC_CONFIG`. The old service api_tools.yaml, configuration aliases, and compatibility branches are removed; `API_TOOLS_CONFIG` and `AIGC_QUEUE_LIMIT` are rejected. Programmatic configuration uses `Settings.load()`, nested sections and separate `ServiceCredentials`; no legacy Settings constructor or SDK-default YAML merging is supported. Model access and actual API availability must be verified by the deployment owner.
+The default binding is `127.0.0.1:8000`. All runtime, upstream, image tool/schema, credential-reference and EAS deployment settings are centralized in `service/aigc/configs/service.yaml`. Every service environment variable uses the `AGENTIC_AIGC_` prefix and is explicitly listed in that YAML; legacy `AIGC_*` names are rejected at startup. Mount it read-only and select it with `AGENTIC_AIGC_CONFIG`. The old service api_tools.yaml, configuration aliases, and compatibility branches are removed; `API_TOOLS_CONFIG` and `AIGC_QUEUE_LIMIT` are rejected. Programmatic configuration uses `Settings.load()`, nested sections and separate `ServiceCredentials`; no legacy Settings constructor or SDK-default YAML merging is supported. Model access and actual API availability must be verified by the deployment owner.
 
-For source-only local debugging, use Python 3.12 and install `requirements/aigc-lock.txt` with `--require-hashes`. Set `DATA_DIR`, `AIGC_SERVICE_TOKEN`, `LLM_API_KEY`, and `API_TOKEN`, then run `python -m service.aigc` from the repository root. Do not use `pip install .` for the minimal service environment: the SDK `[aigc]` extra still includes its base framework dependencies.
+For source-only local debugging, use Python 3.12 and install `requirements/aigc-lock.txt` with `--require-hashes`. Set `AGENTIC_AIGC_DATA_DIR`, `AGENTIC_AIGC_SERVICE_TOKEN`, `AGENTIC_AIGC_LLM_API_KEY`, and `AGENTIC_AIGC_API_TOKEN`, then run `python -m service.aigc` from the repository root. Do not use `pip install .` for the minimal service environment: the SDK `[aigc]` extra still includes its base framework dependencies.
 
 Business requests require `Authorization: Bearer <service-token>` and `X-User-Id` supplied by a trusted backend. Never expose the service credential to browsers or allow untrusted clients to impersonate users. Only `/v1/aigc` is exposed, with the latest frozen-input contract. Legacy messages/parameters inputs and incompatible journal formats are rejected without automatic migration or re-execution. Restoring the path does not revert the implemented Agentic features. Complete schemas and errors are available at `/docs` and `/openapi.json`.
 

@@ -1,23 +1,31 @@
 # 仅由服务端管理，不读取 ~/.ms_agent 的 MCP、plugin 或项目配置。
+#
+# 标注约定（其余字段均有默认值，可省略）：
+#   [必填]   真实接口联调必须显式确认的取值，默认值无法直连真实上游
+#   [必填-E] 只写环境变量名，值由同名环境变量或 <NAME>_FILE 提供，禁止写进本文件
+#   [必填-映射] 结构必须存在，且与另一处配置的标识严格一致
+#
+# 环境变量统一前缀 AGENTIC_AIGC_，旧名 AIGC_* 启动时直接拒绝。
 server:
   workers: 1
-  host: "${AIGC_HOST:0.0.0.0}"
-  port: "${AIGC_PORT:8000}"
+  host: "${AGENTIC_AIGC_HOST:0.0.0.0}"
+  port: "${AGENTIC_AIGC_PORT:8000}"
   max_body_bytes: 1048576
   keep_alive_timeout: 75
   graceful_shutdown_timeout: 30
   limit_concurrency: 1024
-  public_path_prefix: "${AIGC_PUBLIC_PATH_PREFIX:}"
+  public_path_prefix: "${AGENTIC_AIGC_PUBLIC_PATH_PREFIX:}"
   loop: auto
   http: auto
   access_log: false
 
 auth:
-  header: "${AIGC_AUTH_HEADER:Authorization}"
-  scheme: "${AIGC_AUTH_SCHEME:bearer}"
+  header: "${AGENTIC_AIGC_AUTH_HEADER:Authorization}"
+  scheme: "${AGENTIC_AIGC_AUTH_SCHEME:bearer}"
 
 storage:
-  data_dir: "${DATA_DIR:/data}"
+  # [必填] 必须可写；EAS 上为 NAS 挂载点，本地联调改成可写目录。
+  data_dir: "${AGENTIC_AIGC_DATA_DIR:/data}"
   cache_entries: 256
   cache_bytes: 67108864
   projection: terminal
@@ -27,12 +35,12 @@ storage:
   io_workers: 8
 
 runtime:
-  max_active_runs: "${AIGC_MAX_RUNS:64}"
-  max_inflight_runs: "${AIGC_MAX_INFLIGHT:500}"
+  max_active_runs: "${AGENTIC_AIGC_MAX_RUNS:64}"
+  max_inflight_runs: "${AGENTIC_AIGC_MAX_INFLIGHT:500}"
   per_user_active: 4
   per_user_inflight: 20
   interaction_timeout: 1800
-  drain_timeout: "${AIGC_DRAIN_TIMEOUT:60}"
+  drain_timeout: "${AGENTIC_AIGC_DRAIN_TIMEOUT:60}"
   retry_after: 2
 
 events:
@@ -78,7 +86,7 @@ recipe:
   timeout: 120
 
 observability:
-  metrics_enabled: "${AIGC_METRICS_ENABLED:false}"
+  metrics_enabled: "${AGENTIC_AIGC_METRICS_ENABLED:false}"
   metrics_interval: 10
   metrics_endpoint: http://127.0.0.1:8080/api/builtin/realtime_metrics
   loop_sample_seconds: 0.2
@@ -87,8 +95,8 @@ observability:
   json_logs: true
 
 eas:
-  enabled: "${AIGC_EAS_ENABLED:false}"
-  gateway: "${AIGC_EAS_GATEWAY:none}"
+  enabled: "${AGENTIC_AIGC_EAS_ENABLED:false}"
+  gateway: "${AGENTIC_AIGC_EAS_GATEWAY:none}"
   gateway_id: ""
   service_auth_header: X-AIGC-Service-Token
   service_auth_scheme: raw
@@ -106,9 +114,10 @@ eas:
   mount_path: /data
 
 secrets:
-  service: AIGC_SERVICE_TOKEN
-  llm: LLM_API_KEY
-  api: API_TOKEN
+  # [必填-E] 只写环境变量名；值通过同名变量或 <NAME>_FILE 提供，不进入 YAML 与配置摘要。
+  service: AGENTIC_AIGC_SERVICE_TOKEN
+  llm: AGENTIC_AIGC_LLM_API_KEY
+  api: AGENTIC_AIGC_API_TOKEN
 
 agent:
   max_chat_round: 20
@@ -116,17 +125,23 @@ agent:
     你是 AIGC 助手。只使用已声明的 HTTP API 工具。
     需要生成或编辑图片时保留参考图片 URL 的顺序，缺少参数时请求补充。
     不执行本地代码、不使用 sandbox，不展示内部推理过程。
-  model: "${LLM_MODEL:qwen-plus}"
-  base_url: "${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
-  temperature: 0.7
-  max_tokens: 4096
+  # [必填] 必须是账户真实可用的 OpenAI 兼容模型名，占位默认值无法直连。
+  model: "${AGENTIC_AIGC_LLM_MODEL:qwen3.8-flash}"
+  # [必填] 必须是可访问的 OpenAI 兼容 /chat/completions 地址。
+  base_url: "${AGENTIC_AIGC_LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
+  # temperature / max_tokens 不在此配置，采样参数使用上游模型默认值。
 
 # capability 的名称是 backend 的 model_ref，必须显式约定映射。
+# [必填] 至少要有一个可用 model_ref：StartRun 的 custom_selection.model_ref 与
+# preferences.enabled_model_refs 只能取这里的键，缺失即 CAPABILITY_NOT_SUPPORTED；
+# 每个 model 的 tool_name 必须命中 tools.api.tools 中已启用的工具。
 capabilities:
+  # 显式上下文预算，按真实上游窗口调整；超限返回 CONTEXT_TOO_LARGE，不自动截断。
   context: {max_messages: 200, max_chars: 60000, max_asset_bytes: 262144}
   asset_transport: frozen_snapshot
   connection_transport: disabled
   models:
+    # [必填] 键即 backend 的 model_ref，须与 tools.api.tools 中的同名工具参数 enum 对齐。
     Qwen/Qwen-Image-2.1-Turbo:
       model_id: Qwen/Qwen-Image-2.1-Turbo
       modality: image
@@ -153,9 +168,12 @@ settlement:
 
 tools:
   api:
-    base_url: "${API_BASE_URL:https://api-inference.modelscope.cn}"
+    # [必填] 真实图片推理网关地址，必须是本 Pod 可达的 OpenAI 兼容/业务网关。
+    base_url: "${AGENTIC_AIGC_API_BASE_URL:https://api-inference.modelscope.cn}"
+    # [必填] type=none 时不需要 token；bearer/api_key 必须有 token（由 secrets.api 注入）。
     auth: {type: bearer}
     tools:
+      # [必填-映射] 工具名必须等于 capabilities.models[*].tool_name。
       - name: image_generation
         enabled: true
         requires_approval: true
@@ -165,7 +183,9 @@ tools:
           n 不保证实际出图数量，以返回列表为准。
         api:
           method: POST
+          # [必填] 无默认值；必须与真实网关路径一致。
           path: /v1/images/generations
+          # [必填] 真实任务网关为异步时必须为 true 并配置 poll_path，否则 submit 后无法收尾。
           async_mode: true
           poll_path: /v1/tasks/{task_id}
           timeout: 60
@@ -177,6 +197,7 @@ tools:
             X-ModelScope-Async-Mode: "true"
             X-ModelScope-Task-Type: image_generation
         parameters:
+          # [必填] 工具入参 JSON Schema，最终执行范围以此为准（StartRun 校验与之对齐）。
           type: object
           additionalProperties: false
           required: [model, prompt]
@@ -207,6 +228,7 @@ tools:
             n: {type: integer, minimum: 1, maximum: 4}
             add_water_mark: {type: boolean}
         output_mapping:
+          # [必填] 真实响应字段路径，写错会导致真实任务永远判为失败或无法收尾。
           success_path: output_images
           error_path: errors.message
           task_id_path: task_id

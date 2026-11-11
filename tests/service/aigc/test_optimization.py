@@ -67,6 +67,20 @@ def test_obsolete_environment_rejected(monkeypatch, name):
         Settings.load(deployment=True)
 
 
+@pytest.mark.parametrize('legacy,current', [('AIGC_PORT', 'AGENTIC_AIGC_PORT'), ('AIGC_CONFIG', 'AGENTIC_AIGC_CONFIG')])
+def test_renamed_environment_rejected(monkeypatch, legacy, current):
+    monkeypatch.delenv(current, raising=False)
+    monkeypatch.setenv(legacy, 'old')
+    with pytest.raises(ValueError, match=f'{legacy} → {current}'):
+        Settings.load(deployment=True)
+
+
+def test_renamed_environment_ignored_when_current_set(monkeypatch, settings):
+    monkeypatch.setenv('AGENTIC_AIGC_PORT', str(settings.server.port))
+    monkeypatch.setenv('AIGC_PORT', '1')
+    assert Settings.load(deployment=True).server.port == settings.server.port
+
+
 def test_eas_generator_preserves_single_source_and_isolated_mounts(settings):
     settings.eas.image = 'registry-vpc.example/ns/aigc:test'
     settings.eas.nas_server = 'fs.nas.example'

@@ -68,7 +68,13 @@ async def wait_for(runs, identifier, status=None, user='u1'):
 
 @pytest.fixture
 def settings(tmp_path, monkeypatch):
-    for key in ('AIGC_CONFIG', 'API_TOOLS_CONFIG', 'AIGC_QUEUE_LIMIT', 'AIGC_EAS_ENABLED', 'AIGC_EAS_GATEWAY'):
+    for key in (
+        'AGENTIC_AIGC_CONFIG',
+        'API_TOOLS_CONFIG',
+        'AIGC_QUEUE_LIMIT',
+        'AGENTIC_AIGC_EAS_ENABLED',
+        'AGENTIC_AIGC_EAS_GATEWAY',
+    ):
         monkeypatch.delenv(key, raising=False)
     settings = Settings.load(deployment=True)
     settings.storage.data_dir = str(tmp_path)

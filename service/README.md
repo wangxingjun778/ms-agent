@@ -333,7 +333,7 @@ result：schema_version=1、content_revision=1、source、prompt_template、nega
 
 ## 8. 统一配置、依赖与 EAS
 
-唯一配置：[service.yaml](aigc/configs/service.yaml)。Settings.load() 校验嵌套配置，ServiceCredentials 单独加载，不合并其他默认 YAML。不支持旧配置文件、别名、API_TOOLS_CONFIG、AIGC_QUEUE_LIMIT。
+唯一配置：[service.yaml](aigc/configs/service.yaml)。Settings.load() 校验嵌套配 置，ServiceCredentials 单独加载，不合并其他默认 YAML。服务环境变量统一使用 `AGENTIC_AIGC_` 前缀（配置路径为 `AGENTIC_AIGC_CONFIG`，凭据为 `AGENTIC_AIGC_SERVICE_TOKEN` / `AGENTIC_AIGC_LLM_API_KEY` / `AGENTIC_AIGC_API_TOKEN`，也支持同名 `*_FILE` 文件）；旧 `AIGC_*` 名称启动时直接拒绝，不保留别名。不支持旧配置文件、别名、API_TOOLS_CONFIG、AIGC_QUEUE_LIMIT。
 
 | 配置段 | 当前作用 |
 |---|---|
@@ -344,7 +344,7 @@ result：schema_version=1、content_revision=1、source、prompt_template、nega
 | upstreams | LLM 32、图片提交 8、轮询 32、收尾 HTTP 4（8 条连接）的独立并发/RPM/连接池及重试 |
 | recipe | 并发 1、在途 100、构建超时 120 秒 |
 | storage | journal、恢复索引、缓存 256 条/64MiB、8 个 IO 线程、可靠 flock |
-| agent | 规划提示词、模型、回合/token 上限；没有动态 session memory/历史入口 |
+| agent | 规划提示词、模型、回合上限；采样参数不在此配置，使用上游模型默认值；没有动态 session memory/历史入口 |
 | observability/eas/secrets | 指标、探针/部署、凭据引用 |
 
 默认 Run 活跃 64、总在途 500、每用户活跃 4/在途 20。计算完成但未核清的 Run 仍计入服务在途配额，不能让未知副作用无限突破准入。RPM=0 表示没有本地 RPM 限制，不表示远端无限额；多个 Pod 共用凭据仍需 backend 账户 RPM/TPM 预算。
@@ -352,11 +352,11 @@ result：schema_version=1、content_revision=1、source、prompt_template、nega
 ### 8.1 部署与扩容
 
 1. [Dockerfile](../docker/aigc.Dockerfile) 构建 `linux/amd64`（目标 x86 机型），推送同地域 ACR 内网仓库；应用端口 8000，避开 EAS 8080/9090。
-2. 填写 eas.image/nas_server/nas_path/gateway，生产专属网关需 gateway_id。预建 NAS shard-N、config、secrets；配置和密钥只读挂载，数据给 UID/GID 10001 写权限。
+2. 填写 eas.image/nas_server/nas_path/gateway，生产专属网关需 gateway_id。预建 NAS shard-N、config、secrets；配置和密钥只读挂载，数据给 UID/GID 10001 写权限。secrets 目录下的文件名必须等于 `secrets.*` 引用值（默认 `AGENTIC_AIGC_SERVICE_TOKEN`、`AGENTIC_AIGC_LLM_API_KEY`、`AGENTIC_AIGC_API_TOKEN`），生成器按该名称生成 `*_FILE` 路径。
 3. 生成 JSON，不创建云资源：
 
    ```bash
-   AIGC_CONFIG=/absolute/path/service.yaml python -m service.aigc.deploy eas --shard 0 --output eas-service.json
+   AGENTIC_AIGC_CONFIG=/absolute/path/service.yaml python -m service.aigc.deploy eas --shard 0 --output eas-service.json
    ```
 
 4. 使用真实 EAS 控制台/eascmd 部署，配置 VPC/ACR/出网权限、NAT 与上游账户配额。生成器不替代这些平台配置。
