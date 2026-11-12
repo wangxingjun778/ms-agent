@@ -385,6 +385,8 @@ docker compose -f docker/aigc.compose.yaml up -d --build
 
 EAS x86 实例构建 `linux/amd64` 镜像并推送到同地域 ACR。填写 YAML 的 eas.image/NAS/网关字段后，运行 `python -m service.aigc.deploy eas --shard 0 --output eas-service.json` 生成部署配置，不会创建云资源。生成器固定每服务一个 Pod，分离可写分片目录与只读配置/密钥目录，配置 startup/readiness/liveness、SIGTERM 和先停后起更新。EAS 请求传 `Authorization: <EAS_TOKEN>`、`X-AIGC-Service-Token: <service-token>` 及可信 `X-User-Id`。人工横向扩容使用 backend 稳定的 user→shard 路由，不启用共享目录多副本。完整步骤见 [部署与调优说明](service/README.md#8-统一配置依赖与-eas)。
 
+本地 Docker 验证从同一 YAML 的 `local` 段派生隔离 mock/live 环境。运行 `.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py up --profile mock` 后执行 `test --profile mock`，Swagger 地址为 `http://127.0.0.1:18080/docs`；mock 不消耗真实推理额度。live 凭据文件与必填项清单单独提供，测试须显式 `--allow-billable`。联调脚本位于被忽略的 `temp/`，不随 EAS 镜像打包；详见[本地部署与测试方案](service/README.md#84-本地-docker-部署与接口验收)。
+
 健康检查：`/health/live`、`/health/ready`（含 config_digest）；认证监控接口 `/internal/stats`；网关需要关闭 SSE 缓冲。开发测试：`python -m pytest -o asyncio_default_fixture_loop_scope=function tests/service/aigc tests/session/test_run_store.py tests/tools/test_api_tools.py`，需安装 pytest、pytest-asyncio、httpx。
 
 <a id="应用项目"></a>

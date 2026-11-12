@@ -222,6 +222,40 @@ class EASSettings(ConfigNode):
     mount_path: str = '/data'
 
 
+class LocalMockSettings(ConfigNode):
+    llm_delay: float = Field(default=0.05, ge=0)
+    task_delay: float = Field(default=0.2, gt=0)
+    slow_task_delay: float = Field(default=2, gt=0)
+    unknown_response_delay: float = Field(default=10, gt=0)
+    tool_timeout: float = Field(default=0.5, gt=0)
+    poll_interval: float = Field(default=0.1, gt=0)
+    interaction_timeout: float = Field(default=3, gt=0)
+    settlement_budget: float = Field(default=5, gt=0)
+
+
+class LocalDeploymentSettings(ConfigNode):
+    """仅影响本地生成物，不改变 EAS 运行参数或对外协议。"""
+
+    profile: Literal['mock', 'live'] = 'mock'
+    project_name: str = Field(default='agentic-aigc-local', pattern=r'^[a-z][a-z0-9-]*$')
+    work_dir: str = 'temp/agentic_aigc/local_deploy'
+    host_port: int = Field(default=18080, ge=1024, le=65535)
+    mock_host_port: int = Field(default=18081, ge=1024, le=65535)
+    image: str = 'ms-agent-aigc:local'
+    platform: Literal['linux/amd64', 'linux/arm64'] = 'linux/amd64'
+    cpu: int = Field(default=2, ge=1)
+    memory_mb: int = Field(default=4096, ge=512)
+    test_timeout: float = Field(default=30, gt=0)
+    restart_test: bool = True
+    mock: LocalMockSettings = Field(default_factory=LocalMockSettings)
+
+    @model_validator(mode='after')
+    def validate_ports(self):
+        if self.host_port == self.mock_host_port:
+            raise ValueError('本地服务与 mock 上游端口不能相同')
+        return self
+
+
 class ToolAuthSettings(ConfigNode):
     type: Literal['none', 'bearer', 'api_key'] = 'bearer'
     header_name: str = 'Authorization'
@@ -318,6 +352,7 @@ class Settings(ConfigNode):
     settlement: SettlementSettings = Field(default_factory=SettlementSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     eas: EASSettings = Field(default_factory=EASSettings)
+    local: LocalDeploymentSettings = Field(default_factory=LocalDeploymentSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     secrets: SecretsSettings = Field(default_factory=SecretsSettings)
     _credentials: ServiceCredentials | None = PrivateAttr(default=None)

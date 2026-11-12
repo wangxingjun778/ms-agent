@@ -19,7 +19,7 @@ from ms_agent.session.run_store import FileRunStore, StorageCorrupted
 from ms_agent.session.store import SessionStore
 from ms_agent.tools.api_adapter import APIConfig, APIToolAdapter, APIToolSpec, AuthConfig, OutputMapping
 from ms_agent.utils.limiter import UpstreamLimiter
-from service.aigc.deploy import render_eas
+from service.aigc.deploy import render_eas, render_local
 from service.aigc.settings import Settings
 
 POLICY = {'attempts': 3, 'initial': 0.001, 'maximum': 0.005, 'budget': 1}
@@ -94,6 +94,50 @@ def test_eas_generator_preserves_single_source_and_isolated_mounts(settings):
     assert 'worker_threads' not in text and 'test-image-secret' not in text
     with pytest.raises(ValueError):
         render_eas(settings, -1)
+
+
+@pytest.mark.parametrize('profile', ['mock', 'live'])
+def test_local_deployment_is_derived_and_isolated(settings, tmp_path, profile):
+    settings.local.profile = profile
+    settings.server.port = 8123
+    original = settings.model_dump()
+    rendered = render_local(settings, tmp_path)
+    effective = Settings.model_validate(rendered['service'])
+    assert settings.model_dump() == original
+    assert not effective.eas.enabled and effective.server.public_path_prefix == ''
+    assert not effective.observability.metrics_enabled
+    assert rendered['client']['config_digest'] == effective.config_digest
+    compose = rendered['compose']
+    assert compose['name'].endswith('-' + profile)
+    service = compose['services']['aigc']
+    assert service['ports'] == ['127.0.0.1:18080:8123']
+    assert service['read_only'] and service['cap_drop'] == ['ALL']
+    assert '8123/health/ready' in service['healthcheck']['test'][-1]
+    assert all(key.endswith('_FILE') or key == 'AGENTIC_AIGC_CONFIG' for key in service['environment'])
+    assert 'test-image-secret' not in json.dumps(rendered)
+    assert 'test-model-secret' not in json.dumps(rendered)
+    assert compose['networks']['default'] == {'driver': 'bridge'}
+    if profile == 'mock':
+        assert effective.agent.base_url == 'http://mock:8000/v1'
+        assert effective.tools.api['base_url'] == 'http://mock:8000'
+        assert 'mock' in compose['services']
+    else:
+        assert effective.agent.base_url == settings.agent.base_url
+        assert effective.tools.api == settings.tools.api
+        assert 'mock' not in compose['services']
+
+
+def test_local_generation_does_not_modify_eas_or_escape_workspace(settings, tmp_path):
+    settings.eas.image = 'registry.example/aigc:test'
+    settings.eas.nas_server = 'nas.example'
+    before = render_eas(settings, 0)
+    render_local(settings, tmp_path)
+    assert render_eas(settings, 0) == before
+    settings.local.work_dir = '../outside'
+    with pytest.raises(ValueError, match='仓库工作区'):
+        render_local(settings, tmp_path)
+    with pytest.raises(ValidationError):
+        Settings.model_validate({'local': {'host_port': 18080, 'mock_host_port': 18080}})
 
 
 @pytest.mark.asyncio

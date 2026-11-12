@@ -24,9 +24,7 @@ services:
       - /tmp:size=64m,mode=1777
     environment:
       AGENTIC_AIGC_DATA_DIR: /data
-      AGENTIC_AIGC_LLM_MODEL: ${AGENTIC_AIGC_LLM_MODEL:-qwen-plus}
-      AGENTIC_AIGC_LLM_BASE_URL: ${AGENTIC_AIGC_LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-      AGENTIC_AIGC_API_BASE_URL: ${AGENTIC_AIGC_API_BASE_URL:-https://api-inference.modelscope.cn}
+      # 模型与上游地址只从挂载的 service.yaml 读取，不在 Compose 重复默认值。
       AGENTIC_AIGC_SERVICE_TOKEN_FILE: /run/secrets/service_token
       AGENTIC_AIGC_LLM_API_KEY_FILE: /run/secrets/llm_api_key
       AGENTIC_AIGC_API_TOKEN_FILE: /run/secrets/api_token

@@ -1,6 +1,6 @@
 # AIGC Agentic 服务接口说明
 
-> 接口前缀：`/v1/aigc` · 服务声明：`1.0.0` · 文档修订日期：`2026-11-06`。
+> 接口前缀：`/v1/aigc` · 服务声明：`1.0.0` · 文档修订日期：`2026-11-11`。
 > 当前处于联调阶段，尚未部署上线。本文按最新工作区实现描述，保留已完成的 Agentic 能力，不因功能迭代自动升级接口版本。任何接口版本变更必须先获得用户审批；版本约定与变更记录见第 10 节。
 
 ## 1. 链路、职责与交付范围
@@ -346,6 +346,7 @@ result：schema_version=1、content_revision=1、source、prompt_template、nega
 | storage | journal、恢复索引、缓存 256 条/64MiB、8 个 IO 线程、可靠 flock |
 | agent | 规划提示词、模型、回合上限；采样参数不在此配置，使用上游模型默认值；没有动态 session memory/历史入口 |
 | observability/eas/secrets | 指标、探针/部署、凭据引用 |
+| local | 本地 mock/live 配置派生、端口/镜像/资源、HTTP 测试预算及 mock 故障时长，不改变 EAS 部署 |
 
 默认 Run 活跃 64、总在途 500、每用户活跃 4/在途 20。计算完成但未核清的 Run 仍计入服务在途配额，不能让未知副作用无限突破准入。RPM=0 表示没有本地 RPM 限制，不表示远端无限额；多个 Pod 共用凭据仍需 backend 账户 RPM/TPM 预算。
 
@@ -404,6 +405,66 @@ python .dev_scripts/aigc/container_smoke.py
 
 发布前仍需外部环境与授权验证：真实 EAS/NAS 跨客户端锁及 fsync、网关 SSE/鉴权与 SIGTERM、BYOK 归属/凭据解析、视频实际响应、永久 URL 和后端 DB 活动位/事件投影。不得用本地 mock 通过代替生产验收。
 
+### 8.4 本地 Docker 部署与接口验收
+
+本地工具放在 `temp/agentic_aigc/local_deploy`：`local.py` 管理生成/启动/测试/停止，`mock_upstream.py` 提供独立 HTTP 上游，`test_client.py` 模拟可信 backend。`temp/` 被 Git 忽略，这些联调工具及报告保留在本机，换机器时需复制；测试不会修改已有业务数据目录。
+
+应用配置唯一来源仍是 `service/aigc/configs/service.yaml`。`local` 段集中保存本地参数；生成器输出 `mock/service.yaml` 或 `live/service.yaml` 的已解析运行视图、Compose、client manifest 和必填项清单。生成文件不要手工调参；修改源 YAML 后重新 prepare/up。两个模式使用独立 Compose project、凭据目录和持久卷，默认复用宿主端口，切换前停止前一个模式。本地采用 bridge 网络并仅绑定 loopback，不能启用会屏蔽宿主发布端口的 internal 网络；up 同时检查容器健康及宿主机 HTTP/config_digest。mock 固定到容器内模拟接口，不提供真实上游凭据。
+
+| 部署环境 | 上游/存储/鉴权 | 验证范围 |
+|---|---|---|
+| 本地 mock | Docker bridge 网络内的 mock LLM/图片任务；本地命名卷；应用 token；仅映射 127.0.0.1 | 可重复 HTTP 契约、错误注入、SSE、并发、重启恢复；无真实推理费用 |
+| 本地 live | YAML 配置的真实 LLM/图片接口；独立本地卷；应用 token | 模型权限、工具路径/字段映射及真实产物；需真实凭据与计费授权 |
+| 远程 EAS | 同地域 ACR、VPC/NAS、网关 token + 应用 token | 网关流式/超时、NAS 锁/持久 IO、SIGTERM、资源规格及后台联调 |
+
+本地 mock 的配置派生关闭 EAS、平台指标上报和 public_path_prefix；将上游地址指向 `mock` 容器并缩短轮询/交互/收尾预算。live 保留真实模型与工具映射，不生成 mock 容器。EAS 仍用 `python -m service.aigc.deploy eas`，不会把本地 mock override 用于云端。两者用同一个 Dockerfile，默认本地也构建 linux/amd64；ARM 主机通过 Docker 模拟执行，本地性能不能代表 EAS。
+
+在仓库根目录运行（需要 Docker Compose v2，测试解释器依赖 pytest/httpx/aiohttp/YAML/Pydantic，现有 `.venv-aigc` 已就绪）：
+
+```bash
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py up --profile mock
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py test --profile mock
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py status --profile mock
+```
+
+默认服务地址 `http://127.0.0.1:18080`，Swagger `/docs`、协议 `/openapi.json`。可在 Swagger 的 Authorize 输入本地服务 token，并在接口 Header 填可信 `X-User-Id`。应用 token 文件名由 YAML 的 secrets.service 决定；默认在 `mock/secrets/AGENTIC_AIGC_SERVICE_TOKEN`。不要把 token 贴到聊天或提交 Git。
+
+验收按以下层次执行，均通过真实 HTTP 和容器进程，不替换 SDK 执行器：
+
+| 层次 | 用例与验收判据 |
+|---|---|
+| 服务边界 | live/ready、docs/redoc/OpenAPI、统计；配置 digest 对齐；版本仍为 /v1、1.0.0/schema 1；无凭据 401、身份非法 400、越权/缺失 404、旧字段 422、请求体超限 413 |
+| 受理与查询 | 同 Run 并发重投仅首次 202，异输入 409；GetRun ETag/304；用户隔离、多用户多 session 并发；响应通过 SDK 类型校验 |
+| 事件 | 有序 SSE、独立 reducer 回放与 GetRun 公共快照相等；游标优先级/无效游标；心跳、断流不停止 Run、断线按游标续传 |
+| 交互与停止 | action_id 绑定、重复命令/异命令冲突；approve/skip/submit_input/intervene；启动前 stop 墓碑；已知 task 停止后核清且保留产物 |
+| 失败安全 | deadline/交互超时、能力未配置/资产摘要拒绝；partial_succeeded 有完成度事实；429 退避；submit 已接收却丢响应时只提交一次、unknown 不释放活动位、不允许自动 retry |
+| 配方与恢复 | 配方基础键幂等、固定来源、无效产物与输入冲突；failed 查询不隐式重试，retry CAS 竞争仅一个 attempt；重启仅查询原 task，不再规划/POST |
+
+2026-11-11 本地验收：amd64 镜像构建、非 root/只读 Docker 服务及宿主 HTTP 就绪检查通过；mock 的 20 个场景全部通过，OpenAPI 所列业务 operationId 无未覆盖项；相关源码回归 125 项通过。live 尚未填写真实上游凭据，未发起计费调用；EAS 未部署或验收。
+
+测试结果写入对应模式的 `report.json`，脱敏请求/响应样例写入 `exchanges.json`；报告对照 OpenAPI operationId 检查未覆盖的业务接口。新增接口需要增加用例，不能因旧用例通过就宣称全覆盖。`local.restart_test=false` 可跳过重启演练，报告会列出 skipped；它只在 mock 环境重启当前 project 的 aigc 容器，不删除容器卷或业务数据。测试每次使用新用户/Run/命令标识，未知任务记录按安全语义留存。`stop` 只停止该模式容器，不 down -v、prune 或清空台账。
+
+真实联调的必填配置单独导出到 `live/required-config.json`（没有秘密值）：
+
+| 项目 | 位置/用途 |
+|---|---|
+| AGENTIC_AIGC_LLM_API_KEY | `live/secrets/AGENTIC_AIGC_LLM_API_KEY`，必须具备 YAML 中 agent.model 的权限 |
+| AGENTIC_AIGC_API_TOKEN | `live/secrets/AGENTIC_AIGC_API_TOKEN`，图片 API 凭据；tools.api.auth.type=none 时可不填 |
+| AGENTIC_AIGC_SERVICE_TOKEN | prepare 自动生成随机本地应用 token，文件位于同目录；客户端从该文件读取，不发送给上游 |
+| 模型/地址/工具契约 | 在唯一 YAML 中确认 agent.model、agent.base_url、tools.api.base_url、capabilities.models 与 tools.api.tools 的参数/路径/output_mapping；默认值不等于账户已授权 |
+
+安全录入与切换：
+
+```bash
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py prepare --profile live
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py credentials --profile live
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py stop --profile mock
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py up --profile live
+.venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py test --profile live --allow-billable
+```
+
+credentials 在本机终端通过 getpass 录入不回显，留空保留原值，不把 token 放到命令行、YAML、镜像或报告。凭据父目录权限 0700；单文件只读挂载供非 root 容器读取。live 无凭据时 up 拒绝，未显式 --allow-billable 时 test 拒绝；故障注入和重启演练只用于 mock，live 报告明确列出跳过项目。live 模型返回不确定内容或限额时可能失败，这是联调证据，不应通过修改成 mock 响应掩盖。
+
 ## 9. 错误与后端同步
 
 | HTTP | code / 场景 |
@@ -455,6 +516,7 @@ StartRun 首次返回 202；GetRun 返回相同结构的完整 RunView（200/304
 
 | 日期 | 修订 / 基线 | 变更 |
 |---|---|---|
+| 2026-11-11 | 本地部署与接口验收 | 从同源配置派生 mock/live Docker 环境；独立 HTTP 上游、全接口测试与报告、凭据文件清单；区分本地验证与 EAS 验收，接口版本不变 |
 | 2026-11-06 | 联调版本恢复与文档刷新 | 按用户要求恢复 /v1、服务 1.0.0 与 schema 1；同步实现/脚本/测试；保留已实现功能；接口升版需事先审批；纠正参数范围、错误码、追踪头和退出预算说明 |
 | 2026-11-05 | Agentic 边界补齐（未发布） | SSE 独立回放/去重与批次、同水位回执、HTTP 调用槽前门闩、独立收尾限流、原停止原因恢复、所选产物 Recipe 事实与重试竞争；压测/容器脚本及中英 README 迁移 |
 | 2026-11-05 | Agentic 工作区改造（未发布） | 完整冻结输入、显式分支、Custom 固定执行、同水位公共 reducer、action_id、submission intent、有限原任务收尾、Recipe attempt/CAS；曾误标 v2/2.0.0，已按 2026-11-06 要求恢复原接口版本；外部未配置能力明确拒绝 |

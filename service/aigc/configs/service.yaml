@@ -113,6 +113,30 @@ eas:
   nas_path: /aigc
   mount_path: /data
 
+# 本地 Docker 验证专用；EAS 生成器不使用此段部署本地组件。
+# mock 不调用真实上游；live 保留 agent/tools 的真实地址与权限配置。
+local:
+  profile: "${AGENTIC_AIGC_LOCAL_PROFILE:mock}"
+  project_name: agentic-aigc-local
+  work_dir: temp/agentic_aigc/local_deploy
+  host_port: 18080
+  mock_host_port: 18081
+  image: ms-agent-aigc:local
+  platform: linux/amd64
+  cpu: 2
+  memory_mb: 4096
+  test_timeout: 30
+  restart_test: true
+  mock:
+    llm_delay: 0.05
+    task_delay: 0.2
+    slow_task_delay: 2
+    unknown_response_delay: 10
+    tool_timeout: 0.5
+    poll_interval: 0.1
+    interaction_timeout: 3
+    settlement_budget: 5
+
 secrets:
   # [必填-E] 只写环境变量名；值通过同名变量或 <NAME>_FILE 提供，不进入 YAML 与配置摘要。
   service: AGENTIC_AIGC_SERVICE_TOKEN
