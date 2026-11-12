@@ -29,7 +29,7 @@
 
 ### 1.1 当前能力与依赖限制
 
-- 默认开放 `Qwen/Qwen-Image-2.1-Turbo` 的已配置图片工具。Agent 可返回纯文本或调用工具；Custom 直接调用固定工具，不调用规划 LLM。
+- 默认开放图片工具，`capabilities.models` 声明两个模型：`Qwen/Qwen-Image-2.1-Turbo`（默认执行，实测文生图与参考图编辑均返回 `output_images`）与 `Qwen/Qwen-Image-Edit`（上游 `/v1/models` 实际返回的模型名，当前网关提交后长时间不返回结果）。客户端可用 `preferences.enabled_model_refs` 或 `custom_selection.model_ref` 收窄到单个模型。Agent 可返回纯文本或调用工具；Custom 直接调用固定工具，不调用规划 LLM。
 - 仅使用明确给出的显式祖先链、冻结 memory 和声明式资产；不自动拼接 session 历史、不读取最新用户偏好、不裁剪或自动摘要。
 - 视频输出/封面/confirmed 参数已具备配置适配及 mock 契约测试，但默认没有生产视频工具，不能宣称真实视频服务已接通。
 - BYOK 的 `ConnectionResolver` 接入边界已定义，当前配置为 disabled，调用明确拒绝。没有用户凭据解析服务的实际接口契约，不从连接 ID 猜测凭据或地址。
@@ -409,7 +409,7 @@ python .dev_scripts/aigc/container_smoke.py
 
 本地工具放在 `temp/agentic_aigc/local_deploy`：`local.py` 管理生成/启动/测试/停止，`mock_upstream.py` 提供独立 HTTP 上游，`test_client.py` 模拟可信 backend。`temp/` 被 Git 忽略，这些联调工具及报告保留在本机，换机器时需复制；测试不会修改已有业务数据目录。
 
-应用配置唯一来源仍是 `service/aigc/configs/service.yaml`。`local` 段集中保存本地参数；生成器输出 `mock/service.yaml` 或 `live/service.yaml` 的已解析运行视图、Compose、client manifest 和必填项清单。生成文件不要手工调参；修改源 YAML 后重新 prepare/up。两个模式使用独立 Compose project、凭据目录和持久卷，默认复用宿主端口，切换前停止前一个模式。本地采用 bridge 网络并仅绑定 loopback，不能启用会屏蔽宿主发布端口的 internal 网络；up 同时检查容器健康及宿主机 HTTP/config_digest。mock 固定到容器内模拟接口，不提供真实上游凭据。
+应用配置唯一来源仍是 `service/aigc/configs/service.yaml`。`local` 段集中保存本地参数；生成器输出 `mock/service.yaml` 或 `live/service.yaml` 的已解析运行视图、Compose、client manifest 和必填项清单。生成文件不要手工调参；修改源 YAML 后重新 prepare/up。两个模式使用独立 Compose project、凭据目录、持久卷和宿主端口（live 服务 18080、mock 服务 18082、mock 上游 18081），因此 mock 与 live 可同时运行、无需相互停止。本地采用 bridge 网络并仅绑定 loopback，不能启用会屏蔽宿主发布端口的 internal 网络；up 同时检查容器健康及宿主机 HTTP/config_digest。mock 固定到容器内模拟接口，不提供真实上游凭据。
 
 | 部署环境 | 上游/存储/鉴权 | 验证范围 |
 |---|---|---|
@@ -427,7 +427,7 @@ python .dev_scripts/aigc/container_smoke.py
 .venv-aigc/bin/python temp/agentic_aigc/local_deploy/local.py status --profile mock
 ```
 
-默认服务地址 `http://127.0.0.1:18080`，Swagger `/docs`、协议 `/openapi.json`。可在 Swagger 的 Authorize 输入本地服务 token，并在接口 Header 填可信 `X-User-Id`。应用 token 文件名由 YAML 的 secrets.service 决定；默认在 `mock/secrets/AGENTIC_AIGC_SERVICE_TOKEN`。不要把 token 贴到聊天或提交 Git。
+默认服务地址：live `http://127.0.0.1:18080`、mock `http://127.0.0.1:18082`，Swagger 为 `/docs`、协议 `/openapi.json`；mock profile 另有上游模拟容器在 `http://127.0.0.1:18081`。可在 Swagger 的 Authorize 输入本地服务 token，并在接口 Header 填可信 `X-User-Id`。应用 token 文件名由 YAML 的 secrets.service 决定；默认在 `mock/secrets/AGENTIC_AIGC_SERVICE_TOKEN`。不要把 token 贴到聊天或提交 Git。
 
 验收按以下层次执行，均通过真实 HTTP 和容器进程，不替换 SDK 执行器：
 

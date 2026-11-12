@@ -110,7 +110,9 @@ def test_local_deployment_is_derived_and_isolated(settings, tmp_path, profile):
     compose = rendered['compose']
     assert compose['name'].endswith('-' + profile)
     service = compose['services']['aigc']
-    assert service['ports'] == ['127.0.0.1:18080:8123']
+    expected_port = 18080 if profile == 'live' else 18082
+    assert service['ports'] == [f'127.0.0.1:{expected_port}:8123']
+    assert rendered['client']['base_url'] == f'http://127.0.0.1:{expected_port}'
     assert service['read_only'] and service['cap_drop'] == ['ALL']
     assert '8123/health/ready' in service['healthcheck']['test'][-1]
     assert all(key.endswith('_FILE') or key == 'AGENTIC_AIGC_CONFIG' for key in service['environment'])
@@ -138,6 +140,10 @@ def test_local_generation_does_not_modify_eas_or_escape_workspace(settings, tmp_
         render_local(settings, tmp_path)
     with pytest.raises(ValidationError):
         Settings.model_validate({'local': {'host_port': 18080, 'mock_host_port': 18080}})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({'local': {'host_port': 18080, 'mock_service_host_port': 18080}})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({'local': {'mock_service_host_port': 18081, 'mock_host_port': 18081}})
 
 
 @pytest.mark.asyncio

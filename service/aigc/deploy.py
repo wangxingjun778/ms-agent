@@ -170,12 +170,14 @@ def render_local(settings: Settings, workspace: str | Path) -> dict:
         'start_period': '10s',
         'retries': 10,
     }
+    # mock 与 live profile 使用不同宿主端口，两套环境可以同时运行互不抢占。
+    service_port = local.host_port if local.profile == 'live' else local.mock_service_host_port
     aigc = {
         **common,
         'build': {'context': str(root), 'dockerfile': 'docker/aigc.Dockerfile'},
         'restart': 'unless-stopped',
         'environment': environment,
-        'ports': [f'127.0.0.1:{local.host_port}:{port}'],
+        'ports': [f'127.0.0.1:{service_port}:{port}'],
         'volumes': ['aigc_data:/data', f'{directory}/service.yaml:/config/service.yaml:ro'],
         'secrets': list(credentials.values()),
         'healthcheck': health,
@@ -215,7 +217,7 @@ def render_local(settings: Settings, workspace: str | Path) -> dict:
     client = {
         'profile': local.profile,
         'project_name': project,
-        'base_url': f'http://127.0.0.1:{local.host_port}',
+        'base_url': f'http://127.0.0.1:{service_port}',
         'api_prefix': API_PREFIX,
         'mock_url': f'http://127.0.0.1:{local.mock_host_port}' if local.profile == 'mock' else None,
         'service_config': str(directory / 'service.yaml'),

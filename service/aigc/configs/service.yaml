@@ -120,6 +120,8 @@ local:
   project_name: agentic-aigc-local
   work_dir: temp/agentic_aigc/local_deploy
   host_port: 18080
+  # mock profile 使用独立端口，可与 live 同时运行。
+  mock_service_host_port: 18082
   mock_host_port: 18081
   image: ms-agent-aigc:local
   platform: linux/amd64
@@ -166,8 +168,28 @@ capabilities:
   connection_transport: disabled
   models:
     # [必填] 键即 backend 的 model_ref，须与 tools.api.tools 中的同名工具参数 enum 对齐。
+    # 默认执行模型：本机实测可出图（文生图与参考图编辑均返回 output_images）。
     Qwen/Qwen-Image-2.1-Turbo:
       model_id: Qwen/Qwen-Image-2.1-Turbo
+      modality: image
+      tool_name: image_generation
+      actions: [generate, continue_edit, regenerate, change_reference, rethink]
+      output_type: image
+      parameter_map:
+        image_count: n
+        negative_prompt: negative_prompt
+        seed: seed
+        input_refs: image_url
+        steps: steps
+        guidance_scale: guidance
+      sizes: {}
+      confirmed_path: null
+      poster_path: null
+    # 上游 /v1/models 实际返回的图片模型名。
+    # 当前网关对文生图与参考图编辑均长时间 RUNNING 不返回结果，故不作为默认执行模型；
+    # 保留声明以便客户端显式指定时仍能受理并返回真实上游错误。
+    Qwen/Qwen-Image-Edit:
+      model_id: Qwen/Qwen-Image-Edit
       modality: image
       tool_name: image_generation
       actions: [generate, continue_edit, regenerate, change_reference, rethink]
@@ -226,7 +248,7 @@ tools:
           additionalProperties: false
           required: [model, prompt]
           properties:
-            model: {type: string, enum: [Qwen/Qwen-Image-2.1-Turbo]}
+            model: {type: string, enum: [Qwen/Qwen-Image-2.1-Turbo, Qwen/Qwen-Image-Edit]}
             prompt: {type: string, minLength: 1, maxLength: 4000}
             image_url:
               oneOf:

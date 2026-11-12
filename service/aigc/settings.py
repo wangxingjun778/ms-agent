@@ -239,7 +239,9 @@ class LocalDeploymentSettings(ConfigNode):
     profile: Literal['mock', 'live'] = 'mock'
     project_name: str = Field(default='agentic-aigc-local', pattern=r'^[a-z][a-z0-9-]*$')
     work_dir: str = 'temp/agentic_aigc/local_deploy'
+    # live 服务、mock 服务、mock 上游各占一个端口，mock 与 live 可同时运行。
     host_port: int = Field(default=18080, ge=1024, le=65535)
+    mock_service_host_port: int = Field(default=18082, ge=1024, le=65535)
     mock_host_port: int = Field(default=18081, ge=1024, le=65535)
     image: str = 'ms-agent-aigc:local'
     platform: Literal['linux/amd64', 'linux/arm64'] = 'linux/amd64'
@@ -251,8 +253,9 @@ class LocalDeploymentSettings(ConfigNode):
 
     @model_validator(mode='after')
     def validate_ports(self):
-        if self.host_port == self.mock_host_port:
-            raise ValueError('本地服务与 mock 上游端口不能相同')
+        ports = (self.host_port, self.mock_service_host_port, self.mock_host_port)
+        if len(set(ports)) != len(ports):
+            raise ValueError('live 服务、mock 服务与 mock 上游端口不能相同')
         return self
 
 
